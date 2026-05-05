@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 
@@ -11,7 +12,7 @@ const DEFAULT_THEME = {
 }
 
 export async function settingsRoutes(app: FastifyInstance) {
-  // GET /store/theme — retorna o tema da loja (autenticado)
+  // GET /store/theme
   app.get('/store/theme', { preHandler: requireStoreUser }, async (req) => {
     const storeId = req.actor.storeId
 
@@ -42,7 +43,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
   })
 
-  // PATCH /store/theme — atualiza o tema (OWNER/MANAGER)
+  // PATCH /store/theme
   const themeSchema = z.object({
     primary:   z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     secondary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
@@ -68,6 +69,79 @@ export async function settingsRoutes(app: FastifyInstance) {
            updated_at      = now()`,
       [storeId, body.primary, body.secondary, body.accent, body.logoUrl]
     )
+
+    return { ok: true }
+  })
+
+  // GET /store/settings
+  app.get('/store/settings', { preHandler: requireStoreUser }, async (req) => {
+    const storeId = req.actor.storeId
+
+    const { rows: [store] } = await db.query(
+      'SELECT name FROM stores WHERE id = $1',
+      [storeId]
+    )
+
+    const { rows: [settings] } = await db.query(
+      'SELECT max_orders_per_route, require_delivery_photo FROM store_settings WHERE store_id = $1',
+      [storeId]
+    )
+
+    return {
+      storeName:            store?.name ?? '',
+      maxOrdersPerRoute:    settings?.max_orders_per_route    ?? 5,
+      requireDeliveryPhoto: settings?.require_delivery_photo ?? false,
+    }
+  })
+
+  // PATCH /store/settings
+  const storeSettingsSchema = z.object({
+    maxOrdersPerRoute:    z.number().int().min(1).max(20).optional(),
+    requireDeliveryPhoto: z.boolean().optional(),
+  })
+
+  app.patch('/store/settings', { preHandler: requireStoreUser }, async (req, reply) => {
+    if (!['OWNER', 'MANAGER'].includes((req.actor as { role: string }).role)) {
+      return reply.code(403).send({ error: 'Forbidden' })
+    }
+    const body    = storeSettingsSchema.parse(req.body)
+    const storeId = req.actor.storeId
+
+    await db.query(
+      `INSERT INTO store_settings (store_id, max_orders_per_route, require_delivery_photo)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (store_id) DO UPDATE
+       SET max_orders_per_route    = COALESCE($2, store_settings.max_orders_per_route),
+           require_delivery_photo  = COALESCE($3, store_settings.require_delivery_photo),
+           updated_at              = now()`,
+      [storeId, body.maxOrdersPerRoute ?? null, body.requireDeliveryPhoto ?? null]
+    )
+
+    return { ok: true }
+  })
+
+  // PATCH /store/me/password
+  const passwordSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword:     z.string().min(6),
+  })
+
+  app.patch('/store/me/password', { preHandler: requireStoreUser }, async (req, reply) => {
+    const body   = passwordSchema.parse(req.body)
+    const userId = req.actor.sub
+
+    const { rows: [user] } = await db.query(
+      'SELECT password_hash FROM store_users WHERE id = $1',
+      [userId]
+    )
+
+    if (!user) return reply.code(404).send({ error: 'User not found' })
+
+    const valid = await bcrypt.compare(body.currentPassword, user.password_hash as string)
+    if (!valid) return reply.code(400).send({ error: 'Senha atual incorreta' })
+
+    const hash = await bcrypt.hash(body.newPassword, 10)
+    await db.query('UPDATE store_users SET password_hash = $1 WHERE id = $2', [hash, userId])
 
     return { ok: true }
   })
