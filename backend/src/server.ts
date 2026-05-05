@@ -1,4 +1,10 @@
 import 'dotenv/config'
+import dns from 'dns'
+
+// Must run before any network connections — Render exposes IPv6 addresses
+// but only IPv4 is routable on the internal network.
+dns.setDefaultResultOrder('ipv4first')
+
 import { buildApp } from './app'
 import { createNotificationWorker } from './shared/infra/queue'
 import { db } from './shared/db/client'
