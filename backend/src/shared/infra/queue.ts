@@ -6,9 +6,10 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
 function makeConnection() {
   const url = new URL(REDIS_URL)
   return {
-    host:            url.hostname,
-    port:            Number(url.port) || 6379,
-    password:        url.password || undefined,
+    host:                 url.hostname,
+    port:                 Number(url.port) || 6379,
+    password:             url.password || undefined,
+    family:               4,
     maxRetriesPerRequest: null,
   }
 }

@@ -1,6 +1,4 @@
 import 'dotenv/config'
-import dns from 'dns'
-dns.setDefaultResultOrder('ipv4first')
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { db } from './client'
