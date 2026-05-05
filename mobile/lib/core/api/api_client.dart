@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const String _baseUrl = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'http://10.0.2.2:3001',
+  defaultValue: 'https://logiflow-beige.verce.app',
 );
 
 class ApiClient {
