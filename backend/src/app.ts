@@ -20,10 +20,24 @@ export function buildApp() {
     },
   })
 
+  // Sem FRONTEND_URL em produção, origin virava `false` e o preflight OPTIONS ia para
+  // callNotFound() no plugin CORS → 404. Refletir origem quando não houver lista explícita.
+  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean)
+  const corsOrigin =
+    corsOrigins && corsOrigins.length > 0
+      ? corsOrigins.length === 1
+        ? corsOrigins[0]
+        : corsOrigins
+      : true
+
+  if (process.env.NODE_ENV === 'production' && corsOrigin === true) {
+    console.warn(
+      '[cors] FRONTEND_URL não definido: aceitando qualquer origem (refletida). Defina FRONTEND_URL em produção.'
+    )
+  }
+
   app.register(cors, {
-    origin:      process.env.NODE_ENV === 'production'
-      ? (process.env.FRONTEND_URL ?? false)
-      : true,
+    origin:      corsOrigin,
     credentials: true,
   })
 
