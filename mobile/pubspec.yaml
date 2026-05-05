@@ -36,8 +36,11 @@ dependencies:
   latlong2: ^0.9.1
 
   # UI
-  lucide_icons: ^0.0.2
+  lucide_icons: ^0.257.0
   cached_network_image: ^3.3.1
+
+  # URL launching (Google Maps deeplinks)
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

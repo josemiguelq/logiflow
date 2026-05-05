@@ -3,12 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/api/api_client.dart';
+import '../../core/models/order.dart';
 import '../../features/tracking/location_service.dart';
-import 'orders_screen.dart';
 
 final orderDetailProvider = FutureProvider.autoDispose.family<Order, String>((ref, id) async {
-  // Get storeId from auth
-  final session = ref.watch(authProvider.select((s) => s));
   final res = await ApiClient().dio.get('/deliverer/orders');
   final list = (res.data as List).map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
   return list.firstWhere((o) => o.id == id);
@@ -92,9 +90,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _InfoCard(label: 'Cliente', value: order.customer['name'] as String? ?? ''),
+              _InfoCard(label: 'Cliente', value: order.customerName),
               const SizedBox(height: 12),
-              _InfoCard(label: 'Endereço', value: order.customer['address'] as String? ?? ''),
+              _InfoCard(label: 'Endereço', value: order.customerAddress),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(child: _CodeCard(label: 'Coleta', code: order.pickupCode)),

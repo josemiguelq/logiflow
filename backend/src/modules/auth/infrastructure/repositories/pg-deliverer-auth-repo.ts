@@ -13,6 +13,7 @@ function mapRow(row: Record<string, unknown>): Deliverer {
     profileImageUrl: row.profile_image_url as string | undefined,
     status:          row.status as Deliverer['status'],
     isActive:        row.is_active as boolean,
+    needsOnboarding: row.needs_onboarding as boolean,
     createdAt:       row.created_at as Date,
   }
 }

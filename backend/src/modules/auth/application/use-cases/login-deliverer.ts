@@ -26,12 +26,13 @@ export async function loginDeliverer(
   return {
     token,
     deliverer: {
-      id: deliverer.id,
-      name: deliverer.name,
-      username: deliverer.username,
-      storeId: deliverer.storeId,
-      status: deliverer.status,
+      id:              deliverer.id,
+      name:            deliverer.name,
+      username:        deliverer.username,
+      storeId:         deliverer.storeId,
+      status:          deliverer.status,
       profileImageUrl: deliverer.profileImageUrl,
+      needsOnboarding: deliverer.needsOnboarding,
     },
   }
 }

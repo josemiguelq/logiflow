@@ -78,7 +78,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     const storeId = req.actor.storeId
 
     const { rows: [store] } = await db.query(
-      'SELECT name FROM stores WHERE id = $1',
+      'SELECT name, lat, lng FROM stores WHERE id = $1',
       [storeId]
     )
 
@@ -89,6 +89,8 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     return {
       storeName:            store?.name ?? '',
+      storeLat:             store?.lat  ?? null,
+      storeLng:             store?.lng  ?? null,
       maxOrdersPerRoute:    settings?.max_orders_per_route    ?? 5,
       requireDeliveryPhoto: settings?.require_delivery_photo ?? false,
     }
@@ -98,6 +100,8 @@ export async function settingsRoutes(app: FastifyInstance) {
   const storeSettingsSchema = z.object({
     maxOrdersPerRoute:    z.number().int().min(1).max(20).optional(),
     requireDeliveryPhoto: z.boolean().optional(),
+    storeLat:             z.number().optional().nullable(),
+    storeLng:             z.number().optional().nullable(),
   })
 
   app.patch('/store/settings', { preHandler: requireStoreUser }, async (req, reply) => {
@@ -116,6 +120,13 @@ export async function settingsRoutes(app: FastifyInstance) {
            updated_at              = now()`,
       [storeId, body.maxOrdersPerRoute ?? null, body.requireDeliveryPhoto ?? null]
     )
+
+    if (body.storeLat !== undefined || body.storeLng !== undefined) {
+      await db.query(
+        'UPDATE stores SET lat = COALESCE($2, lat), lng = COALESCE($3, lng) WHERE id = $1',
+        [storeId, body.storeLat ?? null, body.storeLng ?? null]
+      )
+    }
 
     return { ok: true }
   })

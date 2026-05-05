@@ -177,6 +177,18 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Deliverer saves manual route order (positions 1..n)
+  app.patch('/deliverer/orders/route', { preHandler: requireDeliverer }, async (req, reply) => {
+    const { orderIds } = z.object({ orderIds: z.array(z.string().uuid()) }).parse(req.body)
+    for (let i = 0; i < orderIds.length; i++) {
+      await db.query(
+        'UPDATE orders SET route_position = $1 WHERE id = $2 AND deliverer_id = $3',
+        [i + 1, orderIds[i], req.actor.sub]
+      )
+    }
+    return reply.send({ ok: true })
+  })
+
   app.patch(
     '/deliverer/orders/:id/start-route',
     { preHandler: requireDeliverer },

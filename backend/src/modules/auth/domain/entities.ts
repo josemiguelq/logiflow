@@ -21,5 +21,6 @@ export interface Deliverer {
   profileImageUrl?: string
   status: 'AVAILABLE' | 'ON_ROUTE' | 'OFFLINE'
   isActive: boolean
+  needsOnboarding: boolean
   createdAt: Date
 }

@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { requireRole } from '../../../shared/middleware/rbac'
@@ -89,4 +90,43 @@ export async function delivererRoutes(app: FastifyInstance) {
       storeId: req.actor.storeId,
     })
   )
+
+  // Deliverer updates own profile (photo + password) and clears onboarding flag
+  const profileSchema = z.object({
+    profileImageUrl: z.string().optional(),
+    newPassword:     z.string().min(6).optional(),
+  })
+
+  app.patch('/deliverer/profile', { preHandler: requireDeliverer }, async (req, reply) => {
+    const body = profileSchema.parse(req.body)
+    const sets: string[]    = ['needs_onboarding = false']
+    const params: unknown[] = []
+    let idx = 1
+
+    if (body.profileImageUrl) {
+      sets.push(`profile_image_url = $${idx++}`)
+      params.push(body.profileImageUrl)
+    }
+    if (body.newPassword) {
+      const hash = await bcrypt.hash(body.newPassword, 10)
+      sets.push(`password_hash = $${idx++}`)
+      params.push(hash)
+    }
+    params.push(req.actor.sub)
+
+    await db.query(
+      `UPDATE deliverers SET ${sets.join(', ')} WHERE id = $${idx}`,
+      params
+    )
+    return reply.send({ ok: true })
+  })
+
+  // Deliverer fetches own store info (for distance calculation)
+  app.get('/deliverer/store', { preHandler: requireDeliverer }, async (req) => {
+    const { rows: [store] } = await db.query(
+      'SELECT name, lat, lng FROM stores WHERE id = $1',
+      [req.actor.storeId]
+    )
+    return { name: store?.name ?? '', lat: store?.lat ?? null, lng: store?.lng ?? null }
+  })
 }

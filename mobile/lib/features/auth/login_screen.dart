@@ -17,6 +17,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
   String? _error;
 
+  @override
+  void dispose() {
+    _usernameCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _login() async {
     setState(() { _loading = true; _error = null; });
     try {
@@ -24,8 +31,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _usernameCtrl.text.trim(),
         _passwordCtrl.text,
       );
-      if (mounted) context.go('/orders');
-    } catch (e) {
+      if (!mounted) return;
+      final session = ref.read(authProvider);
+      context.go(session?.needsOnboarding == true ? '/setup' : '/orders');
+    } catch (_) {
       setState(() => _error = 'Usuário ou senha inválidos');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -52,15 +61,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: const Icon(Icons.local_shipping, color: Colors.white, size: 36),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'LogiFlow',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
+                const Text('LogiFlow',
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text(
-                  'App do Entregador',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                ),
+                Text('App do Entregador',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                 const SizedBox(height: 40),
                 TextField(
                   controller: _usernameCtrl,
@@ -69,6 +74,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     prefixIcon: Icon(Icons.person_outline),
                   ),
                   textInputAction: TextInputAction.next,
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -88,7 +95,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(_error!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+                    child: Text(_error!,
+                        style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
                   ),
                 ],
                 const SizedBox(height: 24),
@@ -99,8 +107,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: _loading
                         ? const SizedBox(
                             width: 20, height: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                          )
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
                         : const Text('Entrar', style: TextStyle(fontSize: 16)),
                   ),
                 ),
