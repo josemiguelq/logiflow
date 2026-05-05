@@ -69,7 +69,9 @@ export function buildApp() {
   app.register(notificationRoutes)
   app.register(settingsRoutes)
 
-  app.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
+  app.get('/health', async (_req, reply) => {
+    return reply.type('text/plain').send('ok')
+  })
 
   return app
 }
