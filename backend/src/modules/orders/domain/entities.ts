@@ -1,0 +1,60 @@
+export type OrderStatus =
+  | 'PREPARING'
+  | 'ASSIGNED'
+  | 'ON_ROUTE'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'CANCELLED'
+
+export interface Order {
+  id: string
+  storeId: string
+  delivererId?: string
+  customerId: string
+  createdByUserId: string
+  status: OrderStatus
+  routePosition?: number
+  pickupCode: string
+  deliveryCode: string
+  notes?: string
+  lat?: number
+  lng?: number
+  createdAt: Date
+  pickedUpAt?: Date
+  deliveredAt?: Date
+}
+
+export interface OrderWithDetails extends Order {
+  customer: {
+    id: string
+    name: string
+    phone: string
+    address: string
+    complement?: string
+    lat?: number
+    lng?: number
+  }
+  deliverer?: {
+    id: string
+    name: string
+    status: string
+  }
+  proof?: {
+    photoUrl: string
+    lat?: number
+    lng?: number
+  }
+}
+
+export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+  PREPARING:        ['ASSIGNED', 'CANCELLED'],
+  ASSIGNED:         ['ON_ROUTE', 'PREPARING', 'CANCELLED'],
+  ON_ROUTE:         ['OUT_FOR_DELIVERY', 'CANCELLED'],
+  OUT_FOR_DELIVERY: ['DELIVERED', 'CANCELLED'],
+  DELIVERED:        [],
+  CANCELLED:        [],
+}
+
+export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
+  return validTransitions[from].includes(to)
+}

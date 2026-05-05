@@ -1,0 +1,100 @@
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+} from '@whiskeysockets/baileys'
+import { Boom } from '@hapi/boom'
+import { join } from 'path'
+import { mkdirSync } from 'fs'
+import { IWhatsAppProvider } from '../../domain/ports'
+import { createDbSessionStore } from './session-store'
+import { DB } from '../../../../shared/db/client'
+
+type SocketInstance = ReturnType<typeof makeWASocket>
+
+const sockets = new Map<string, SocketInstance>()
+const qrCodes = new Map<string, string>()
+
+export function createBaileysProvider(db: DB): IWhatsAppProvider {
+  const sessionStore = createDbSessionStore(db)
+
+  async function createSocket(storeId: string): Promise<SocketInstance> {
+    const sessionDir = join(process.cwd(), '.wa-sessions', storeId)
+    mkdirSync(sessionDir, { recursive: true })
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir)
+    const { version }          = await fetchLatestBaileysVersion()
+
+    const socket = makeWASocket({
+      version,
+      auth:          state,
+      printQRInTerminal: false,
+      browser: ['LogiFlow', 'Chrome', '1.0'],
+    })
+
+    socket.ev.on('creds.update', saveCreds)
+
+    socket.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update
+
+      if (qr) {
+        qrCodes.set(storeId, qr)
+        await sessionStore.setStatus(storeId, 'CONNECTING')
+      }
+
+      if (connection === 'open') {
+        qrCodes.delete(storeId)
+        await sessionStore.setStatus(storeId, 'CONNECTED')
+      }
+
+      if (connection === 'close') {
+        const code = (lastDisconnect?.error as Boom)?.output?.statusCode
+        const shouldReconnect = code !== DisconnectReason.loggedOut
+        sockets.delete(storeId)
+        await sessionStore.setStatus(storeId, 'DISCONNECTED')
+        if (shouldReconnect) {
+          setTimeout(() => createSocket(storeId), 5_000)
+        }
+      }
+    })
+
+    sockets.set(storeId, socket)
+    return socket
+  }
+
+  return {
+    async connect(storeId) {
+      if (!sockets.has(storeId)) {
+        await createSocket(storeId)
+      }
+    },
+
+    async disconnect(storeId) {
+      const socket = sockets.get(storeId)
+      if (socket) {
+        await socket.logout()
+        sockets.delete(storeId)
+      }
+      await sessionStore.setStatus(storeId, 'DISCONNECTED')
+    },
+
+    async getQRCode(storeId) {
+      return qrCodes.get(storeId) ?? null
+    },
+
+    async getStatus(storeId) {
+      return sessionStore.getStatus(storeId)
+    },
+
+    async sendMessage(phone, text) {
+      const normalizedPhone = phone.replace(/\D/g, '')
+      const jid = `${normalizedPhone}@s.whatsapp.net`
+
+      for (const [, socket] of sockets) {
+        await socket.sendMessage(jid, { text })
+        return
+      }
+      throw new Error('No active WhatsApp session')
+    },
+  }
+}
