@@ -20,25 +20,33 @@ export function buildApp() {
     },
   })
 
-  // Sem FRONTEND_URL em produção, origin virava `false` e o preflight OPTIONS ia para
-  // callNotFound() no plugin CORS → 404. Refletir origem quando não houver lista explícita.
-  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean)
-  const corsOrigin =
-    corsOrigins && corsOrigins.length > 0
-      ? corsOrigins.length === 1
-        ? corsOrigins[0]
-        : corsOrigins
-      : true
+  // Em desenvolvimento, refletimos sempre a origem (evita CORS ao misturar localhost /
+  // 127.0.0.1 ou porta diferente da lista). Em produção (ou CORS_STRICT=1), usa FRONTEND_URL.
+  const strictCors =
+    process.env.NODE_ENV === 'production' || process.env.CORS_STRICT === '1'
 
-  if (process.env.NODE_ENV === 'production' && corsOrigin === true) {
+  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean)
+
+  let corsOrigin: boolean | string | string[]
+  if (!strictCors) {
+    corsOrigin = true
+  } else if (corsOrigins && corsOrigins.length > 0) {
+    corsOrigin = corsOrigins.length === 1 ? corsOrigins[0]! : corsOrigins
+  } else {
+    corsOrigin = true
+  }
+
+  if (strictCors && corsOrigin === true) {
     console.warn(
       '[cors] FRONTEND_URL não definido: aceitando qualquer origem (refletida). Defina FRONTEND_URL em produção.'
     )
   }
 
   app.register(cors, {
-    origin:      corsOrigin,
-    credentials: true,
+    origin:          corsOrigin,
+    credentials:     true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods:         ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
 
   app.register(jwt, {
