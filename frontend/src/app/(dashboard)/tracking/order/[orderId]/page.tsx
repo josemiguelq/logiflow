@@ -67,9 +67,9 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ orderI
         </span>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         {/* Painel lateral */}
-        <aside className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-r border-gray-200 bg-white p-5">
+        <aside className="flex w-full shrink-0 flex-col gap-4 overflow-y-auto border-b border-gray-200 bg-white p-5 md:w-80 md:border-b-0 md:border-r">
           {!order ? (
             <div className="animate-pulse space-y-3">
               <div className="h-5 w-2/3 rounded bg-gray-200" />
@@ -143,7 +143,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ orderI
         </aside>
 
         {/* Mapa */}
-        <div className="relative flex-1 bg-gray-100">
+        <div className="relative min-h-[300px] flex-1 bg-gray-100">
           {!canTrack && order && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
               <p className="text-sm font-medium text-gray-500">

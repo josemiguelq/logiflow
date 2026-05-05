@@ -96,9 +96,9 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         {/* Painel lateral */}
-        <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white">
+        <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-b border-gray-200 bg-white md:w-80 md:border-b-0 md:border-r">
 
           {/* Posição atual */}
           <div className="border-b border-gray-100 p-5">
@@ -172,7 +172,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
         </aside>
 
         {/* Mapa */}
-        <div className="relative flex-1 bg-gray-100">
+        <div className="relative min-h-[300px] flex-1 bg-gray-100">
           {!location && (
             <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-700 shadow-sm">
               <Truck className="h-3.5 w-3.5" />

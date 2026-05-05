@@ -45,7 +45,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -59,7 +59,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Filtros */}
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         {/* Status pills */}
         <div className="flex gap-1.5 overflow-x-auto pb-0.5">
           {STATUSES.map((s) => (
@@ -80,11 +80,11 @@ export default function OrdersPage() {
 
         {/* Filtro por entregador */}
         {deliverers.length > 0 && (
-          <div className="relative ml-auto">
+          <div className="relative sm:ml-auto">
             <select
               value={delivererId}
               onChange={(e) => setDelivererId(e.target.value)}
-              className="h-9 appearance-none rounded-lg border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2"
+              className="h-9 w-full appearance-none rounded-lg border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 sm:w-auto"
               style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
             >
               <option value="">Todos os entregadores</option>

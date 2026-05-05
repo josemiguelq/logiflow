@@ -32,7 +32,7 @@ export default function DeliverersPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Entregadores</h1>
@@ -46,7 +46,7 @@ export default function DeliverersPage() {
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         {deliverers.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-gray-400">
             <Truck className="mb-3 h-10 w-10" />
@@ -54,7 +54,7 @@ export default function DeliverersPage() {
             <p className="mt-1 text-sm">Adicione o primeiro entregador para começar</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Nome</th>

@@ -18,7 +18,7 @@ export default function CustomersPage() {
   const { data: customers = [], mutate } = useSWR(url, fetcher)
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
@@ -40,13 +40,13 @@ export default function CustomersPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         {customers.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-gray-400">
             <p className="font-medium">Nenhum cliente encontrado</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[480px] text-sm">
             <thead className="border-b border-gray-100 bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Nome</th>
