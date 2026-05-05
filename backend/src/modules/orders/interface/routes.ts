@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { OrderStatus } from '../domain/entities'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { createPgOrderRepo } from '../infrastructure/repositories/pg-order-repo'
@@ -27,10 +28,11 @@ export async function orderRoutes(app: FastifyInstance) {
     { preHandler: requireStoreUser },
     async (req) => {
       const { status, delivererId, page, limit } = req.query as Record<string, string>
+      const isAssistant = req.actor.type === 'store_user' && req.actor.role === 'ASSISTANT'
       const filters = {
-        status:          status as string | undefined,
+        status:          status as OrderStatus | undefined,
         delivererId,
-        createdByUserId: req.actor.role === 'ASSISTANT' ? req.actor.sub : undefined,
+        createdByUserId: isAssistant ? req.actor.sub : undefined,
         page:            page ? Number(page) : 1,
         limit:           limit ? Number(limit) : 50,
       }
@@ -65,7 +67,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const storeId = actor.storeId
 
       const order = await createOrder(
-        { storeId, customerId: body.customerId, createdByUserId: actor.sub, ...body },
+        { storeId, createdByUserId: actor.sub, ...body },
         {
           orderRepo,
           notifyCustomer: async (orderId) => {

@@ -49,8 +49,8 @@ export function createPgDelivererRepo(db: DB) {
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
         [data.storeId, data.name, data.email ?? null, data.username, passwordHash]
       )
-      const d = mapRow(rows[0])
-      return { ...d, passwordHash: '' }
+      const { passwordHash: _, ...rest } = mapRow(rows[0])
+      return rest
     },
 
     async update(
