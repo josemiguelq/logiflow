@@ -1,8 +1,11 @@
 import { Pool, PoolClient } from 'pg'
 
+const dbUrl = process.env.DATABASE_URL ?? ''
+const needsSsl = !dbUrl.includes('localhost') && !dbUrl.includes('127.0.0.1')
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: dbUrl,
+  ssl: needsSsl ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
