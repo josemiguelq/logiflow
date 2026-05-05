@@ -40,6 +40,7 @@ interface Props {
   delivererName?: string
   destinations?: MapDestination[]
   height?: string
+  autoFitBounds?: boolean
 }
 
 const DEFAULT_CENTER: L.LatLngTuple = [-20.4697, -54.6201]
@@ -50,6 +51,7 @@ export function LiveMap({
   delivererName = 'Entregador',
   destinations = [],
   height = '100%',
+  autoFitBounds = false,
 }: Props) {
   const divRef              = useRef<HTMLDivElement>(null)
   const mapRef              = useRef<L.Map | null>(null)
@@ -123,12 +125,14 @@ export function LiveMap({
         .addTo(map)
     })
 
-    // If no deliverer position yet, pan to first destination.
-    if ((delivererLat == null || delivererLng == null) && destinations[0]) {
+    if (autoFitBounds && destinations.length > 0) {
+      const bounds = L.latLngBounds(destinations.map((d) => [d.lat, d.lng] as L.LatLngTuple))
+      map.fitBounds(bounds, { padding: [48, 48] })
+    } else if ((delivererLat == null || delivererLng == null) && destinations[0]) {
       map.setView([destinations[0].lat, destinations[0].lng], map.getZoom())
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinations])
+  }, [destinations, autoFitBounds])
 
   return (
     <div
