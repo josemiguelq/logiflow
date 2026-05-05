@@ -25,7 +25,7 @@ export function createPgDelivererRepo(db: DB) {
          FROM deliverers WHERE store_id = $1 ORDER BY is_active DESC, name ASC`,
         [storeId]
       )
-      return rows.map((r) => { const { passwordHash: _, ...rest } = mapRow(r); return rest })
+      return rows.map((r: Record<string, unknown>) => { const { passwordHash: _, ...rest } = mapRow(r); return rest })
     },
 
     async findById(id: string, storeId: string): Promise<Deliverer | null> {
