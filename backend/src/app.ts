@@ -2,6 +2,8 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import websocket from '@fastify/websocket'
+import { createPgTrackingRepo } from './modules/tracking/infrastructure/repositories/pg-tracking-repo'
+import { db } from './shared/db/client'
 import { authRoutes } from './modules/auth/interface/routes'
 import { orderRoutes } from './modules/orders/interface/routes'
 import { customerRoutes } from './modules/customers/interface/routes'
@@ -76,6 +78,23 @@ export function buildApp() {
           delivererId: payload.type === 'deliverer' ? payload.sub : undefined,
           ws:          socket,
         })
+
+        // Deliverer app sends location via WebSocket every ~15s
+        if (payload.type === 'deliverer') {
+          const trackingRepo = createPgTrackingRepo(db)
+          socket.on('message', async (raw: Buffer) => {
+            try {
+              const msg = JSON.parse(raw.toString()) as { event: string; data: Record<string, unknown> }
+              if (msg.event === 'location') {
+                const lat     = msg.data.lat     as number
+                const lng     = msg.data.lng     as number
+                const orderId = msg.data.orderId as string | undefined
+                const saved = await trackingRepo.recordLocation(payload.sub, orderId ?? null, lat, lng)
+                if (saved) wsHub.broadcastDelivererLocation(payload.storeId, payload.sub, lat, lng)
+              }
+            } catch (_) {}
+          })
+        }
       } catch {
         socket.close(1008, 'Invalid token')
       }

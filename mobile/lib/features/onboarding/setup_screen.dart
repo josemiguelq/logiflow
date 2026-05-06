@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -117,12 +119,22 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   Future<void> _requestLocationAndFinish() async {
     setState(() { _step = 2; _loading = true; _error = null; });
 
-    // Request location permission
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
+    // Request location permission.
+    // On macOS the dialog can hang indefinitely, so we use a short timeout.
+    // On Android/iOS we wait as long as needed for the user to respond.
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        if (Platform.isMacOS) {
+          await Geolocator.requestPermission()
+              .timeout(const Duration(seconds: 5));
+        } else {
+          await Geolocator.requestPermission();
+        }
+      }
+    } catch (_) {}
 
+    // Save profile to backend
     try {
       await ApiClient().dio.patch('/deliverer/profile', data: {
         'profileImageUrl': _imageBase64,
@@ -131,10 +143,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
       ref.read(authProvider.notifier).completeOnboarding(_imageBase64);
       if (mounted) context.go('/orders');
-    } catch (_) {
+    } catch (e) {
+      final msg = (e as dynamic).response?.data?['error'] as String?
+          ?? 'Erro ao salvar perfil. Verifique sua conexão e tente novamente.';
       setState(() {
         _step = 1;
-        _error = 'Erro ao salvar perfil. Tente novamente.';
+        _error = msg;
         _loading = false;
       });
     }

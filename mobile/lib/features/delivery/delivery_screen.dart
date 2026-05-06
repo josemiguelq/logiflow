@@ -310,7 +310,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       Position? pos;
       try {
         pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
+            desiredAccuracy: LocationAccuracy.high);
       } catch (_) {}
 
       // Encode photo if taken

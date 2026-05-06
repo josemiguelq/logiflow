@@ -1,10 +1,15 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const String _baseUrl = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'https://logiflow-beige.verce.app',
+  defaultValue: 'https://logiflow-cgqc.onrender.com',
 );
+
+// Derives the WebSocket URL from the HTTP base URL
+String get wsBaseUrl =>
+    _baseUrl.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -18,7 +23,7 @@ class ApiClient {
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 15),
     headers: {'Content-Type': 'application/json'},
-  ))..interceptors.add(
+  ))..interceptors.addAll([
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           final token = await _storage.read(key: 'token');
@@ -31,7 +36,12 @@ class ApiClient {
           handler.next(err);
         },
       ),
-    );
+      LogInterceptor(
+        requestBody:  true,
+        responseBody: true,
+        logPrint: (o) => debugPrint('[API] $o'),
+      ),
+    ]);
 
   Future<void> setToken(String token) =>
       _storage.write(key: 'token', value: token);
