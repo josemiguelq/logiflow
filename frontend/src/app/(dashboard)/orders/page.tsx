@@ -243,16 +243,25 @@ export default function OrdersPage() {
                         style={selectable ? { cursor: 'pointer' } : undefined}
                       >
                         {selectable && (
-                          <div
-                            className={`pointer-events-none absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded border-2 bg-white transition-all ${
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleBatchSelect(order.id)
+                            }}
+                            className={`absolute right-3 top-3 z-20 flex h-5 w-5 items-center justify-center rounded border-2 bg-white transition-all ${
                               selected ? 'border-transparent' : 'border-gray-300'
                             }`}
                             style={selected ? { background: 'var(--color-primary)', borderColor: 'var(--color-primary)' } : undefined}
+                            aria-label={selected ? 'Desmarcar pedido' : 'Selecionar pedido'}
                           >
                             {selected && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
-                          </div>
+                          </button>
                         )}
-                        <div style={selected ? { outline: '2px solid var(--color-primary)', outlineOffset: '2px', borderRadius: '0.75rem' } : undefined}>
+                        <div
+                          className={selectable ? '[&_*]:pointer-events-none' : undefined}
+                          style={selected ? { outline: '2px solid var(--color-primary)', outlineOffset: '2px', borderRadius: '0.75rem' } : undefined}
+                        >
                           <OrderCard
                             order={order}
                             onAssign={!batchMode ? () => setAssigning(order) : undefined}

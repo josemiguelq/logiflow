@@ -3,6 +3,7 @@ class Order {
   final String status;
   final String pickupCode;
   final String deliveryCode;
+  final String? routeId;
   final int? routePosition;
   final String customerName;
   final String customerPhone;
@@ -15,6 +16,7 @@ class Order {
     required this.status,
     required this.pickupCode,
     required this.deliveryCode,
+    this.routeId,
     this.routePosition,
     required this.customerName,
     required this.customerPhone,
@@ -32,6 +34,7 @@ class Order {
       status:          j['status'] as String,
       pickupCode:      j['pickupCode'] as String,
       deliveryCode:    j['deliveryCode'] as String,
+      routeId:         j['routeId'] as String?,
       routePosition:   j['routePosition'] as int?,
       customerName:    c['name'] as String? ?? '',
       customerPhone:   c['phone'] as String? ?? '',
@@ -46,6 +49,7 @@ class Order {
         status:          status,
         pickupCode:      pickupCode,
         deliveryCode:    deliveryCode,
+        routeId:         routeId,
         routePosition:   routePosition ?? this.routePosition,
         customerName:    customerName,
         customerPhone:   customerPhone,

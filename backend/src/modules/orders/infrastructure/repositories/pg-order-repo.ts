@@ -10,6 +10,7 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     customerId:      row.customer_id as string,
     createdByUserId: row.created_by_user_id as string,
     status:          row.status as OrderStatus,
+    routeId:         row.route_id as string | undefined,
     routePosition:   row.route_position as number | undefined,
     pickupCode:      row.pickup_code as string,
     deliveryCode:    row.delivery_code as string,
@@ -114,6 +115,16 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
            AND o.status NOT IN ('DELIVERED','CANCELLED')
          ORDER BY o.route_position ASC`,
         [delivererId]
+      )
+      return rows.map(mapRow)
+    },
+
+    async findByRoute(routeId) {
+      const { rows } = await db.query(
+        `${WITH_JOINS}
+         WHERE o.route_id = $1
+         ORDER BY o.route_position ASC NULLS LAST`,
+        [routeId]
       )
       return rows.map(mapRow)
     },

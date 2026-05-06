@@ -4,6 +4,8 @@ import { OrderStatus } from '../domain/entities'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { createPgOrderRepo } from '../infrastructure/repositories/pg-order-repo'
+import { createPgRouteRepo } from '../../routes/infrastructure/repositories/pg-route-repo'
+import { generateCode } from '../../../shared/utils/code-generator'
 import { createOrder } from '../application/use-cases/create-order'
 import { assignDeliverer } from '../application/use-cases/assign-deliverer'
 import { confirmPickup } from '../application/use-cases/confirm-pickup'
@@ -13,6 +15,7 @@ import { notificationQueue } from '../../../shared/infra/queue'
 
 export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
+  const routeRepo = createPgRouteRepo(db)
 
   // ── Public tracking (no auth) ────────────────────────────────────────────
   app.get('/tracking/:orderId', async (req, reply) => {
@@ -138,6 +141,12 @@ export async function orderRoutes(app: FastifyInstance) {
         delivererId: z.string().uuid(),
       }).parse(req.body)
 
+      const route = await routeRepo.create({
+        storeId:     req.actor.storeId,
+        delivererId,
+        pickupCode:  generateCode(),
+      })
+
       const assigned = []
       for (let i = 0; i < orderIds.length; i++) {
         try {
@@ -149,7 +158,11 @@ export async function orderRoutes(app: FastifyInstance) {
           assigned.push(order)
         } catch { /* skip orders that can't transition */ }
       }
-      return assigned
+
+      const assignedIds = assigned.map(o => o.id)
+      await routeRepo.linkOrders(route.id, assignedIds)
+
+      return { route, orders: assigned }
     }
   )
 
@@ -167,12 +180,13 @@ export async function orderRoutes(app: FastifyInstance) {
     async (req) => orderRepo.findPreparing(req.actor.storeId)
   )
 
-  // Claim PREPARING orders — assigns them to this deliverer (status → ASSIGNED)
+  // Claim PREPARING orders — assigns them to this deliverer (status → ASSIGNED) and creates a route
   app.post(
     '/deliverer/orders/claim',
     { preHandler: requireDeliverer },
-    async (req, reply) => {
+    async (req) => {
       const { orderIds } = z.object({ orderIds: z.array(z.string().uuid()).min(1) }).parse(req.body)
+
       for (let i = 0; i < orderIds.length; i++) {
         await db.query(
           `UPDATE orders
@@ -181,11 +195,20 @@ export async function orderRoutes(app: FastifyInstance) {
           [req.actor.sub, i + 1, orderIds[i], req.actor.storeId]
         )
       }
-      const orders = await orderRepo.findByDeliverer(req.actor.sub)
-      for (const o of orders.filter(o => orderIds.includes(o.id))) {
+
+      const route = await routeRepo.create({
+        storeId:    req.actor.storeId,
+        delivererId: req.actor.sub,
+        pickupCode:  generateCode(),
+      })
+      await routeRepo.linkOrders(route.id, orderIds)
+
+      const claimedOrders = await orderRepo.findByRoute(route.id)
+      for (const o of claimedOrders) {
         wsHub.broadcastOrderUpdate(req.actor.storeId, o)
       }
-      return orders
+
+      return { route, orders: claimedOrders }
     }
   )
 
@@ -228,6 +251,12 @@ export async function orderRoutes(app: FastifyInstance) {
           { orderRepo }
         )
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+
+        // Auto-finish route when all its orders are delivered/cancelled
+        if (order.routeId) {
+          await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
+        }
+
         return order
       } catch (err: unknown) {
         return reply.code(400).send({ error: (err as Error).message })

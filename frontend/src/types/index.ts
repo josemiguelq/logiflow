@@ -71,6 +71,32 @@ export interface Order {
   }
 }
 
+export type RouteStatus = 'CREATED' | 'STARTED' | 'FINISHED'
+
+export interface RouteOrderItem {
+  id: string
+  customerName: string
+  customerAddress: string
+  deliveryCode: string
+  status: string
+  routePosition?: number
+  deliveredAt?: string
+}
+
+export interface DeliveryRoute {
+  id: string
+  storeId: string
+  delivererId: string
+  pickupCode: string
+  status: RouteStatus
+  orderCount: number
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
+  deliverer: { id: string; name: string; username: string }
+  orders: RouteOrderItem[]
+}
+
 export interface StoreUser {
   id: string
   name: string

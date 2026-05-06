@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/models/order.dart';
+import '../../core/models/route.dart';
 import '../../core/theme/app_theme.dart';
 
 class RoutePlanningScreen extends StatefulWidget {
-  final List<Order> orders;
-  const RoutePlanningScreen({super.key, required this.orders});
+  final DelivererRoute route;
+  const RoutePlanningScreen({super.key, required this.route});
 
   @override
   State<RoutePlanningScreen> createState() => _RoutePlanningScreenState();
@@ -17,7 +18,7 @@ class _RoutePlanningScreenState extends State<RoutePlanningScreen> {
   @override
   void initState() {
     super.initState();
-    _orders = List.from(widget.orders);
+    _orders = List.from(widget.route.orders);
   }
 
   @override
@@ -115,7 +116,15 @@ class _RoutePlanningScreenState extends State<RoutePlanningScreen> {
     );
   }
 
-  void _confirm() => context.push('/pickup-confirm', extra: List<Order>.from(_orders));
+  void _confirm() => context.push(
+        '/pickup-confirm',
+        extra: DelivererRoute(
+          id:         widget.route.id,
+          pickupCode: widget.route.pickupCode,
+          status:     widget.route.status,
+          orders:     List<Order>.from(_orders),
+        ),
+      );
 }
 
 class _RouteOrderTile extends StatelessWidget {

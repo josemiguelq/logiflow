@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/auth/auth_provider.dart';
-import 'core/models/order.dart';
+import 'core/models/route.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/onboarding/setup_screen.dart';
@@ -36,13 +36,13 @@ final _router = GoRouter(
     GoRoute(
       path: '/plan-route',
       builder: (_, state) => RoutePlanningScreen(
-        orders: state.extra as List<Order>,
+        route: state.extra as DelivererRoute,
       ),
     ),
     GoRoute(
       path: '/pickup-confirm',
       builder: (_, state) => PickupConfirmationScreen(
-        orders: state.extra as List<Order>,
+        route: state.extra as DelivererRoute,
       ),
     ),
     GoRoute(path: '/delivery', builder: (_, __) => const DeliveryScreen()),

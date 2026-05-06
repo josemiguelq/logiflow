@@ -13,6 +13,7 @@ export interface Order {
   customerId: string
   createdByUserId: string
   status: OrderStatus
+  routeId?: string
   routePosition?: number
   pickupCode: string
   deliveryCode: string

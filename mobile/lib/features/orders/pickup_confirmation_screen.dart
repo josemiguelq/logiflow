@@ -3,83 +3,67 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
+import '../../core/models/route.dart';
 import '../../core/theme/app_theme.dart';
 
 class PickupConfirmationScreen extends ConsumerStatefulWidget {
-  final List<Order> orders;
-  const PickupConfirmationScreen({super.key, required this.orders});
+  final DelivererRoute route;
+  const PickupConfirmationScreen({super.key, required this.route});
 
   @override
   ConsumerState<PickupConfirmationScreen> createState() => _PickupConfirmationScreenState();
 }
 
 class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScreen> {
-  late final List<TextEditingController> _ctrls;
+  final _ctrl = TextEditingController();
   bool _loading = false;
-  final Map<String, String?> _errors = {};
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _ctrls = List.generate(widget.orders.length, (_) => TextEditingController());
-    // Save route order to backend (fire and forget)
     _saveRouteOrder();
   }
 
   Future<void> _saveRouteOrder() async {
     try {
       await ApiClient().dio.patch('/deliverer/orders/route', data: {
-        'orderIds': widget.orders.map((o) => o.id).toList(),
+        'orderIds': widget.route.orders.map((o) => o.id).toList(),
       });
     } catch (_) {}
   }
 
   @override
   void dispose() {
-    for (final c in _ctrls) { c.dispose(); }
+    _ctrl.dispose();
     super.dispose();
   }
 
   Future<void> _confirm() async {
-    // Validate all codes are 5 chars
-    bool valid = true;
-    setState(() {
-      for (int i = 0; i < widget.orders.length; i++) {
-        final code = _ctrls[i].text.trim().toUpperCase();
-        if (code.length != 5) {
-          _errors[widget.orders[i].id] = 'Código inválido';
-          valid = false;
-        } else {
-          _errors.remove(widget.orders[i].id);
-        }
-      }
-    });
-    if (!valid) return;
-
-    setState(() => _loading = true);
-
-    final failed = <String>[];
-    for (int i = 0; i < widget.orders.length; i++) {
-      final order = widget.orders[i];
-      final code  = _ctrls[i].text.trim().toUpperCase();
-      try {
-        await ApiClient().dio.post('/deliverer/orders/${order.id}/pickup', data: {'code': code});
-      } catch (e) {
-        final msg = (e as dynamic).response?.data?['error'] as String? ?? 'Código incorreto';
-        setState(() => _errors[order.id] = msg);
-        failed.add(order.id);
-      }
+    final code = _ctrl.text.trim().toUpperCase();
+    if (code.length != 5) {
+      setState(() => _error = 'Código deve ter 5 caracteres');
+      return;
     }
-
-    setState(() => _loading = false);
-
-    if (failed.isEmpty && mounted) {
-      context.go('/delivery');
+    setState(() { _loading = true; _error = null; });
+    try {
+      await ApiClient().dio.post(
+        '/deliverer/routes/${widget.route.id}/pickup',
+        data: {'code': code},
+      );
+      if (mounted) context.go('/delivery');
+    } catch (e) {
+      final msg = (e as dynamic).response?.data?['error'] as String? ?? 'Código incorreto';
+      setState(() => _error = msg);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final orders = widget.route.orders;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Confirmar retirada')),
       body: Column(
@@ -94,7 +78,7 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Peça o código de retirada para a loja e confirme cada pedido',
+                  'Peça o código de retirada da rota para a loja e confirme abaixo',
                   style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                 ),
               ),
@@ -102,19 +86,90 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
           ),
 
           Expanded(
-            child: ListView.separated(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              itemCount: widget.orders.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (_, i) {
-                final o = widget.orders[i];
-                return _PickupOrderCard(
-                  position: i + 1,
-                  order:    o,
-                  ctrl:     _ctrls[i],
-                  error:    _errors[o.id],
-                );
-              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Route code input
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _error != null ? const Color(0xFFDC2626) : const Color(0xFFE5E7EB),
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${orders.length} pedido${orders.length != 1 ? 's' : ''}',
+                              style: TextStyle(
+                                color: AppTheme.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'nesta rota',
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          ),
+                        ]),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _ctrl,
+                          maxLength: 5,
+                          textCapitalization: TextCapitalization.characters,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            labelText: 'Código de retirada da rota',
+                            hintText: 'XXXXX',
+                            counterText: '',
+                            errorText: _error,
+                            prefixIcon: const Icon(Icons.key_outlined, size: 20),
+                            isDense: true,
+                          ),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            letterSpacing: 4,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSubmitted: (_) => _confirm(),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Orders summary
+                  Text(
+                    'Pedidos incluídos',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...orders.asMap().entries.map((e) => _OrderSummaryTile(
+                    position: e.key + 1,
+                    order: e.value,
+                  )),
+                ],
+              ),
             ),
           ),
 
@@ -129,7 +184,7 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
                       ? const SizedBox(
                           width: 22, height: 22,
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Confirmar retirada de todos', style: TextStyle(fontSize: 16)),
+                      : const Text('Confirmar retirada', style: TextStyle(fontSize: 16)),
                 ),
               ),
             ),
@@ -140,96 +195,52 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
   }
 }
 
-class _PickupOrderCard extends StatelessWidget {
+class _OrderSummaryTile extends StatelessWidget {
   final int position;
   final Order order;
-  final TextEditingController ctrl;
-  final String? error;
 
-  const _PickupOrderCard({
-    required this.position,
-    required this.order,
-    required this.ctrl,
-    this.error,
-  });
+  const _OrderSummaryTile({required this.position, required this.order});
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: error != null ? const Color(0xFFDC2626) : const Color(0xFFE5E7EB),
-        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: AppTheme.primary,
+            radius: 12,
+            child: Text('$position',
+                style: const TextStyle(color: Colors.white, fontSize: 11,
+                    fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  backgroundColor: AppTheme.primary,
-                  radius: 14,
-                  child: Text('$position',
-                      style: const TextStyle(color: Colors.white,
-                          fontWeight: FontWeight.bold, fontSize: 13)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(order.customerName,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(6),
+                Text(order.customerName,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Icon(Icons.location_on_outlined, size: 12, color: Colors.grey.shade500),
+                  const SizedBox(width: 3),
+                  Expanded(
+                    child: Text(order.customerAddress,
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                        overflow: TextOverflow.ellipsis),
                   ),
-                  child: Text(
-                    '#${order.shortId}',
-                    style: const TextStyle(fontFamily: 'monospace',
-                        fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                ]),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.location_on_outlined, size: 14, color: Colors.grey.shade500),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(order.customerAddress,
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              maxLength: 5,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: 'Código de retirada',
-                hintText: 'XXXXX',
-                counterText: '',
-                errorText: error,
-                prefixIcon: const Icon(Icons.key_outlined, size: 20),
-                isDense: true,
-              ),
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                letterSpacing: 4,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-              onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

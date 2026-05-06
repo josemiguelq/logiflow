@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/models/order.dart';
+import '../../core/models/route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../features/tracking/location_service.dart';
 
@@ -234,30 +235,44 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   }
 
   Future<void> _proceedToRoute(bool isPreparing) async {
-    if (isPreparing) {
-      setState(() => _claiming = true);
-      try {
+    setState(() => _claiming = true);
+    try {
+      if (isPreparing) {
         final prepList = ref.read(_preparingOrdersProvider).value ?? [];
         final selected = prepList.where((o) => _selected.contains(o.id)).toList();
-        await ApiClient().dio.post('/deliverer/orders/claim', data: {
+        final res = await ApiClient().dio.post('/deliverer/orders/claim', data: {
           'orderIds': selected.map((o) => o.id).toList(),
         });
+        final route = DelivererRoute.fromJson(res.data as Map<String, dynamic>);
         ref.invalidate(_assignedOrdersProvider);
         ref.invalidate(_preparingOrdersProvider);
-        if (mounted) context.push('/plan-route', extra: selected);
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Erro ao reservar pedidos. Tente novamente.')),
-          );
+        if (mounted) context.push('/plan-route', extra: route);
+      } else {
+        final list     = ref.read(_assignedOrdersProvider).value ?? [];
+        final selected = list.where((o) => _selected.contains(o.id)).toList();
+        // All batch-assigned orders have a routeId; fetch the route for plan screen
+        final routeId = selected.isNotEmpty ? selected.first.routeId : null;
+        if (routeId != null) {
+          final res = await ApiClient().dio.get('/deliverer/routes/$routeId');
+          final route = DelivererRoute.fromJson(res.data as Map<String, dynamic>);
+          if (mounted) context.push('/plan-route', extra: route);
+        } else {
+          // Fallback: individually assigned order without a route — wrap in a local route shell
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Pedidos sem rota não podem iniciar neste fluxo.')),
+            );
+          }
         }
-      } finally {
-        if (mounted) setState(() => _claiming = false);
       }
-    } else {
-      final list     = ref.read(_assignedOrdersProvider).value ?? [];
-      final selected = list.where((o) => _selected.contains(o.id)).toList();
-      context.push('/plan-route', extra: selected);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao iniciar rota. Tente novamente.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _claiming = false);
     }
   }
 }

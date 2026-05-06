@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Package, Users, Truck, MessageSquare, Settings, LogOut, X,
+  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 
 const nav = [
   { href: '/orders',     label: 'Pedidos',       icon: Package },
+  { href: '/routes',     label: 'Rotas',         icon: Route },
   { href: '/customers',  label: 'Clientes',      icon: Users },
   { href: '/deliverers', label: 'Entregadores',  icon: Truck },
   { href: '/whatsapp',   label: 'WhatsApp',      icon: MessageSquare },
