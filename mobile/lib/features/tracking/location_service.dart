@@ -14,13 +14,35 @@ class LocationService {
   final _api = ApiClient();
 
   Future<bool> requestPermission() async {
-    final permission = await Geolocator.requestPermission();
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) {
+      debugPrint('[Location] Serviço de localização desativado no aparelho');
+      return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('[Location] Permissão negada permanentemente (deniedForever)');
+      return false;
+    }
+
     return permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
   }
 
   Future<void> startTracking() async {
     if (_started) return;
+
+    final granted = await requestPermission();
+    if (!granted) {
+      debugPrint('[Location] Rastreamento não iniciado: sem permissão válida');
+      return;
+    }
+
     _started = true;
     _timer?.cancel();
     debugPrint('[Location] Iniciando rastreamento do entregador');
@@ -36,6 +58,12 @@ class LocationService {
   Future<void> _tick() async {
     debugPrint('[Location] Coletando posição GPS...');
     try {
+      final granted = await requestPermission();
+      if (!granted) {
+        debugPrint('[Location] Ignorando tick: sem permissão de localização');
+        return;
+      }
+
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
         timeLimit: const Duration(seconds: 10),
@@ -46,6 +74,8 @@ class LocationService {
       _sendLocation(pos.latitude, pos.longitude);
     } on TimeoutException {
       debugPrint('[Location] Timeout ao obter GPS — tentativa ignorada');
+    } on PermissionDeniedException catch (e) {
+      debugPrint('[Location] Permissão negada pelo sistema: ${e.message}');
     } catch (e) {
       debugPrint('[Location] Erro ao obter GPS: $e');
     }
