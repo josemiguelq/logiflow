@@ -124,6 +124,30 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  app.post(
+    '/orders/batch-assign',
+    { preHandler: requireStoreUser },
+    async (req) => {
+      const { orderIds, delivererId } = z.object({
+        orderIds:    z.array(z.string().uuid()).min(1),
+        delivererId: z.string().uuid(),
+      }).parse(req.body)
+
+      const assigned = []
+      for (let i = 0; i < orderIds.length; i++) {
+        try {
+          const order = await assignDeliverer(
+            { orderId: orderIds[i]!, storeId: req.actor.storeId, delivererId, routePosition: i + 1 },
+            { orderRepo }
+          )
+          wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+          assigned.push(order)
+        } catch { /* skip orders that can't transition */ }
+      }
+      return assigned
+    }
+  )
+
   // ── Deliverer routes ─────────────────────────────────────────────────────
   app.get(
     '/deliverer/orders',
