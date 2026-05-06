@@ -5,16 +5,26 @@ export type JWTPayload =
   | { type: 'deliverer';  sub: string; storeId: string; name: string }
   | { type: 'super_admin'; sub: string; email: string }
 
+// Declared broadly so existing routes (always behind requireStoreUser/requireDeliverer)
+// can access storeId/name/role without narrowing. The middlewares enforce the actual type.
 declare module 'fastify' {
   interface FastifyRequest {
-    actor: JWTPayload
+    actor: {
+      type: 'store_user' | 'deliverer' | 'super_admin'
+      sub: string
+      storeId: string
+      name: string
+      role?: string
+      email?: string
+    }
   }
 }
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   try {
     await req.jwtVerify()
-    req.actor = req.user as JWTPayload
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    req.actor = req.user as any
   } catch {
     reply.code(401).send({ error: 'Unauthorized' })
   }
