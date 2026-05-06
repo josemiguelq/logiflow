@@ -7,14 +7,15 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 
-const nav = [
-  { href: '/orders',     label: 'Pedidos',       icon: Package },
-  { href: '/routes',     label: 'Rotas',         icon: Route },
-  { href: '/customers',  label: 'Clientes',      icon: Users },
-  { href: '/deliverers', label: 'Entregadores',  icon: Truck },
-  { href: '/whatsapp',   label: 'WhatsApp',      icon: MessageSquare },
-  { href: '/settings',   label: 'Configurações', icon: Settings },
+const BASE_NAV = [
+  { href: '/orders',     label: 'Pedidos',      icon: Package,      feature: null },
+  { href: '/routes',     label: 'Rotas',        icon: Route,        feature: null },
+  { href: '/customers',  label: 'Clientes',     icon: Users,        feature: null },
+  { href: '/deliverers', label: 'Entregadores', icon: Truck,        feature: null },
+  { href: '/whatsapp',   label: 'WhatsApp',     icon: MessageSquare, feature: 'whatsappEnabled' as const },
+  { href: '/settings',   label: 'Configurações', icon: Settings,    feature: null },
 ]
 
 interface Props {
@@ -23,8 +24,12 @@ interface Props {
 }
 
 export function Sidebar({ isOpen, onClose }: Props) {
-  const pathname = usePathname()
+  const pathname  = usePathname()
   const { user, logout } = useAuth()
+  const features  = useStoreFeatures()
+  const nav = BASE_NAV.filter(item =>
+    item.feature === null || features[item.feature]
+  )
 
   return (
     <>

@@ -12,17 +12,32 @@ const DEFAULT_THEME = {
 }
 
 export async function settingsRoutes(app: FastifyInstance) {
+  // GET /store/features — returns all enabled feature flags for the store
+  app.get('/store/features', { preHandler: requireStoreUser }, async (req) => {
+    const { rows: [f] } = await db.query(
+      'SELECT custom_theme_enabled, whatsapp_enabled FROM store_features WHERE store_id = $1',
+      [req.actor.storeId]
+    )
+    return {
+      customThemeEnabled: f?.custom_theme_enabled ?? false,
+      whatsappEnabled:    f?.whatsapp_enabled     ?? false,
+    }
+  })
+
   // GET /store/theme
   app.get('/store/theme', { preHandler: requireStoreUser }, async (req) => {
     const storeId = req.actor.storeId
 
     const { rows: [features] } = await db.query(
-      'SELECT custom_theme_enabled FROM store_features WHERE store_id = $1',
+      'SELECT custom_theme_enabled, whatsapp_enabled FROM store_features WHERE store_id = $1',
       [storeId]
     )
 
     if (!features?.custom_theme_enabled) {
-      return { theme: DEFAULT_THEME, features: { customThemeEnabled: false } }
+      return {
+        theme:    DEFAULT_THEME,
+        features: { customThemeEnabled: false, whatsappEnabled: features?.whatsapp_enabled ?? false },
+      }
     }
 
     const { rows: [theme] } = await db.query(
@@ -39,7 +54,7 @@ export async function settingsRoutes(app: FastifyInstance) {
             logoUrl:   theme.logo_url,
           }
         : DEFAULT_THEME,
-      features: { customThemeEnabled: true },
+      features: { customThemeEnabled: true, whatsappEnabled: features.whatsapp_enabled ?? false },
     }
   })
 
