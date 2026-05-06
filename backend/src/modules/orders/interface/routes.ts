@@ -131,6 +131,35 @@ export async function orderRoutes(app: FastifyInstance) {
     async (req) => orderRepo.findByDeliverer(req.actor.sub)
   )
 
+  // PREPARING orders available for any deliverer in this store to claim
+  app.get(
+    '/deliverer/orders/preparing',
+    { preHandler: requireDeliverer },
+    async (req) => orderRepo.findPreparing(req.actor.storeId)
+  )
+
+  // Claim PREPARING orders — assigns them to this deliverer (status → ASSIGNED)
+  app.post(
+    '/deliverer/orders/claim',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { orderIds } = z.object({ orderIds: z.array(z.string().uuid()).min(1) }).parse(req.body)
+      for (let i = 0; i < orderIds.length; i++) {
+        await db.query(
+          `UPDATE orders
+           SET status = 'ASSIGNED', deliverer_id = $1, route_position = $2
+           WHERE id = $3 AND store_id = $4 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+          [req.actor.sub, i + 1, orderIds[i], req.actor.storeId]
+        )
+      }
+      const orders = await orderRepo.findByDeliverer(req.actor.sub)
+      for (const o of orders.filter(o => orderIds.includes(o.id))) {
+        wsHub.broadcastOrderUpdate(req.actor.storeId, o)
+      }
+      return orders
+    }
+  )
+
   const pickupSchema   = z.object({ code: z.string().length(5) })
   const deliverySchema = z.object({
     code:     z.string().length(5),

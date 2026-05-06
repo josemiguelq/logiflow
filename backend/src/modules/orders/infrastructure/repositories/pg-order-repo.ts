@@ -118,6 +118,16 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return rows.map(mapRow)
     },
 
+    async findPreparing(storeId) {
+      const { rows } = await db.query(
+        `${WITH_JOINS}
+         WHERE o.store_id = $1 AND o.status = 'PREPARING' AND o.deliverer_id IS NULL
+         ORDER BY o.created_at ASC`,
+        [storeId]
+      )
+      return rows.map(mapRow)
+    },
+
     async create(data) {
       const { rows } = await db.query(
         `INSERT INTO orders

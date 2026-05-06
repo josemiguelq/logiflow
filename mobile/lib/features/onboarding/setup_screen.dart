@@ -112,35 +112,40 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         setState(() => _error = 'As senhas não coincidem');
         return;
       }
-      _requestLocationAndFinish();
+      setState(() { _step = 2; _error = null; });
     }
   }
 
+  // Called when the user taps "Permitir acesso à localização" on step 2.
   Future<void> _requestLocationAndFinish() async {
-    setState(() { _step = 2; _loading = true; _error = null; });
+    setState(() { _loading = true; _error = null; });
 
-    // Request location permission.
-    // On macOS the dialog can hang indefinitely, so we use a short timeout.
-    // On Android/iOS we wait as long as needed for the user to respond.
     try {
-      final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.deniedForever) {
+        // Send user to app settings so they can enable it manually.
+        await Geolocator.openAppSettings();
+        await Future.delayed(const Duration(seconds: 1));
+        perm = await Geolocator.checkPermission();
+      } else if (perm == LocationPermission.denied) {
         if (Platform.isMacOS) {
-          await Geolocator.requestPermission()
-              .timeout(const Duration(seconds: 5));
+          perm = await Geolocator.requestPermission()
+              .timeout(const Duration(seconds: 5), onTimeout: () => perm);
         } else {
-          await Geolocator.requestPermission();
+          perm = await Geolocator.requestPermission();
         }
       }
     } catch (_) {}
 
-    // Save profile to backend
+    await _saveProfile();
+  }
+
+  Future<void> _saveProfile() async {
     try {
       await ApiClient().dio.patch('/deliverer/profile', data: {
         'profileImageUrl': _imageBase64,
         'newPassword':     _passCtrl.text,
       });
-
       ref.read(authProvider.notifier).completeOnboarding(_imageBase64);
       if (mounted) context.go('/orders');
     } catch (e) {
@@ -192,7 +197,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       onToggleConfirm: () => setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
 
-                    if (_step == 2) _LocationStep(loading: _loading),
+                    if (_step == 2) _LocationStep(
+                      loading: _loading,
+                      onAllow: _loading ? null : _requestLocationAndFinish,
+                    ),
 
                     if (_error != null) ...[
                       const SizedBox(height: 16),
@@ -203,10 +211,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(children: [
-                          const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 16),
+                          const Icon(Icons.error_outline,
+                              color: Color(0xFFDC2626), size: 16),
                           const SizedBox(width: 8),
                           Expanded(child: Text(_error!,
-                              style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13))),
+                              style: const TextStyle(
+                                  color: Color(0xFFDC2626), fontSize: 13))),
                         ]),
                       ),
                     ],
@@ -217,7 +227,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: _nextStep,
-                          child: Text(_step == 1 ? 'Finalizar configuração' : 'Continuar',
+                          child: Text(
+                              _step == 1 ? 'Finalizar configuração' : 'Continuar',
                               style: const TextStyle(fontSize: 16)),
                         ),
                       ),
@@ -364,7 +375,8 @@ class _PasswordStep extends StatelessWidget {
 
 class _LocationStep extends StatelessWidget {
   final bool loading;
-  const _LocationStep({required this.loading});
+  final VoidCallback? onAllow;
+  const _LocationStep({required this.loading, required this.onAllow});
 
   @override
   Widget build(BuildContext context) {
@@ -381,16 +393,27 @@ class _LocationStep extends StatelessWidget {
             child: const Icon(Icons.location_on, size: 40, color: AppTheme.primary),
           ),
           const SizedBox(height: 24),
-          const Text('Precisamos da sua localização',
+          const Text('Acesso à localização',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Text(
-            'O app usa sua localização para rastrear entregas em tempo real e calcular distâncias.',
+            'O app precisa da sua localização para rastrear entregas em tempo real e calcular distâncias.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.5),
           ),
           const SizedBox(height: 32),
-          if (loading) const CircularProgressIndicator(),
+          if (loading)
+            const CircularProgressIndicator()
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onAllow,
+                icon: const Icon(Icons.location_on_outlined),
+                label: const Text('Permitir acesso à localização',
+                    style: TextStyle(fontSize: 16)),
+              ),
+            ),
         ],
       ),
     );

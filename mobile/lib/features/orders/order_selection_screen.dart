@@ -16,6 +16,11 @@ final _assignedOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) as
   return all.where((o) => o.status == 'ASSIGNED').toList();
 });
 
+final _preparingOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) async {
+  final res = await ApiClient().dio.get('/deliverer/orders/preparing');
+  return (res.data as List).map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
+});
+
 final _activeOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) async {
   final res = await ApiClient().dio.get('/deliverer/orders');
   final all = (res.data as List).map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
@@ -67,25 +72,36 @@ class OrderSelectionScreen extends ConsumerStatefulWidget {
 
 class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   final Set<String> _selected = {};
+  bool _claiming = false;
+
+  void _refresh() {
+    ref.invalidate(_assignedOrdersProvider);
+    ref.invalidate(_preparingOrdersProvider);
+    ref.invalidate(_activeOrdersProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final orders       = ref.watch(_assignedOrdersProvider);
+    final assigned    = ref.watch(_assignedOrdersProvider);
+    final preparing   = ref.watch(_preparingOrdersProvider);
     final activeOrders = ref.watch(_activeOrdersProvider);
-    final storeLoc     = ref.watch(_storeLocationProvider);
-    final session      = ref.watch(authProvider);
+    final storeLoc    = ref.watch(_storeLocationProvider);
+    final session     = ref.watch(authProvider);
+
+    // Determine which list to show
+    final assignedList  = assigned.value ?? [];
+    final preparingList = preparing.value ?? [];
+    final isPreparing   = assignedList.isEmpty;
+    final displayList   = isPreparing ? preparingList : assignedList;
+    final isLoading     = isPreparing
+        ? (assigned.isLoading || preparing.isLoading)
+        : assigned.isLoading;
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Olá, ${session?.name.split(' ').first ?? ''}'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.invalidate(_assignedOrdersProvider);
-              ref.invalidate(_activeOrdersProvider);
-            },
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -96,92 +112,120 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
           ),
         ],
       ),
-      body: orders.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error:   (e, _) => Center(child: Text('Erro: $e')),
-        data: (list) {
-          final store = storeLoc.value ?? const _StoreLocation(null, null);
-          return Column(
-            children: [
-              // Active route banner
-              activeOrders.when(
-                data: (active) => active.isEmpty
-                    ? const SizedBox.shrink()
-                    : _ActiveRouteBanner(count: active.length,
-                        onTap: () => context.push('/delivery')),
-                loading: () => const SizedBox.shrink(),
-                error:   (_, __) => const SizedBox.shrink(),
-              ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Active route banner
+                activeOrders.when(
+                  data: (active) => active.isEmpty
+                      ? const SizedBox.shrink()
+                      : _ActiveRouteBanner(
+                          count: active.length,
+                          onTap: () => context.push('/delivery')),
+                  loading: () => const SizedBox.shrink(),
+                  error:   (_, __) => const SizedBox.shrink(),
+                ),
 
-              if (list.isEmpty)
-                const Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                // Section header when showing preparing orders
+                if (isPreparing && preparingList.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.store_outlined, size: 16, color: Color(0xFF16A34A)),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${preparingList.length} pedido(s) prontos na loja para retirada',
+                        style: const TextStyle(
+                          color: Color(0xFF15803D),
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ]),
+                  ),
+
+                if (displayList.isEmpty)
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inbox_outlined, size: 56, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          const Text('Nenhum pedido disponível',
+                              style: TextStyle(
+                                  color: Colors.grey, fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 4),
+                          const Text('Aguarde a loja preparar pedidos',
+                              style: TextStyle(color: Colors.grey, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  )
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.inbox_outlined, size: 56, color: Colors.grey),
-                        SizedBox(height: 12),
-                        Text('Nenhum pedido aguardando retirada',
-                            style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
-                        SizedBox(height: 4),
-                        Text('Aguarde a loja atribuir pedidos para você',
-                            style: TextStyle(color: Colors.grey, fontSize: 13)),
+                        Text(
+                          isPreparing
+                              ? 'Selecione os pedidos que vai buscar'
+                              : '${displayList.length} pedido(s) atribuído(s)',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                        if (_selected.isNotEmpty)
+                          TextButton(
+                            onPressed: () => setState(() => _selected.clear()),
+                            child: const Text('Limpar'),
+                          ),
                       ],
                     ),
                   ),
-                )
-              else ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('${list.length} pedido(s) disponível(is)',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                      if (_selected.isNotEmpty)
-                        TextButton(
-                          onPressed: () => setState(() => _selected.clear()),
-                          child: const Text('Limpar seleção'),
-                        ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () async {
-                      ref.invalidate(_assignedOrdersProvider);
-                      ref.invalidate(_activeOrdersProvider);
-                    },
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                      itemCount: list.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) {
-                        final o    = list[i];
-                        final dist = _distanceKm(store, o);
-                        final sel  = _selected.contains(o.id);
-                        return _OrderSelectionTile(
-                          order:    o,
-                          distance: dist,
-                          selected: sel,
-                          onTap: () => setState(() {
-                            if (sel) _selected.remove(o.id); else _selected.add(o.id);
-                          }),
-                        );
-                      },
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: () async => _refresh(),
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                        itemCount: displayList.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) {
+                          final store = storeLoc.value ?? const _StoreLocation(null, null);
+                          final o   = displayList[i];
+                          final dist = _distanceKm(store, o);
+                          final sel  = _selected.contains(o.id);
+                          return _OrderSelectionTile(
+                            order:    o,
+                            distance: dist,
+                            selected: sel,
+                            onTap: () => setState(() {
+                              if (sel) _selected.remove(o.id); else _selected.add(o.id);
+                            }),
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
-          );
-        },
-      ),
+            ),
       floatingActionButton: _selected.isEmpty
           ? null
           : FloatingActionButton.extended(
-              onPressed: _proceedToRoute,
-              icon: const Icon(Icons.route),
+              onPressed: _claiming ? null : () => _proceedToRoute(isPreparing),
+              icon: _claiming
+                  ? const SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.route),
               label: Text('Iniciar rota (${_selected.length})'),
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
@@ -189,11 +233,32 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     );
   }
 
-  void _proceedToRoute() {
-    final ordersAsync = ref.read(_assignedOrdersProvider);
-    final list = ordersAsync.value ?? [];
-    final selected = list.where((o) => _selected.contains(o.id)).toList();
-    context.push('/plan-route', extra: selected);
+  Future<void> _proceedToRoute(bool isPreparing) async {
+    if (isPreparing) {
+      setState(() => _claiming = true);
+      try {
+        final prepList = ref.read(_preparingOrdersProvider).value ?? [];
+        final selected = prepList.where((o) => _selected.contains(o.id)).toList();
+        await ApiClient().dio.post('/deliverer/orders/claim', data: {
+          'orderIds': selected.map((o) => o.id).toList(),
+        });
+        ref.invalidate(_assignedOrdersProvider);
+        ref.invalidate(_preparingOrdersProvider);
+        if (mounted) context.push('/plan-route', extra: selected);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Erro ao reservar pedidos. Tente novamente.')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _claiming = false);
+      }
+    } else {
+      final list     = ref.read(_assignedOrdersProvider).value ?? [];
+      final selected = list.where((o) => _selected.contains(o.id)).toList();
+      context.push('/plan-route', extra: selected);
+    }
   }
 }
 
@@ -222,11 +287,13 @@ class _ActiveRouteBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 'Você tem $count entrega(s) em andamento',
-                style: const TextStyle(color: Color(0xFF9A3412), fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    color: Color(0xFF9A3412), fontWeight: FontWeight.w500),
               ),
             ),
             const Text('Ver rota →',
-                style: TextStyle(color: Color(0xFFEA580C), fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    color: Color(0xFFEA580C), fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -265,7 +332,6 @@ class _OrderSelectionTile extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              // Checkbox
               AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 width: 24,
@@ -283,13 +349,13 @@ class _OrderSelectionTile extends StatelessWidget {
                     : null,
               ),
               const SizedBox(width: 12),
-              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(order.customerName,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 15)),
                     const SizedBox(height: 4),
                     Row(
                       children: [
@@ -299,7 +365,8 @@ class _OrderSelectionTile extends StatelessWidget {
                         Expanded(
                           child: Text(
                             order.customerAddress,
-                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                            style: TextStyle(
+                                color: Colors.grey.shade600, fontSize: 13),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -308,10 +375,10 @@ class _OrderSelectionTile extends StatelessWidget {
                   ],
                 ),
               ),
-              // Distance badge
               if (distance != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(8),

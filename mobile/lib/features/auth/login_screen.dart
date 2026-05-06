@@ -76,6 +76,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   textInputAction: TextInputAction.next,
                   keyboardType: TextInputType.text,
                   autocorrect: false,
+                  textCapitalization: TextCapitalization.none,
                 ),
                 const SizedBox(height: 16),
                 TextField(

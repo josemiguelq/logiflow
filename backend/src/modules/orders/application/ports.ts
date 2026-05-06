@@ -4,6 +4,7 @@ export interface IOrderRepository {
   findById(id: string, storeId: string): Promise<OrderWithDetails | null>
   findByStore(storeId: string, filters: OrderFilters): Promise<OrderWithDetails[]>
   findByDeliverer(delivererId: string): Promise<OrderWithDetails[]>
+  findPreparing(storeId: string): Promise<OrderWithDetails[]>
   create(data: Omit<Order, 'id' | 'createdAt'>): Promise<Order>
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>
   assignDeliverer(id: string, delivererId: string, routePosition: number): Promise<Order>
