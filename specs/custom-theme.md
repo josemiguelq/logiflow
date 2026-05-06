@@ -20,6 +20,7 @@ controle de funcionalidades por loja
 carregamento rápido via:
 skeleton
 cache no backend
+
 cache no navegador
 🧱 3. Modelo de Dados
 🎨 store_theme (NOVO)
