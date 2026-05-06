@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { Plus, Search, MapPin, Phone, Trash2, ChevronDown, Pencil, X, Check } from 'lucide-react'
-import { Customer } from '@/types'
+import { Customer, CustomerAddress } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -225,10 +225,13 @@ interface EditAddressEntry extends AddressEntry {
   _orig: { label: string; address: string; complement: string }
 }
 
-function toEditEntry(a: AddressEntry & { id?: string }): EditAddressEntry {
+function toEditEntry(a: CustomerAddress): EditAddressEntry {
   return {
-    ...a,
+    id:         a.id,
+    label:      a.label,
+    address:    a.address,
     complement: a.complement ?? '',
+    isDefault:  a.isDefault,
     isEditing:  false,
     isRemoved:  false,
     _orig: { label: a.label, address: a.address, complement: a.complement ?? '' },
