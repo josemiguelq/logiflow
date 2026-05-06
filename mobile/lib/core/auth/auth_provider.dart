@@ -30,13 +30,13 @@ class DelivererSession {
         needsOnboarding: json['needsOnboarding'] as bool? ?? true,
       );
 
-  DelivererSession copyWith({bool? needsOnboarding, String? profileImageUrl}) =>
+  DelivererSession copyWith({bool? needsOnboarding, String? profileImageUrl, String? status}) =>
       DelivererSession(
         id:              id,
         name:            name,
         username:        username,
         storeId:         storeId,
-        status:          status,
+        status:          status ?? this.status,
         profileImageUrl: profileImageUrl ?? this.profileImageUrl,
         needsOnboarding: needsOnboarding ?? this.needsOnboarding,
       );
@@ -61,6 +61,21 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
 
   void completeOnboarding(String? profileImageUrl) {
     state = state?.copyWith(needsOnboarding: false, profileImageUrl: profileImageUrl);
+  }
+
+  Future<String?> updateStatus(String newStatus, {double? lat, double? lng}) async {
+    try {
+      await _api.dio.patch('/deliverer/status', data: {
+        'status': newStatus,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+      });
+      state = state?.copyWith(status: newStatus);
+      return null;
+    } catch (e) {
+      final msg = (e as dynamic).response?.data?['error'] as String?;
+      return msg ?? 'Erro ao atualizar status';
+    }
   }
 
   Future<void> logout() async {

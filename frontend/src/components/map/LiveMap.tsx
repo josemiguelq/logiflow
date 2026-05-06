@@ -27,8 +27,16 @@ const destinationIcon = new L.Icon({
   popupAnchor:[1, -34],
 })
 
-const selectedDestinationIcon = new L.Icon({
-  iconUrl:    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+const blueDestinationIcon = new L.Icon({
+  iconUrl:    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+  shadowUrl:  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize:   [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor:[1, -34],
+})
+
+const grayDestinationIcon = new L.Icon({
+  iconUrl:    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png',
   shadowUrl:  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize:   [25, 41],
   iconAnchor: [12, 41],
@@ -43,6 +51,7 @@ export interface MapDestination {
   status?: string
   selected?: boolean
   selectable?: boolean
+  markerColor?: 'red' | 'gray' | 'blue'
 }
 
 interface Props {
@@ -133,8 +142,14 @@ export function LiveMap({
       const popup = d.status
         ? `<strong>${d.label}</strong><br>${d.status}`
         : `<strong>${d.label}</strong>`
+      const icon =
+        d.markerColor === 'blue'
+          ? blueDestinationIcon
+          : d.markerColor === 'gray'
+            ? grayDestinationIcon
+            : destinationIcon
       const marker = L.marker([d.lat, d.lng], {
-        icon: d.selected ? selectedDestinationIcon : destinationIcon,
+        icon,
       })
         .bindPopup(popup)
         .addTo(map)

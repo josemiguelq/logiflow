@@ -73,6 +73,10 @@ export default function OrdersPage() {
       status: `${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''} · ${o.customer.address}`,
       selectable: batchMode && o.status === 'PREPARING',
       selected:   batchSelected.has(o.id),
+      markerColor:
+        o.status === 'PREPARING'
+          ? (batchMode && batchSelected.has(o.id) ? 'blue' : 'gray')
+          : 'red',
     }))
 
   async function handleCancel(orderId: string) {
@@ -209,7 +213,10 @@ export default function OrdersPage() {
         <div className="relative flex-1">
           {batchMode && (
             <div className="absolute left-4 top-4 z-20 max-w-[24rem] rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 shadow-sm">
-              Selecione no mapa pedidos em <strong>Preparando</strong> para atribuir em lote.
+              <div>Selecione no mapa pedidos em <strong>Preparando</strong> para atribuir em lote.</div>
+              <div className="mt-1 text-[11px] text-blue-600/90">
+                Legenda: <strong>cinza</strong> = PREPARING, <strong>azul</strong> = PREPARING selecionado, <strong>vermelho</strong> = demais status.
+              </div>
             </div>
           )}
           {mapDestinations.length === 0 && (

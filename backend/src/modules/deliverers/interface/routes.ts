@@ -73,10 +73,33 @@ export async function delivererRoutes(app: FastifyInstance) {
     '/deliverer/status',
     { preHandler: requireDeliverer },
     async (req, reply) => {
-      const { status } = z.object({
+      const { status, lat, lng } = z.object({
         status: z.enum(['AVAILABLE', 'ON_ROUTE', 'OFFLINE']),
+        lat:    z.number().optional(),
+        lng:    z.number().optional(),
       }).parse(req.body)
+
+      // Block going OFFLINE while there are active orders
+      if (status === 'OFFLINE') {
+        const { rows } = await db.query(
+          `SELECT COUNT(*) AS cnt FROM orders
+           WHERE deliverer_id = $1
+             AND status NOT IN ('DELIVERED','CANCELLED')`,
+          [req.actor.sub]
+        )
+        if (Number(rows[0].cnt) > 0) {
+          return reply.code(409).send({ error: 'Finalize as entregas em andamento antes de ficar OFFLINE.' })
+        }
+      }
+
       await repo.updateStatus(req.actor.sub, req.actor.storeId, status)
+
+      await db.query(
+        `INSERT INTO deliverer_status_history (deliverer_id, store_id, status, lat, lng)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.actor.sub, req.actor.storeId, status, lat ?? null, lng ?? null]
+      )
+
       return reply.send({ ok: true })
     }
   )

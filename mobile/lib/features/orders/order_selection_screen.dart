@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
@@ -73,11 +74,37 @@ class OrderSelectionScreen extends ConsumerStatefulWidget {
 class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   final Set<String> _selected = {};
   bool _claiming = false;
+  bool _togglingStatus = false;
 
   void _refresh() {
     ref.invalidate(_assignedOrdersProvider);
     ref.invalidate(_preparingOrdersProvider);
     ref.invalidate(_activeOrdersProvider);
+  }
+
+  Future<void> _toggleStatus(String currentStatus) async {
+    final isOffline = currentStatus == 'OFFLINE';
+    final targetStatus = isOffline ? 'AVAILABLE' : 'OFFLINE';
+
+    setState(() => _togglingStatus = true);
+    try {
+      double? lat, lng;
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 8),
+        );
+        lat = pos.latitude;
+        lng = pos.longitude;
+      } catch (_) {}
+
+      final err = await ref.read(authProvider.notifier).updateStatus(targetStatus, lat: lat, lng: lng);
+      if (err != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      }
+    } finally {
+      if (mounted) setState(() => _togglingStatus = false);
+    }
   }
 
   @override
@@ -97,10 +124,35 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         ? (assigned.isLoading || preparing.isLoading)
         : assigned.isLoading;
 
+    final isOffline = session?.status == 'OFFLINE';
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Olá, ${session?.name.split(' ').first ?? ''}'),
         actions: [
+          // Status toggle
+          Row(
+            children: [
+              Text(
+                isOffline ? 'OFFLINE' : 'ONLINE',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isOffline ? Colors.grey.shade500 : const Color(0xFF16A34A),
+                ),
+              ),
+              _togglingStatus
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : Switch(
+                      value: !isOffline,
+                      activeColor: const Color(0xFF16A34A),
+                      onChanged: (_) => _toggleStatus(session?.status ?? 'AVAILABLE'),
+                    ),
+            ],
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -115,6 +167,22 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Offline banner
+                if (isOffline)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    color: Colors.grey.shade200,
+                    child: Row(children: [
+                      Icon(Icons.do_not_disturb_on_outlined, size: 16, color: Colors.grey.shade600),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Você está OFFLINE — não receberá novos pedidos',
+                        style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                    ]),
+                  ),
+
                 // Active route banner
                 activeOrders.when(
                   data: (active) => active.isEmpty

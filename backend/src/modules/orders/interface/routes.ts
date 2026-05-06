@@ -106,6 +106,15 @@ export async function orderRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const body = assignSchema.parse(req.body)
+
+      // Refuse to assign to an OFFLINE deliverer
+      const { rows: [d] } = await db.query(
+        'SELECT status FROM deliverers WHERE id = $1 AND store_id = $2',
+        [body.delivererId, req.actor.storeId]
+      )
+      if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
+      if (d.status === 'OFFLINE') return reply.code(409).send({ error: 'Entregador está OFFLINE e não pode receber pedidos.' })
+
       try {
         const order = await assignDeliverer(
           { orderId: id, storeId: req.actor.storeId, ...body },
@@ -135,11 +144,18 @@ export async function orderRoutes(app: FastifyInstance) {
   app.post(
     '/orders/batch-assign',
     { preHandler: requireStoreUser },
-    async (req) => {
+    async (req, reply) => {
       const { orderIds, delivererId } = z.object({
         orderIds:    z.array(z.string().uuid()).min(1),
         delivererId: z.string().uuid(),
       }).parse(req.body)
+
+      const { rows: [d] } = await db.query(
+        'SELECT status FROM deliverers WHERE id = $1 AND store_id = $2',
+        [delivererId, req.actor.storeId]
+      )
+      if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
+      if (d.status === 'OFFLINE') return reply.code(409).send({ error: 'Entregador está OFFLINE e não pode receber pedidos.' })
 
       const route = await routeRepo.create({
         storeId:     req.actor.storeId,
@@ -184,8 +200,16 @@ export async function orderRoutes(app: FastifyInstance) {
   app.post(
     '/deliverer/orders/claim',
     { preHandler: requireDeliverer },
-    async (req) => {
+    async (req, reply) => {
       const { orderIds } = z.object({ orderIds: z.array(z.string().uuid()).min(1) }).parse(req.body)
+
+      const { rows: [self] } = await db.query(
+        'SELECT status FROM deliverers WHERE id = $1',
+        [req.actor.sub]
+      )
+      if (self?.status === 'OFFLINE') {
+        return reply.code(409).send({ error: 'Você está OFFLINE. Fique AVAILABLE para aceitar pedidos.' })
+      }
 
       for (let i = 0; i < orderIds.length; i++) {
         await db.query(
