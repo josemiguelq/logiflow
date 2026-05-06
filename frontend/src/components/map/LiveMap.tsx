@@ -27,11 +27,22 @@ const destinationIcon = new L.Icon({
   popupAnchor:[1, -34],
 })
 
+const selectedDestinationIcon = new L.Icon({
+  iconUrl:    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+  shadowUrl:  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize:   [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor:[1, -34],
+})
+
 export interface MapDestination {
+  id?: string
   lat: number
   lng: number
   label: string
   status?: string
+  selected?: boolean
+  selectable?: boolean
 }
 
 interface Props {
@@ -41,6 +52,7 @@ interface Props {
   destinations?: MapDestination[]
   height?: string
   autoFitBounds?: boolean
+  onDestinationClick?: (id: string) => void
 }
 
 const DEFAULT_CENTER: L.LatLngTuple = [-20.4697, -54.6201]
@@ -52,6 +64,7 @@ export function LiveMap({
   destinations = [],
   height = '100%',
   autoFitBounds = false,
+  onDestinationClick,
 }: Props) {
   const divRef              = useRef<HTMLDivElement>(null)
   const mapRef              = useRef<L.Map | null>(null)
@@ -120,9 +133,16 @@ export function LiveMap({
       const popup = d.status
         ? `<strong>${d.label}</strong><br>${d.status}`
         : `<strong>${d.label}</strong>`
-      return L.marker([d.lat, d.lng], { icon: destinationIcon })
+      const marker = L.marker([d.lat, d.lng], {
+        icon: d.selected ? selectedDestinationIcon : destinationIcon,
+      })
         .bindPopup(popup)
         .addTo(map)
+
+      if (d.selectable && d.id && onDestinationClick) {
+        marker.on('click', () => onDestinationClick(d.id!))
+      }
+      return marker
     })
 
     if (autoFitBounds && destinations.length > 0) {
@@ -132,7 +152,7 @@ export function LiveMap({
       map.setView([destinations[0].lat, destinations[0].lng], map.getZoom())
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinations, autoFitBounds])
+  }, [destinations, autoFitBounds, onDestinationClick])
 
   return (
     <div

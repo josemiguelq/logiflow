@@ -10,7 +10,7 @@ const pool = new Pool({
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 })
-
+console.log('dbUrl', dbUrl)
 export const db = {
   query: pool.query.bind(pool),
   connect: pool.connect.bind(pool),

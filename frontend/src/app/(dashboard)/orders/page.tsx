@@ -61,13 +61,18 @@ export default function OrdersPage() {
     { refreshInterval: 30_000 }
   )
 
-  const mapDestinations: MapDestination[] = (view === 'map' ? allOrders : orders)
+  const mapOrders = (view === 'map' ? allOrders : orders)
     .filter(o => !COMPLETED_STATUSES.includes(o.status) && o.customer.lat != null)
+
+  const mapDestinations: MapDestination[] = mapOrders
     .map(o => ({
+      id:     o.id,
       lat:    o.customer.lat!,
       lng:    o.customer.lng!,
-      label:  `${o.customer.name} — ${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''}`,
-      status: o.customer.address,
+      label:  `${o.customer.name} · #${o.id.slice(-8).toUpperCase()}`,
+      status: `${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''} · ${o.customer.address}`,
+      selectable: batchMode && o.status === 'PREPARING',
+      selected:   batchSelected.has(o.id),
     }))
 
   async function handleCancel(orderId: string) {
@@ -139,20 +144,18 @@ export default function OrdersPage() {
             </div>
 
             {/* Batch assign toggle */}
-            {view === 'cards' && (
-              <button
-                onClick={() => batchMode ? exitBatchMode() : setBatchMode(true)}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors"
-                style={
-                  batchMode
-                    ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, white)' }
-                    : { borderColor: '#E5E7EB', color: '#4B5563', background: 'white' }
-                }
-              >
-                <CheckSquare className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Atribuição em lote</span>
-              </button>
-            )}
+            <button
+              onClick={() => batchMode ? exitBatchMode() : setBatchMode(true)}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors"
+              style={
+                batchMode
+                  ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, white)' }
+                  : { borderColor: '#E5E7EB', color: '#4B5563', background: 'white' }
+              }
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Atribuição em lote</span>
+            </button>
 
             <Button onClick={() => setShowNewOrder(true)}>
               <Plus className="h-4 w-4" />
@@ -204,12 +207,27 @@ export default function OrdersPage() {
       {/* ── Content ── */}
       {view === 'map' ? (
         <div className="relative flex-1">
-          {mapDestinations.length === 0 && (
-            <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-700 shadow-sm">
-              Nenhuma entrega em andamento com localização cadastrada
+          {batchMode && (
+            <div className="absolute left-4 top-4 z-20 max-w-[24rem] rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 shadow-sm">
+              Selecione no mapa pedidos em <strong>Preparando</strong> para atribuir em lote.
             </div>
           )}
-          <LiveMap destinations={mapDestinations} autoFitBounds height="100%" />
+          {mapDestinations.length === 0 && (
+            <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-700 shadow-sm">
+              Nenhum pedido ativo com localização cadastrada
+            </div>
+          )}
+          <LiveMap
+            destinations={mapDestinations}
+            autoFitBounds
+            height="100%"
+            onDestinationClick={(id) => {
+              if (!batchMode) return
+              const order = mapOrders.find((o) => o.id === id)
+              if (!order || order.status !== 'PREPARING') return
+              toggleBatchSelect(order.id)
+            }}
+          />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">

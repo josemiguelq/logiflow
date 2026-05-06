@@ -121,135 +121,136 @@ async function seed() {
     const storeLat = -20.4697
     const storeLng = -54.6201
 
-    // ── Entregas finalizadas ───────────────────────────────────────────────────
-    console.log('\n[seed] criando entregas finalizadas...')
+    // ── Rotas + histórico (Campo Grande-MS) ───────────────────────────────────
+    console.log('\n[seed] criando rotas...')
 
-    const deliveredGroups = [
-      {
-        delivererId: delivererIds[0]!,
-        deliveries: [
-          { customerId: customerIds[0]!, pickupCode: 'A1B2C', deliveryCode: 'X9Y8Z', createdAt: minutesAgo(120), pickedUpAt: minutesAgo(105), deliveredAt: minutesAgo(88),  lat: customers[0]!.lat, lng: customers[0]!.lng },
-          { customerId: customerIds[1]!, pickupCode: 'D3E4F', deliveryCode: 'W7V6U', createdAt: minutesAgo(120), pickedUpAt: minutesAgo(105), deliveredAt: minutesAgo(70),  lat: customers[1]!.lat, lng: customers[1]!.lng },
-        ],
-        routePoints: [
-          ...route(storeLat, storeLng, customers[0]!.lat, customers[0]!.lng, 8),
-          ...route(customers[0]!.lat, customers[0]!.lng, customers[1]!.lat, customers[1]!.lng, 7),
-        ],
-        startedAt: minutesAgo(105),
-      },
-      {
-        delivererId: delivererIds[1]!,
-        deliveries: [
-          { customerId: customerIds[2]!, pickupCode: 'G5H6I', deliveryCode: 'T5S4R', createdAt: minutesAgo(200), pickedUpAt: minutesAgo(185), deliveredAt: minutesAgo(162), lat: customers[2]!.lat, lng: customers[2]!.lng },
-          { customerId: customerIds[3]!, pickupCode: 'J7K8L', deliveryCode: 'Q3P2O', createdAt: minutesAgo(200), pickedUpAt: minutesAgo(185), deliveredAt: minutesAgo(140), lat: customers[3]!.lat, lng: customers[3]!.lng },
-        ],
-        routePoints: [
-          ...route(storeLat, storeLng, customers[2]!.lat, customers[2]!.lng, 9),
-          ...route(customers[2]!.lat, customers[2]!.lng, customers[3]!.lat, customers[3]!.lng, 8),
-        ],
-        startedAt: minutesAgo(185),
-      },
-      {
-        delivererId: delivererIds[2]!,
-        deliveries: [
-          { customerId: customerIds[4]!, pickupCode: 'M9N0O', deliveryCode: 'N1M2L', createdAt: minutesAgo(300), pickedUpAt: minutesAgo(285), deliveredAt: minutesAgo(255), lat: customers[4]!.lat, lng: customers[4]!.lng },
-        ],
-        routePoints: route(storeLat, storeLng, customers[4]!.lat, customers[4]!.lng, 10),
-        startedAt: minutesAgo(285),
-      },
+    // Rota concluída: 3 pedidos entregues (Carlos)
+    const completedStartedAt = minutesAgo(180)
+    const completedFinishedAt = minutesAgo(95)
+    const { rows: [completedRoute] } = await client.query(`
+      INSERT INTO routes (store_id, deliverer_id, pickup_code, status, started_at, finished_at)
+      VALUES ($1,$2,$3,'FINISHED',$4,$5)
+      RETURNING id
+    `, [storeId, delivererIds[0], code('RC001'), completedStartedAt, completedFinishedAt])
+
+    const completedOrders = [
+      { customerIdx: 0, pickupCode: 'RC101', deliveryCode: 'RC201', deliveredAt: minutesAgo(145) },
+      { customerIdx: 1, pickupCode: 'RC102', deliveryCode: 'RC202', deliveredAt: minutesAgo(124) },
+      { customerIdx: 2, pickupCode: 'RC103', deliveryCode: 'RC203', deliveredAt: minutesAgo(102) },
     ]
 
-    for (const group of deliveredGroups) {
-      for (let i = 0; i < group.deliveries.length; i++) {
-        const d = group.deliveries[i]!
-        const { rows: [order] } = await client.query(`
-          INSERT INTO orders (
-            store_id, deliverer_id, customer_id, created_by_user_id,
-            status, route_position, pickup_code, delivery_code,
-            lat, lng, created_at, picked_up_at, delivered_at
-          ) VALUES ($1,$2,$3,$4,'DELIVERED',$5,$6,$7,$8,$9,$10,$11,$12)
-          RETURNING id
-        `, [storeId, group.delivererId, d.customerId, ownerId, i + 1,
-            d.pickupCode, d.deliveryCode, storeLat, storeLng,
-            d.createdAt, d.pickedUpAt, d.deliveredAt])
+    for (let i = 0; i < completedOrders.length; i++) {
+      const o = completedOrders[i]!
+      const customer = customers[o.customerIdx]!
+      const { rows: [order] } = await client.query(`
+        INSERT INTO orders (
+          store_id, deliverer_id, customer_id, created_by_user_id,
+          status, route_id, route_position, pickup_code, delivery_code,
+          lat, lng, created_at, picked_up_at, delivered_at
+        ) VALUES ($1,$2,$3,$4,'DELIVERED',$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        RETURNING id
+      `, [
+        storeId, delivererIds[0], customerIds[o.customerIdx]!, ownerId,
+        completedRoute.id, i + 1, o.pickupCode, o.deliveryCode,
+        storeLat, storeLng, minutesAgo(210), minutesAgo(175), o.deliveredAt,
+      ])
 
-        await client.query(`
-          INSERT INTO proof_of_delivery (order_id, photo_url, lat, lng)
-          VALUES ($1,$2,$3,$4)
-        `, [order.id, `https://picsum.photos/seed/${order.id}/600/400`, d.lat, d.lng])
-
-        console.log(`[seed] entregue: #${order.id.slice(-8).toUpperCase()}`)
-      }
-
-      const totalPoints  = group.routePoints.length
-      const routeDuration = 105 * 60_000
-      const startedMs    = group.startedAt.getTime()
-      for (let i = 0; i < totalPoints; i++) {
-        const { lat, lng } = group.routePoints[i]!
-        const recordedAt  = new Date(startedMs + (i / totalPoints) * routeDuration)
-        await client.query(
-          'INSERT INTO location_history (deliverer_id, lat, lng, recorded_at) VALUES ($1,$2,$3,$4)',
-          [group.delivererId, lat, lng, recordedAt]
-        )
-      }
+      await client.query(
+        `INSERT INTO proof_of_delivery (order_id, photo_url, lat, lng)
+         VALUES ($1,$2,$3,$4)`,
+        [order.id, `https://picsum.photos/seed/${order.id}/600/400`, customer.lat, customer.lng]
+      )
     }
 
-    // ── Pedidos PREPARING (prontos na loja, aguardando atribuição) ────────────
-    console.log('\n[seed] criando pedidos PREPARING...')
+    const completedPoints = [
+      ...route(storeLat, storeLng, customers[0]!.lat, customers[0]!.lng, 8),
+      ...route(customers[0]!.lat, customers[0]!.lng, customers[1]!.lat, customers[1]!.lng, 8),
+      ...route(customers[1]!.lat, customers[1]!.lng, customers[2]!.lat, customers[2]!.lng, 8),
+    ]
+    for (let i = 0; i < completedPoints.length; i++) {
+      const p = completedPoints[i]!
+      await client.query(
+        'INSERT INTO location_history (deliverer_id, lat, lng, recorded_at) VALUES ($1,$2,$3,$4)',
+        [delivererIds[0], p.lat, p.lng, new Date(completedStartedAt.getTime() + i * 90_000)]
+      )
+    }
 
-    const preparingOrders = [
-      { customerId: customerIds[5]!,  pickupCode: 'PP001', deliveryCode: 'PD001' },
-      { customerId: customerIds[6]!,  pickupCode: 'PP002', deliveryCode: 'PD002' },
-      { customerId: customerIds[7]!,  pickupCode: 'PP003', deliveryCode: 'PD003' },
-      { customerId: customerIds[8]!,  pickupCode: 'PP004', deliveryCode: 'PD004' },
-      { customerId: customerIds[9]!,  pickupCode: 'PP005', deliveryCode: 'PD005' },
-      { customerId: customerIds[10]!, pickupCode: 'PP006', deliveryCode: 'PD006' },
+    // Rota em andamento: 2 pedidos (Ana)
+    const activeStartedAt = minutesAgo(55)
+    const { rows: [activeRoute] } = await client.query(`
+      INSERT INTO routes (store_id, deliverer_id, pickup_code, status, started_at)
+      VALUES ($1,$2,$3,'STARTED',$4)
+      RETURNING id
+    `, [storeId, delivererIds[1], code('RA001'), activeStartedAt])
+
+    const activeOrders = [
+      { customerIdx: 3, pickupCode: 'RA101', deliveryCode: 'RA201', status: 'OUT_FOR_DELIVERY' as const, pickedUpAt: minutesAgo(50) },
+      { customerIdx: 4, pickupCode: 'RA102', deliveryCode: 'RA202', status: 'ON_ROUTE' as const,          pickedUpAt: minutesAgo(50) },
     ]
 
+    for (let i = 0; i < activeOrders.length; i++) {
+      const o = activeOrders[i]!
+      await client.query(`
+        INSERT INTO orders (
+          store_id, deliverer_id, customer_id, created_by_user_id,
+          status, route_id, route_position, pickup_code, delivery_code,
+          lat, lng, created_at, picked_up_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `, [
+        storeId, delivererIds[1], customerIds[o.customerIdx]!, ownerId,
+        o.status, activeRoute.id, i + 1, o.pickupCode, o.deliveryCode,
+        storeLat, storeLng, minutesAgo(70), o.pickedUpAt,
+      ])
+    }
+
+    const activePoints = [
+      ...route(storeLat, storeLng, customers[3]!.lat, customers[3]!.lng, 7),
+      ...route(customers[3]!.lat, customers[3]!.lng, customers[4]!.lat, customers[4]!.lng, 7),
+    ]
+    for (let i = 0; i < activePoints.length; i++) {
+      const p = activePoints[i]!
+      await client.query(
+        'INSERT INTO location_history (deliverer_id, lat, lng, recorded_at) VALUES ($1,$2,$3,$4)',
+        [delivererIds[1], p.lat, p.lng, new Date(activeStartedAt.getTime() + i * 75_000)]
+      )
+    }
+
+    // ── Pedidos PREPARING: 7 ──────────────────────────────────────────────────
+    console.log('\n[seed] criando 7 pedidos PREPARING...')
+    const preparingOrders = [
+      { customerIdx: 5,  pickupCode: 'PP001', deliveryCode: 'PD001' },
+      { customerIdx: 6,  pickupCode: 'PP002', deliveryCode: 'PD002' },
+      { customerIdx: 7,  pickupCode: 'PP003', deliveryCode: 'PD003' },
+      { customerIdx: 8,  pickupCode: 'PP004', deliveryCode: 'PD004' },
+      { customerIdx: 9,  pickupCode: 'PP005', deliveryCode: 'PD005' },
+      { customerIdx: 10, pickupCode: 'PP006', deliveryCode: 'PD006' },
+      { customerIdx: 11, pickupCode: 'PP007', deliveryCode: 'PD007' },
+    ]
     for (const o of preparingOrders) {
       await client.query(`
         INSERT INTO orders (store_id, customer_id, created_by_user_id, status, pickup_code, delivery_code, lat, lng)
         VALUES ($1,$2,$3,'PREPARING',$4,$5,$6,$7)
-      `, [storeId, o.customerId, ownerId, o.pickupCode, o.deliveryCode, storeLat, storeLng])
-      console.log(`[seed] PREPARING: código retirada ${o.pickupCode}`)
+      `, [storeId, customerIds[o.customerIdx]!, ownerId, o.pickupCode, o.deliveryCode, storeLat, storeLng])
     }
 
-    // ── Pedidos ASSIGNED (atribuídos, prontos para retirada no app) ───────────
-    console.log('\n[seed] criando pedidos ASSIGNED...')
-
-    // Carlos: 4 pedidos prontos para ele retirar
-    const carlosAssigned = [
-      { customerId: customerIds[0]!,  pickupCode: 'CA001', deliveryCode: 'CD001', pos: 1 },
-      { customerId: customerIds[2]!,  pickupCode: 'CA002', deliveryCode: 'CD002', pos: 2 },
-      { customerId: customerIds[5]!,  pickupCode: 'CA003', deliveryCode: 'CD003', pos: 3 },
-      { customerId: customerIds[9]!,  pickupCode: 'CA004', deliveryCode: 'CD004', pos: 4 },
+    // ── Pedidos ASSIGNED: 5 (prontos para retirada) ──────────────────────────
+    console.log('\n[seed] criando 5 pedidos ASSIGNED...')
+    const assignedOrders = [
+      { delivererIdx: 0, customerIdx: 0, pickupCode: 'AS001', deliveryCode: 'AD001', pos: 1 },
+      { delivererIdx: 0, customerIdx: 6, pickupCode: 'AS002', deliveryCode: 'AD002', pos: 2 },
+      { delivererIdx: 0, customerIdx: 9, pickupCode: 'AS003', deliveryCode: 'AD003', pos: 3 },
+      { delivererIdx: 2, customerIdx: 7, pickupCode: 'AS004', deliveryCode: 'AD004', pos: 1 },
+      { delivererIdx: 2, customerIdx: 11,pickupCode: 'AS005', deliveryCode: 'AD005', pos: 2 },
     ]
-
-    for (const o of carlosAssigned) {
+    for (const o of assignedOrders) {
       await client.query(`
         INSERT INTO orders (store_id, deliverer_id, customer_id, created_by_user_id,
-          status, route_position, pickup_code, delivery_code, lat, lng)
-        VALUES ($1,$2,$3,$4,'ASSIGNED',$5,$6,$7,$8,$9)
-      `, [storeId, delivererIds[0], o.customerId, ownerId,
-          o.pos, o.pickupCode, o.deliveryCode, storeLat, storeLng])
-      console.log(`[seed] ASSIGNED carlos pos=${o.pos}: ${o.pickupCode}`)
-    }
-
-    // Ana: 3 pedidos prontos para ela retirar
-    const anaAssigned = [
-      { customerId: customerIds[3]!,  pickupCode: 'AA001', deliveryCode: 'AD001', pos: 1 },
-      { customerId: customerIds[7]!,  pickupCode: 'AA002', deliveryCode: 'AD002', pos: 2 },
-      { customerId: customerIds[11]!, pickupCode: 'AA003', deliveryCode: 'AD003', pos: 3 },
-    ]
-
-    for (const o of anaAssigned) {
-      await client.query(`
-        INSERT INTO orders (store_id, deliverer_id, customer_id, created_by_user_id,
-          status, route_position, pickup_code, delivery_code, lat, lng)
-        VALUES ($1,$2,$3,$4,'ASSIGNED',$5,$6,$7,$8,$9)
-      `, [storeId, delivererIds[1], o.customerId, ownerId,
-          o.pos, o.pickupCode, o.deliveryCode, storeLat, storeLng])
-      console.log(`[seed] ASSIGNED ana pos=${o.pos}: ${o.pickupCode}`)
+          status, route_position, pickup_code, delivery_code, lat, lng, created_at)
+        VALUES ($1,$2,$3,$4,'ASSIGNED',$5,$6,$7,$8,$9,$10)
+      `, [
+        storeId, delivererIds[o.delivererIdx]!, customerIds[o.customerIdx]!, ownerId,
+        o.pos, o.pickupCode, o.deliveryCode, storeLat, storeLng, minutesAgo(25),
+      ])
     }
   })
 
@@ -259,9 +260,10 @@ async function seed() {
   console.log('  admin@logiflow.com  /  admin123')
   console.log('─────────────────────────────────────────────────')
   console.log('  App entregador:')
-  console.log('  carlos.moto  /  carlos123  (4 pedidos ASSIGNED)')
-  console.log('  ana.bike     /  ana123     (3 pedidos ASSIGNED)')
-  console.log('  pedro.van    /  pedro123   (sem pedidos)')
+  console.log('  carlos.moto  /  carlos123  (rota concluída + ASSIGNED)')
+  console.log('  ana.bike     /  ana123     (rota ativa com 2 pedidos)')
+  console.log('  pedro.van    /  pedro123   (2 pedidos ASSIGNED)')
+  console.log('  Cenário: 7 PREPARING, 5 ASSIGNED')
   console.log('─────────────────────────────────────────────────\n')
   process.exit(0)
 }
