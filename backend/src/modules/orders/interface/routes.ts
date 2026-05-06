@@ -52,10 +52,13 @@ export async function orderRoutes(app: FastifyInstance) {
   )
 
   const createSchema = z.object({
-    customerId: z.string().uuid(),
-    notes:      z.string().optional(),
-    lat:        z.number().optional(),
-    lng:        z.number().optional(),
+    customerId:      z.string().uuid(),
+    notes:           z.string().optional(),
+    lat:             z.number().optional(),
+    lng:             z.number().optional(),
+    deliveryAddress: z.string().optional(),
+    deliveryLat:     z.number().optional(),
+    deliveryLng:     z.number().optional(),
   })
 
   app.post(
@@ -67,7 +70,9 @@ export async function orderRoutes(app: FastifyInstance) {
       const storeId = actor.storeId
 
       const order = await createOrder(
-        { storeId, createdByUserId: actor.sub, ...body },
+        { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
+          customerId: body.customerId, notes: body.notes,
+          deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         {
           orderRepo,
           notifyCustomer: async (orderId) => {

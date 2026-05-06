@@ -19,6 +19,9 @@ export interface Order {
   notes?: string
   lat?: number
   lng?: number
+  deliveryAddress?: string
+  deliveryLat?: number
+  deliveryLng?: number
   createdAt: Date
   pickedUpAt?: Date
   deliveredAt?: Date

@@ -6,6 +6,16 @@ export type OrderStatus =
   | 'DELIVERED'
   | 'CANCELLED'
 
+export interface CustomerAddress {
+  id: string
+  label: string
+  address: string
+  complement?: string
+  lat?: number
+  lng?: number
+  isDefault: boolean
+}
+
 export interface Customer {
   id: string
   name: string
@@ -14,6 +24,7 @@ export interface Customer {
   complement?: string
   lat?: number
   lng?: number
+  addresses: CustomerAddress[]
   createdAt: string
 }
 

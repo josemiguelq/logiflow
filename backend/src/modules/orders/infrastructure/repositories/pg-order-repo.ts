@@ -48,12 +48,12 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
 const WITH_JOINS = `
   SELECT
     o.*,
-    c.name       AS customer_name,
-    c.phone      AS customer_phone,
-    c.address    AS customer_address,
-    c.complement AS customer_complement,
-    c.lat        AS customer_lat,
-    c.lng        AS customer_lng,
+    c.name                                          AS customer_name,
+    c.phone                                         AS customer_phone,
+    COALESCE(o.delivery_address, c.address)         AS customer_address,
+    c.complement                                    AS customer_complement,
+    COALESCE(o.delivery_lat,  c.lat)                AS customer_lat,
+    COALESCE(o.delivery_lng,  c.lng)                AS customer_lng,
     d.name       AS deliverer_name,
     d.status     AS deliverer_status,
     p.photo_url  AS proof_photo_url,
@@ -131,13 +131,15 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     async create(data) {
       const { rows } = await db.query(
         `INSERT INTO orders
-           (store_id, customer_id, created_by_user_id, status, pickup_code, delivery_code, notes, lat, lng)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           (store_id, customer_id, created_by_user_id, status, pickup_code, delivery_code,
+            notes, lat, lng, delivery_address, delivery_lat, delivery_lng)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          RETURNING *`,
         [
           data.storeId, data.customerId, data.createdByUserId,
           data.status, data.pickupCode, data.deliveryCode,
           data.notes ?? null, data.lat ?? null, data.lng ?? null,
+          data.deliveryAddress ?? null, data.deliveryLat ?? null, data.deliveryLng ?? null,
         ]
       )
       return rows[0] as Order

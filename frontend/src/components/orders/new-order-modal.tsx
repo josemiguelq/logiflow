@@ -2,8 +2,8 @@
 
 import { useState, FormEvent } from 'react'
 import useSWR from 'swr'
-import { X } from 'lucide-react'
-import { Customer } from '@/types'
+import { X, MapPin, Check } from 'lucide-react'
+import { Customer, CustomerAddress } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,23 +14,42 @@ interface Props {
 }
 
 export function NewOrderModal({ onClose, onCreated }: Props) {
-  const [search, setSearch]     = useState('')
-  const [selected, setSelected] = useState<Customer | null>(null)
-  const [notes, setNotes]       = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
+  const [search,          setSearch]          = useState('')
+  const [selected,        setSelected]        = useState<Customer | null>(null)
+  const [selectedAddress, setSelectedAddress] = useState<CustomerAddress | null>(null)
+  const [notes,           setNotes]           = useState('')
+  const [loading,         setLoading]         = useState(false)
+  const [error,           setError]           = useState('')
 
   const { data: customers = [] } = useSWR<Customer[]>(
     search.length >= 2 ? `/customers?search=${encodeURIComponent(search)}` : null,
     (url: string) => api.get<Customer[]>(url)
   )
 
+  function selectCustomer(c: Customer) {
+    setSelected(c)
+    setSearch(c.name)
+    // Pre-select default address
+    const def = c.addresses.find(a => a.isDefault) ?? c.addresses[0] ?? null
+    setSelectedAddress(def)
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!selected) return
     setLoading(true)
     try {
-      await api.post('/orders', { customerId: selected.id, notes: notes || undefined })
+      const body: Record<string, unknown> = {
+        customerId: selected.id,
+        notes: notes || undefined,
+      }
+      // Pass delivery address only when it's not the default (or when there's a single address)
+      if (selectedAddress) {
+        body.deliveryAddress = selectedAddress.address
+        if (selectedAddress.lat)  body.deliveryLat = selectedAddress.lat
+        if (selectedAddress.lng)  body.deliveryLng = selectedAddress.lng
+      }
+      await api.post('/orders', body)
       onCreated()
     } catch (err: unknown) {
       setError((err as Error).message)
@@ -38,6 +57,8 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
       setLoading(false)
     }
   }
+
+  const hasMultipleAddresses = (selected?.addresses.length ?? 0) > 1
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -50,14 +71,13 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Customer search */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Cliente
-            </label>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">Cliente</label>
             <Input
               placeholder="Buscar por nome ou telefone..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setSelected(null) }}
+              onChange={(e) => { setSearch(e.target.value); setSelected(null); setSelectedAddress(null) }}
             />
             {customers.length > 0 && !selected && (
               <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -65,7 +85,7 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                   <li key={c.id}>
                     <button
                       type="button"
-                      onClick={() => { setSelected(c); setSearch(c.name) }}
+                      onClick={() => selectCustomer(c)}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
                     >
                       <span className="font-medium">{c.name}</span>
@@ -75,14 +95,68 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                 ))}
               </ul>
             )}
-            {selected && (
-              <div className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-sm">
-                <p className="font-medium text-brand-700">{selected.name}</p>
-                <p className="text-brand-600">{selected.address}</p>
-              </div>
-            )}
           </div>
 
+          {/* Address picker — shown after customer is selected */}
+          {selected && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Endereço de entrega
+              </label>
+
+              {hasMultipleAddresses ? (
+                <div className="space-y-2">
+                  {selected.addresses.map((addr) => {
+                    const isChosen = selectedAddress?.id === addr.id
+                    return (
+                      <button
+                        key={addr.id}
+                        type="button"
+                        onClick={() => setSelectedAddress(addr)}
+                        className="w-full flex items-start gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-colors"
+                        style={isChosen
+                          ? { borderColor: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 6%, white)' }
+                          : { borderColor: '#E5E7EB' }
+                        }
+                      >
+                        {/* Radio indicator */}
+                        <div
+                          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors"
+                          style={isChosen
+                            ? { borderColor: 'var(--color-primary)', background: 'var(--color-primary)' }
+                            : { borderColor: '#D1D5DB' }
+                          }
+                        >
+                          {isChosen && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                            {addr.label}
+                          </p>
+                          <p className="text-sm text-gray-800 leading-snug">{addr.address}</p>
+                          {addr.complement && (
+                            <p className="text-xs text-gray-500">{addr.complement}</p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-800">{selectedAddress?.address ?? selected.address}</p>
+                    {(selectedAddress?.complement ?? selected.complement) && (
+                      <p className="text-xs text-gray-500">{selectedAddress?.complement ?? selected.complement}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Notes */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
               Observações (opcional)

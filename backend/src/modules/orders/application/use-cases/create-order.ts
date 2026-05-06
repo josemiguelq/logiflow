@@ -14,6 +14,9 @@ export async function createOrder(
     notes?: string
     lat?: number
     lng?: number
+    deliveryAddress?: string
+    deliveryLat?: number
+    deliveryLng?: number
   },
   { orderRepo, notifyCustomer }: Deps
 ) {
@@ -27,6 +30,9 @@ export async function createOrder(
     notes:           input.notes,
     lat:             input.lat,
     lng:             input.lng,
+    deliveryAddress: input.deliveryAddress,
+    deliveryLat:     input.deliveryLat,
+    deliveryLng:     input.deliveryLng,
   })
 
   await notifyCustomer?.(order.id, order.storeId)
