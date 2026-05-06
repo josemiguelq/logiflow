@@ -7,7 +7,6 @@ import '../../core/auth/auth_provider.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/theme/app_theme.dart';
-import '../../features/tracking/location_service.dart';
 
 // ── providers ────────────────────────────────────────────────────────────────
 
@@ -106,7 +105,6 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              ref.read(locationServiceProvider).stopTracking();
               await ref.read(authProvider.notifier).logout();
               if (context.mounted) context.go('/login');
             },

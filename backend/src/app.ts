@@ -88,10 +88,9 @@ export function buildApp() {
             try {
               const msg = JSON.parse(raw.toString()) as { event: string; data: Record<string, unknown> }
               if (msg.event === 'location') {
-                const lat     = msg.data.lat     as number
-                const lng     = msg.data.lng     as number
-                const orderId = msg.data.orderId as string | undefined
-                const saved = await trackingRepo.recordLocation(payload.sub, orderId ?? null, lat, lng)
+                const lat = msg.data.lat as number
+                const lng = msg.data.lng as number
+                const saved = await trackingRepo.recordLocation(payload.sub, lat, lng)
                 if (saved) wsHub.broadcastDelivererLocation(payload.storeId, payload.sub, lat, lng)
               }
             } catch (_) {}

@@ -4,7 +4,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
-import '../../features/tracking/location_service.dart';
 
 final orderDetailProvider = FutureProvider.autoDispose.family<Order, String>((ref, id) async {
   final res = await ApiClient().dio.get('/deliverer/orders');
@@ -32,7 +31,6 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         'code': _codeCtrl.text.trim().toUpperCase(),
       });
       ref.invalidate(orderDetailProvider(widget.orderId));
-      ref.read(locationServiceProvider).startTracking(orderId: widget.orderId);
     } catch (_) {
       setState(() => _error = 'Código inválido ou erro na confirmação');
     } finally {
@@ -68,7 +66,6 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         if (pos != null) 'lng': pos.longitude,
       });
       ref.invalidate(orderDetailProvider(widget.orderId));
-      ref.read(locationServiceProvider).stopTracking();
     } catch (_) {
       setState(() => _error = 'Código inválido ou erro na confirmação');
     } finally {

@@ -9,7 +9,6 @@ import 'dart:convert';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
 import '../../core/theme/app_theme.dart';
-import '../../features/tracking/location_service.dart';
 
 final _activeDeliveryProvider = FutureProvider.autoDispose<List<Order>>((ref) async {
   final res = await ApiClient().dio.get('/deliverer/orders');
@@ -25,13 +24,7 @@ class DeliveryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final orders     = ref.watch(_activeDeliveryProvider);
-    final locService = ref.watch(locationServiceProvider);
-
-    // Start tracking when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      locService.startTracking();
-    });
+    final orders = ref.watch(_activeDeliveryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -66,7 +59,6 @@ class DeliveryScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
                     onPressed: () {
-                      locService.stopTracking();
                       context.go('/orders');
                     },
                     icon: const Icon(Icons.inbox_outlined),

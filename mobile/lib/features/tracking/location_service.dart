@@ -10,7 +10,7 @@ class LocationService {
   Timer?     _timer;
   WebSocket? _socket;
   bool       _connecting = false;
-  String?    _currentOrderId;
+  bool       _started = false;
   final _api = ApiClient();
 
   Future<bool> requestPermission() async {
@@ -19,10 +19,11 @@ class LocationService {
         permission == LocationPermission.whileInUse;
   }
 
-  Future<void> startTracking({String? orderId}) async {
-    _currentOrderId = orderId;
+  Future<void> startTracking() async {
+    if (_started) return;
+    _started = true;
     _timer?.cancel();
-    debugPrint('[Location] Iniciando rastreamento (orderId=$orderId)');
+    debugPrint('[Location] Iniciando rastreamento do entregador');
 
     await _connect();
 
@@ -108,7 +109,6 @@ class LocationService {
       'data': {
         'lat': lat,
         'lng': lng,
-        if (_currentOrderId != null) 'orderId': _currentOrderId,
       },
     };
 
@@ -121,7 +121,6 @@ class LocationService {
       _api.dio.post('/tracking/location', data: {
         'lat': lat,
         'lng': lng,
-        if (_currentOrderId != null) 'orderId': _currentOrderId,
       }).then((_) {
         debugPrint('[Location] HTTP enviado: lat=$lat, lng=$lng');
       }).catchError((e) {
@@ -135,11 +134,11 @@ class LocationService {
 
   void stopTracking() {
     debugPrint('[Location] Parando rastreamento');
+    _started = false;
     _timer?.cancel();
     _timer = null;
     _socket?.close();
     _socket = null;
-    _currentOrderId = null;
   }
 }
 

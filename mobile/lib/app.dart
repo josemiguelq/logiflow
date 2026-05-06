@@ -10,6 +10,7 @@ import 'features/orders/order_selection_screen.dart';
 import 'features/orders/route_planning_screen.dart';
 import 'features/orders/pickup_confirmation_screen.dart';
 import 'features/delivery/delivery_screen.dart';
+import 'features/tracking/location_service.dart';
 
 final _router = GoRouter(
   initialLocation: '/orders',
@@ -49,8 +50,26 @@ final _router = GoRouter(
   ],
 );
 
-class LogiFlowApp extends StatelessWidget {
+class LogiFlowApp extends ConsumerStatefulWidget {
   const LogiFlowApp({super.key});
+
+  @override
+  ConsumerState<LogiFlowApp> createState() => _LogiFlowAppState();
+}
+
+class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual<DelivererSession?>(authProvider, (previous, next) {
+      final tracking = ref.read(locationServiceProvider);
+      if (next != null) {
+        tracking.startTracking();
+      } else {
+        tracking.stopTracking();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(

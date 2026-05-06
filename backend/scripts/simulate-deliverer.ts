@@ -143,7 +143,7 @@ async function main() {
     const { lat, lng } = route[i]
     await req('/tracking/location', {
       method: 'POST',
-      body:   JSON.stringify({ lat, lng, orderId: ORDER_ID }),
+      body:   JSON.stringify({ lat, lng }),
     })
     const bar = '#'.repeat(i + 1) + '.'.repeat(midpoint - i - 1)
     process.stdout.write(`\r   [${bar}] ${lat.toFixed(5)}, ${lng.toFixed(5)}   `)
@@ -162,7 +162,7 @@ async function main() {
     const { lat, lng } = route[i]
     await req('/tracking/location', {
       method: 'POST',
-      body:   JSON.stringify({ lat, lng, orderId: ORDER_ID }),
+      body:   JSON.stringify({ lat, lng }),
     })
     const done  = i - midpoint + 1
     const total = STEPS - midpoint

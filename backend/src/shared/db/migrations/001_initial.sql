@@ -106,7 +106,6 @@ CREATE INDEX idx_orders_created_at  ON orders(store_id, created_at DESC);
 CREATE TABLE location_history (
   id           BIGSERIAL        PRIMARY KEY,
   deliverer_id UUID             NOT NULL REFERENCES deliverers(id) ON DELETE CASCADE,
-  order_id     UUID             REFERENCES orders(id) ON DELETE SET NULL,
   lat          DOUBLE PRECISION NOT NULL,
   lng          DOUBLE PRECISION NOT NULL,
   recorded_at  TIMESTAMPTZ      NOT NULL DEFAULT now()
@@ -114,9 +113,6 @@ CREATE TABLE location_history (
 
 CREATE INDEX idx_location_deliverer_time
   ON location_history(deliverer_id, recorded_at DESC);
-
-CREATE INDEX idx_location_order_time
-  ON location_history(order_id, recorded_at DESC);
 
 -- ─── proof_of_delivery ─────────────────────────────────────────────────────
 CREATE TABLE proof_of_delivery (

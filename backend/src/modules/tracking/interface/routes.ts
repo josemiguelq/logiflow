@@ -6,9 +6,8 @@ import { createPgTrackingRepo } from '../infrastructure/repositories/pg-tracking
 import { wsHub } from '../../../shared/infra/websocket'
 
 const locationSchema = z.object({
-  lat:     z.number(),
-  lng:     z.number(),
-  orderId: z.string().uuid().optional(),
+  lat: z.number(),
+  lng: z.number(),
 })
 
 export async function trackingRoutes(app: FastifyInstance) {
@@ -19,8 +18,8 @@ export async function trackingRoutes(app: FastifyInstance) {
     '/tracking/location',
     { preHandler: requireDeliverer },
     async (req, reply) => {
-      const { lat, lng, orderId } = locationSchema.parse(req.body)
-      const saved = await repo.recordLocation(req.actor.sub, orderId ?? null, lat, lng)
+      const { lat, lng } = locationSchema.parse(req.body)
+      const saved = await repo.recordLocation(req.actor.sub, lat, lng)
       if (saved) {
         wsHub.broadcastDelivererLocation(req.actor.storeId, req.actor.sub, lat, lng)
       }

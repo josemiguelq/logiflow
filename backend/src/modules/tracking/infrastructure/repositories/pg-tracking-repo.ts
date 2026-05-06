@@ -19,7 +19,6 @@ export function createPgTrackingRepo(db: DB) {
   return {
     async recordLocation(
       delivererId: string,
-      orderId: string | null,
       lat: number,
       lng: number
     ) {
@@ -39,9 +38,9 @@ export function createPgTrackingRepo(db: DB) {
       }
 
       await db.query(
-        `INSERT INTO location_history (deliverer_id, order_id, lat, lng)
-         VALUES ($1,$2,$3,$4)`,
-        [delivererId, orderId, lat, lng]
+        `INSERT INTO location_history (deliverer_id, lat, lng)
+         VALUES ($1,$2,$3)`,
+        [delivererId, lat, lng]
       )
       return true
     },
