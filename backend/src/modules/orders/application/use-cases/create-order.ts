@@ -11,6 +11,7 @@ export async function createOrder(
     storeId: string
     customerId: string
     createdByUserId: string
+    deliveryCode?: string
     notes?: string
     lat?: number
     lng?: number
@@ -26,7 +27,7 @@ export async function createOrder(
     createdByUserId: input.createdByUserId,
     status:          'PREPARING',
     pickupCode:      generateCode(),
-    deliveryCode:    generateCode(),
+    deliveryCode:    input.deliveryCode ?? generateCode(),
     notes:           input.notes,
     lat:             input.lat,
     lng:             input.lng,

@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
+import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 
 final _activeDeliveryProvider = FutureProvider.autoDispose<List<Order>>((ref) async {

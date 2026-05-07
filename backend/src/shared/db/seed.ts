@@ -50,8 +50,8 @@ async function seed() {
     `, [storeId])
 
     await client.query(`
-      INSERT INTO store_features (store_id, custom_theme_enabled)
-      VALUES ($1, false)
+      INSERT INTO store_features (store_id, custom_theme_enabled, whatsapp_enabled)
+      VALUES ($1, false, true)
     `, [storeId])
 
     // ── Usuários ──────────────────────────────────────────────────────────────

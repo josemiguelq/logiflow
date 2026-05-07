@@ -274,8 +274,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                     ),
                   ],
 
-                  // ── Preparing orders (self-claim) ────────────────────
-                  if (preparingList.isNotEmpty) ...[
+                  // ── Preparing orders (self-claim, only when no routes) ──
+                  if (routeList.isEmpty && preparingList.isNotEmpty) ...[
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
@@ -353,7 +353,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                 ],
               ),
             ),
-      floatingActionButton: _selected.isEmpty
+      floatingActionButton: (_selected.isEmpty || routeList.isNotEmpty)
           ? null
           : FloatingActionButton.extended(
               onPressed: _claiming ? null : _claimPreparing,

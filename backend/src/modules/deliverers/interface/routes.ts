@@ -197,12 +197,22 @@ export async function delivererRoutes(app: FastifyInstance) {
     }
   )
 
-  // Deliverer fetches own store info (for distance calculation)
+  // Deliverer fetches own store info (for distance calculation + settings)
   app.get('/deliverer/store', { preHandler: requireDeliverer }, async (req) => {
     const { rows: [store] } = await db.query(
       'SELECT name, lat, lng FROM stores WHERE id = $1',
       [req.actor.storeId]
     )
-    return { name: store?.name ?? '', lat: store?.lat ?? null, lng: store?.lng ?? null }
+    const { rows: [settings] } = await db.query(
+      'SELECT require_pickup_code, require_delivery_code FROM store_settings WHERE store_id = $1',
+      [req.actor.storeId]
+    )
+    return {
+      name:               store?.name ?? '',
+      lat:                store?.lat  ?? null,
+      lng:                store?.lng  ?? null,
+      requirePickupCode:  settings?.require_pickup_code  ?? true,
+      requireDeliveryCode: settings?.require_delivery_code ?? true,
+    }
   })
 }

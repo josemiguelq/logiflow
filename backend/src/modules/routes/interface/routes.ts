@@ -66,7 +66,7 @@ export async function routeRoutes(app: FastifyInstance) {
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { id } = req.params as { id: string }
-      const { code } = z.object({ code: z.string().length(5) }).parse(req.body)
+      const { code } = z.object({ code: z.string().default('') }).parse(req.body)
 
       const { rows } = await db.query(
         `SELECT * FROM routes WHERE id = $1 AND deliverer_id = $2`,
@@ -75,7 +75,14 @@ export async function routeRoutes(app: FastifyInstance) {
       const route = rows[0] as Record<string, unknown> | undefined
       if (!route) return reply.code(404).send({ error: 'Not found' })
       if (route.status === 'FINISHED') return reply.code(400).send({ error: 'Route already finished' })
-      if ((route.pickup_code as string) !== code.toUpperCase()) {
+
+      const { rows: [settings] } = await db.query(
+        'SELECT require_pickup_code FROM store_settings WHERE store_id = $1',
+        [route.store_id]
+      )
+      const requirePickupCode = (settings?.require_pickup_code ?? true) as boolean
+
+      if (requirePickupCode && (route.pickup_code as string) !== code.toUpperCase()) {
         return reply.code(400).send({ error: 'Código inválido' })
       }
 

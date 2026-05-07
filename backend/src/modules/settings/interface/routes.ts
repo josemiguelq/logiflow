@@ -98,7 +98,9 @@ export async function settingsRoutes(app: FastifyInstance) {
     )
 
     const { rows: [settings] } = await db.query(
-      'SELECT max_orders_per_route, require_delivery_photo FROM store_settings WHERE store_id = $1',
+      `SELECT max_orders_per_route, require_delivery_photo,
+              require_pickup_code, require_delivery_code
+       FROM store_settings WHERE store_id = $1`,
       [storeId]
     )
 
@@ -107,7 +109,9 @@ export async function settingsRoutes(app: FastifyInstance) {
       storeLat:             store?.lat  ?? null,
       storeLng:             store?.lng  ?? null,
       maxOrdersPerRoute:    settings?.max_orders_per_route    ?? 5,
-      requireDeliveryPhoto: settings?.require_delivery_photo ?? false,
+      requireDeliveryPhoto: settings?.require_delivery_photo  ?? false,
+      requirePickupCode:    settings?.require_pickup_code     ?? true,
+      requireDeliveryCode:  settings?.require_delivery_code   ?? true,
     }
   })
 
@@ -115,6 +119,8 @@ export async function settingsRoutes(app: FastifyInstance) {
   const storeSettingsSchema = z.object({
     maxOrdersPerRoute:    z.number().int().min(1).max(20).optional(),
     requireDeliveryPhoto: z.boolean().optional(),
+    requirePickupCode:    z.boolean().optional(),
+    requireDeliveryCode:  z.boolean().optional(),
     storeLat:             z.number().optional().nullable(),
     storeLng:             z.number().optional().nullable(),
   })
@@ -127,13 +133,21 @@ export async function settingsRoutes(app: FastifyInstance) {
     const storeId = req.actor.storeId
 
     await db.query(
-      `INSERT INTO store_settings (store_id, max_orders_per_route, require_delivery_photo)
-       VALUES ($1, $2, $3)
+      `INSERT INTO store_settings
+         (store_id, max_orders_per_route, require_delivery_photo,
+          require_pickup_code, require_delivery_code)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (store_id) DO UPDATE
        SET max_orders_per_route    = COALESCE($2, store_settings.max_orders_per_route),
            require_delivery_photo  = COALESCE($3, store_settings.require_delivery_photo),
+           require_pickup_code     = COALESCE($4, store_settings.require_pickup_code),
+           require_delivery_code   = COALESCE($5, store_settings.require_delivery_code),
            updated_at              = now()`,
-      [storeId, body.maxOrdersPerRoute ?? null, body.requireDeliveryPhoto ?? null]
+      [storeId,
+       body.maxOrdersPerRoute    ?? null,
+       body.requireDeliveryPhoto ?? null,
+       body.requirePickupCode    ?? null,
+       body.requireDeliveryCode  ?? null]
     )
 
     if (body.storeLat !== undefined || body.storeLng !== undefined) {

@@ -12,6 +12,8 @@ interface StoreSettings {
   storeName:            string
   maxOrdersPerRoute:    number
   requireDeliveryPhoto: boolean
+  requirePickupCode:    boolean
+  requireDeliveryCode:  boolean
 }
 
 interface ThemeData {
@@ -79,15 +81,19 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
     (u: string) => api.get<StoreSettings>(u)
   )
 
-  const [maxOrders, setMaxOrders] = useState(5)
-  const [requirePhoto, setRequirePhoto] = useState(false)
+  const [maxOrders,          setMaxOrders]          = useState(5)
+  const [requirePhoto,       setRequirePhoto]       = useState(false)
+  const [requirePickupCode,  setRequirePickupCode]  = useState(true)
+  const [requireDeliveryCode, setRequireDeliveryCode] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error,   setError]   = useState('')
 
   useEffect(() => {
     if (data) {
       setMaxOrders(data.maxOrdersPerRoute)
       setRequirePhoto(data.requireDeliveryPhoto)
+      setRequirePickupCode(data.requirePickupCode)
+      setRequireDeliveryCode(data.requireDeliveryCode)
     }
   }, [data])
 
@@ -98,6 +104,8 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       await api.patch('/store/settings', {
         maxOrdersPerRoute:    maxOrders,
         requireDeliveryPhoto: requirePhoto,
+        requirePickupCode,
+        requireDeliveryCode,
       })
       mutate()
       onSaved()
@@ -131,26 +139,32 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-4">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Exigir foto na entrega</p>
-            <p className="text-xs text-gray-500">O entregador deve fotografar a entrega no app</p>
+        {(
+          [
+            { label: 'Exigir foto na entrega',         desc: 'O entregador deve fotografar a entrega no app',               value: requirePhoto,       set: setRequirePhoto },
+            { label: 'Exigir código de coleta',        desc: 'Entregador confirma retirada com o código da rota',           value: requirePickupCode,  set: setRequirePickupCode },
+            { label: 'Exigir código de entrega',       desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode, set: setRequireDeliveryCode },
+          ] as { label: string; desc: string; value: boolean; set: (v: boolean) => void }[]
+        ).map(({ label, desc, value, set }) => (
+          <div key={label} className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div>
+              <p className="text-sm font-medium text-gray-900">{label}</p>
+              <p className="text-xs text-gray-500">{desc}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => set(!value)}
+              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+              style={{ background: value ? 'var(--color-primary)' : '#E5E7EB' }}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  value ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setRequirePhoto(!requirePhoto)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              requirePhoto ? 'bg-[--color-primary]' : 'bg-gray-200'
-            }`}
-            style={requirePhoto ? { background: 'var(--color-primary)' } : {}}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                requirePhoto ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
+        ))}
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 

@@ -72,9 +72,16 @@ export async function orderRoutes(app: FastifyInstance) {
       const actor = req.actor
       const storeId = actor.storeId
 
+      // Delivery code = last 4 digits of customer phone
+      const { rows: [cust] } = await db.query(
+        'SELECT phone FROM customers WHERE id = $1 AND store_id = $2',
+        [body.customerId, storeId]
+      )
+      const deliveryCode = (cust?.phone as string | undefined)?.slice(-4) ?? generateCode().slice(0, 4)
+
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
-          customerId: body.customerId, notes: body.notes,
+          customerId: body.customerId, notes: body.notes, deliveryCode,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         {
           orderRepo,
@@ -248,7 +255,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
   const pickupSchema   = z.object({ code: z.string().length(5) })
   const deliverySchema = z.object({
-    code:     z.string().length(5),
+    code:     z.string().default(''),
     photoUrl: z.string().url().optional(),
     lat:      z.number().optional(),
     lng:      z.number().optional(),
@@ -279,9 +286,17 @@ export async function orderRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const body = deliverySchema.parse(req.body)
+
+      const { rows: [settings] } = await db.query(
+        'SELECT require_delivery_code FROM store_settings WHERE store_id = $1',
+        [req.actor.storeId]
+      )
+      const requireDeliveryCode = (settings?.require_delivery_code ?? true) as boolean
+
       try {
         const order = await confirmDelivery(
-          { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub, ...body },
+          { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub,
+            requireDeliveryCode, ...body },
           { orderRepo }
         )
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
