@@ -5,6 +5,11 @@ import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/a
 import { createPgRouteRepo } from '../infrastructure/repositories/pg-route-repo'
 import { createPgOrderRepo } from '../../orders/infrastructure/repositories/pg-order-repo'
 import { wsHub } from '../../../shared/infra/websocket'
+import { notificationQueue } from '../../../shared/infra/queue'
+
+const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
+  notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
+    .catch(() => { /* non-fatal */ })
 
 export async function routeRoutes(app: FastifyInstance) {
   const routeRepo = createPgRouteRepo(db)
@@ -97,6 +102,7 @@ export async function routeRoutes(app: FastifyInstance) {
       const orders = await orderRepo.findByRoute(id)
       for (const o of orders) {
         wsHub.broadcastOrderUpdate(route.store_id as string, o)
+        queueNotif(route.store_id as string, o.id, 'ON_ROUTE')
       }
 
       return { ok: true, orders }

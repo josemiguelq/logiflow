@@ -298,6 +298,7 @@ export async function orderRoutes(app: FastifyInstance) {
           { orderRepo }
         )
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+        queueNotif(req.actor.storeId, id, 'DELIVERED')
 
         // Auto-finish route when all its orders are delivered/cancelled
         if (order.routeId) {
