@@ -20,7 +20,7 @@ export async function confirmDelivery(
   const order = await orderRepo.findById(orderId, storeId)
   if (!order) throw new Error('Order not found')
   if (order.delivererId !== delivererId) throw new Error('Not your order')
-  if (order.status !== 'OUT_FOR_DELIVERY') throw new Error('Order not out for delivery')
+  // if (order.status !== 'OUT_FOR_DELIVERY') throw new Error('Order not out for delivery')
   if (requireDeliveryCode && order.deliveryCode !== code.toUpperCase()) {
     throw new Error('Invalid delivery code')
   }
