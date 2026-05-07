@@ -4,8 +4,35 @@ import { createNotificationWorker } from './shared/infra/queue'
 import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
-import { sendDeliveryNotification } from './modules/notifications/application/use-cases/send-delivery-notification'
 import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/pg-order-repo'
+
+function buildStatusMessage(
+  statusEvent: string,
+  customerName: string,
+  trackingUrl: string,
+  deliveryCode: string,
+): string {
+  switch (statusEvent) {
+    case 'PREPARING':
+      return `Olá, ${customerName}! Seu pedido foi registrado e está sendo preparado. 🛒\n\nAcompanhe em tempo real:\n${trackingUrl}`
+    case 'ASSIGNED':
+      return `Olá, ${customerName}! Seu pedido foi atribuído a um entregador e logo vai sair. 📦\n\nAcompanhe em tempo real:\n${trackingUrl}`
+    case 'ON_ROUTE':
+      return `Olá, ${customerName}! O entregador retirou seus pedidos da loja e está a caminho. 🚴\n\nAcompanhe em tempo real:\n${trackingUrl}`
+    case 'OUT_FOR_DELIVERY':
+      return (
+        `Olá, ${customerName}! Seu pedido está saindo para entrega agora! 🏃\n\n` +
+        `Acompanhe em tempo real:\n${trackingUrl}\n\n` +
+        `Código de confirmação: *${deliveryCode}*`
+      )
+    case 'DELIVERED':
+      return `Olá, ${customerName}! Seu pedido foi entregue com sucesso. ✅\n\nObrigado por comprar conosco!`
+    case 'CANCELLED':
+      return `Olá, ${customerName}! Infelizmente seu pedido foi cancelado. ❌\n\nPara dúvidas, entre em contato com a loja.`
+    default:
+      return `Olá, ${customerName}! O status do seu pedido foi atualizado.\n\nAcompanhe em tempo real:\n${trackingUrl}`
+  }
+}
 
 async function start() {
   const app            = buildApp()
@@ -15,25 +42,25 @@ async function start() {
 
   // ── Notification worker ──────────────────────────────────────────────────
   createNotificationWorker(async (job) => {
-    const { storeId, orderId, phone: rawPhone } = job.data
+    const { storeId, orderId, statusEvent } = job.data
 
     const order = await orderRepo.findById(orderId, storeId)
     if (!order) return
 
     const phone = order.customer.phone
-    const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'http://localhost:3000/tracking'}/${orderId}`
+    if (!phone) return
 
-    await sendDeliveryNotification(
-      {
-        storeId,
-        orderId,
-        phone,
-        customerName: order.customer.name,
-        trackingUrl,
-        deliveryCode: order.deliveryCode,
-      },
-      { whatsapp, messageLog: messageLogRepo }
-    ).catch((err) => app.log.warn({ err }, 'notification failed (non-fatal)'))
+    const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'http://localhost:3000/tracking'}/${orderId}`
+    const message = buildStatusMessage(statusEvent, order.customer.name, trackingUrl, order.deliveryCode)
+
+    const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
+    try {
+      await whatsapp.sendMessage(phone, message)
+      await messageLogRepo.markSent(logId)
+    } catch (err) {
+      await messageLogRepo.markFailed(logId)
+      app.log.warn({ err, orderId, statusEvent }, 'WhatsApp notification failed (non-fatal)')
+    }
   })
 
   // ── HTTP server ──────────────────────────────────────────────────────────

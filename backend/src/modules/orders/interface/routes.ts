@@ -13,6 +13,10 @@ import { confirmDelivery } from '../application/use-cases/confirm-delivery'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 
+const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
+  notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
+    .catch(() => { /* non-fatal */ })
+
 export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
   const routeRepo = createPgRouteRepo(db)
@@ -83,21 +87,11 @@ export async function orderRoutes(app: FastifyInstance) {
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
-        {
-          orderRepo,
-          notifyCustomer: async (orderId) => {
-            await notificationQueue.add('order_created', {
-              type:    'whatsapp',
-              storeId,
-              orderId,
-              phone:   '',
-              message: '',
-            })
-          },
-        }
+        { orderRepo }
       )
 
       wsHub.broadcastOrderUpdate(storeId, order)
+      queueNotif(storeId, order.id, 'PREPARING')
       return reply.code(201).send(order)
     }
   )
@@ -141,6 +135,7 @@ export async function orderRoutes(app: FastifyInstance) {
       await routeRepo.linkOrders(route.id, [order.id])
 
       wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+      queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
       return { route, order }
     }
   )
@@ -154,6 +149,7 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!order) return reply.code(404).send({ error: 'Not found' })
       const updated = await orderRepo.updateStatus(id, 'CANCELLED')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      queueNotif(req.actor.storeId, id, 'CANCELLED')
       return updated
     }
   )
@@ -188,6 +184,7 @@ export async function orderRoutes(app: FastifyInstance) {
             { orderRepo }
           )
           wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+          queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
           assigned.push(order)
         } catch { /* skip orders that can't transition */ }
       }
@@ -247,6 +244,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const claimedOrders = await orderRepo.findByRoute(route.id)
       for (const o of claimedOrders) {
         wsHub.broadcastOrderUpdate(req.actor.storeId, o)
+        queueNotif(req.actor.storeId, o.id, 'ASSIGNED')
       }
 
       return { route, orders: claimedOrders }
@@ -336,6 +334,7 @@ export async function orderRoutes(app: FastifyInstance) {
       }
       const updated = await orderRepo.updateStatus(id, 'OUT_FOR_DELIVERY')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      queueNotif(req.actor.storeId, id, 'OUT_FOR_DELIVERY')
       return updated
     }
   )
