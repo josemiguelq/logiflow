@@ -107,11 +107,23 @@ export async function delivererRoutes(app: FastifyInstance) {
   app.get(
     '/deliverer/me',
     { preHandler: requireDeliverer },
-    async (req) => ({
-      id:      req.actor.sub,
-      name:    req.actor.name,
-      storeId: req.actor.storeId,
-    })
+    async (req, reply) => {
+      const { rows: [d] } = await db.query(
+        `SELECT id, name, username, store_id, status, profile_image_url, needs_onboarding
+         FROM deliverers WHERE id = $1`,
+        [req.actor.sub]
+      )
+      if (!d) return reply.code(404).send({ error: 'Not found' })
+      return {
+        id:              d.id as string,
+        name:            d.name as string,
+        username:        d.username as string,
+        storeId:         d.store_id as string,
+        status:          d.status as string,
+        profileImageUrl: d.profile_image_url as string | null,
+        needsOnboarding: d.needs_onboarding as boolean,
+      }
+    }
   )
 
   // Deliverer updates own profile (photo + password) and clears onboarding flag

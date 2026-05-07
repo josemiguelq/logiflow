@@ -115,16 +115,26 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
       if (d.status === 'OFFLINE') return reply.code(409).send({ error: 'Entregador está OFFLINE e não pode receber pedidos.' })
 
+      let order
       try {
-        const order = await assignDeliverer(
+        order = await assignDeliverer(
           { orderId: id, storeId: req.actor.storeId, ...body },
           { orderRepo }
         )
-        wsHub.broadcastOrderUpdate(req.actor.storeId, order)
-        return order
       } catch (err: unknown) {
         return reply.code(400).send({ error: (err as Error).message })
       }
+
+      // Every assignment creates its own immutable route
+      const route = await routeRepo.create({
+        storeId:     req.actor.storeId,
+        delivererId: body.delivererId,
+        pickupCode:  generateCode(),
+      })
+      await routeRepo.linkOrders(route.id, [order.id])
+
+      wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+      return { route, order }
     }
   )
 

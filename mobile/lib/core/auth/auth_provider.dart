@@ -47,6 +47,17 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
 
   final _api = ApiClient();
 
+  Future<void> restoreSession() async {
+    final token = await _api.getToken();
+    if (token == null) return;
+    try {
+      final res = await _api.dio.get('/deliverer/me');
+      state = DelivererSession.fromJson(res.data as Map<String, dynamic>);
+    } catch (_) {
+      await _api.clearToken();
+    }
+  }
+
   Future<void> login(String username, String password) async {
     final res = await _api.dio.post('/auth/deliverer/login', data: {
       'username': username,
