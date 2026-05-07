@@ -89,7 +89,7 @@ class DeliveryScreen extends ConsumerWidget {
   }
 }
 
-class _DeliveryCard extends StatelessWidget {
+class _DeliveryCard extends ConsumerStatefulWidget {
   final Order order;
   final int position;
   final int total;
@@ -102,28 +102,43 @@ class _DeliveryCard extends StatelessWidget {
     required this.onDelivered,
   });
 
-  Future<void> _openMaps(BuildContext context) async {
+  @override
+  ConsumerState<_DeliveryCard> createState() => _DeliveryCardState();
+}
+
+class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
+  bool _navigating = false;
+
+  Future<void> _navigateTo() async {
+    setState(() => _navigating = true);
+    try {
+      // Mark as OUT_FOR_DELIVERY before opening maps
+      await ApiClient().dio.patch('/deliverer/orders/${widget.order.id}/start-route');
+      widget.onDelivered(); // refresh the list
+    } catch (_) {}
+
     Uri uri;
-    if (order.customerLat != null && order.customerLng != null) {
+    if (widget.order.customerLat != null && widget.order.customerLng != null) {
       uri = Uri.parse(
           'https://www.google.com/maps/dir/?api=1'
-          '&destination=${order.customerLat},${order.customerLng}'
+          '&destination=${widget.order.customerLat},${widget.order.customerLng}'
           '&travelmode=driving');
     } else {
-      final encoded = Uri.encodeComponent(order.customerAddress);
-      uri = Uri.parse(
-          'https://www.google.com/maps/search/?api=1&query=$encoded');
+      final encoded = Uri.encodeComponent(widget.order.customerAddress);
+      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded');
     }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Não foi possível abrir o Maps')));
       }
     }
+    if (mounted) setState(() => _navigating = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final order = widget.order;
     final isOutForDelivery = order.status == 'OUT_FOR_DELIVERY';
     final statusColor = isOutForDelivery
         ? const Color(0xFFFFEDD5)
@@ -155,7 +170,7 @@ class _DeliveryCard extends StatelessWidget {
                 CircleAvatar(
                   backgroundColor: AppTheme.primary,
                   radius: 16,
-                  child: Text('$position',
+                  child: Text('${widget.position}',
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                 ),
@@ -217,11 +232,14 @@ class _DeliveryCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
             child: Row(
               children: [
-                // Navigate button
+                // Navigate → sets OUT_FOR_DELIVERY
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _openMaps(context),
-                    icon: const Icon(Icons.navigation_outlined, size: 18),
+                    onPressed: _navigating ? null : _navigateTo,
+                    icon: _navigating
+                        ? const SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.navigation_outlined, size: 18),
                     label: const Text('Navegar'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.primary,
@@ -231,7 +249,7 @@ class _DeliveryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Confirm delivery button
+                // Confirm delivery
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _showDeliveryDialog(context),
@@ -252,21 +270,32 @@ class _DeliveryCard extends StatelessWidget {
   }
 
   Future<void> _showDeliveryDialog(BuildContext context) async {
+    final settings = await ref.read(storeSettingsProvider.future);
+    if (!mounted) return;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _DeliveryConfirmSheet(order: order, onDelivered: onDelivered),
+      builder: (_) => _DeliveryConfirmSheet(
+        order:               widget.order,
+        requireDeliveryCode: settings.requireDeliveryCode,
+        onDelivered:         widget.onDelivered,
+      ),
     );
   }
 }
 
 class _DeliveryConfirmSheet extends StatefulWidget {
   final Order order;
+  final bool requireDeliveryCode;
   final VoidCallback onDelivered;
-  const _DeliveryConfirmSheet({required this.order, required this.onDelivered});
+  const _DeliveryConfirmSheet({
+    required this.order,
+    required this.requireDeliveryCode,
+    required this.onDelivered,
+  });
 
   @override
   State<_DeliveryConfirmSheet> createState() => _DeliveryConfirmSheetState();
@@ -292,8 +321,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
 
   Future<void> _confirm() async {
     final code = _codeCtrl.text.trim().toUpperCase();
-    if (code.length != 5) {
-      setState(() => _error = 'Informe o código de 5 dígitos');
+    if (widget.requireDeliveryCode && code.length != 4) {
+      setState(() => _error = 'Informe os 4 últimos dígitos do telefone');
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -356,22 +385,24 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 20),
 
-          // Code field
-          TextField(
-            controller: _codeCtrl,
-            maxLength: 5,
-            textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(
-              labelText: 'Código de entrega',
-              hintText: 'XXXXX',
-              counterText: '',
-              prefixIcon: Icon(Icons.key_outlined),
+          // Code field (last 4 digits of customer phone)
+          if (widget.requireDeliveryCode) ...[
+            TextField(
+              controller: _codeCtrl,
+              maxLength: 4,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Últimos 4 dígitos do telefone',
+                hintText: '0000',
+                counterText: '',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
+              style: const TextStyle(
+                  fontFamily: 'monospace', letterSpacing: 6,
+                  fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            style: const TextStyle(
-                fontFamily: 'monospace', letterSpacing: 4,
-                fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
 
           // Optional photo
           GestureDetector(

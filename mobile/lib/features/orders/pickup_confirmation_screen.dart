@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
+import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 
 class PickupConfirmationScreen extends ConsumerStatefulWidget {
@@ -39,9 +40,12 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
     super.dispose();
   }
 
-  Future<void> _confirm() async {
+  Future<void> _confirm({bool skipCode = false}) async {
+    final settings = await ref.read(storeSettingsProvider.future);
+    final requireCode = settings.requirePickupCode && !skipCode;
+
     final code = _ctrl.text.trim().toUpperCase();
-    if (code.length != 5) {
+    if (requireCode && code.length != 5) {
       setState(() => _error = 'Código deve ter 5 caracteres');
       return;
     }
@@ -49,7 +53,7 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
     try {
       await ApiClient().dio.post(
         '/deliverer/routes/${widget.route.id}/pickup',
-        data: {'code': code},
+        data: {'code': requireCode ? code : ''},
       );
       if (mounted) context.go('/delivery');
     } catch (e) {
@@ -62,7 +66,9 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
 
   @override
   Widget build(BuildContext context) {
-    final orders = widget.route.orders;
+    final orders   = widget.route.orders;
+    final settings = ref.watch(storeSettingsProvider);
+    final requirePickupCode = settings.value?.requirePickupCode ?? true;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Confirmar retirada')),
@@ -78,7 +84,9 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Peça o código de retirada da rota para a loja e confirme abaixo',
+                  requirePickupCode
+                      ? 'Peça o código de retirada da rota para a loja e confirme abaixo'
+                      : 'Confirme que você retirou os pedidos da loja',
                   style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                 ),
               ),
@@ -91,7 +99,7 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Route code input
+                  // Order count badge
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -126,35 +134,40 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
                             style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                           ),
                         ]),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _ctrl,
-                          maxLength: 5,
-                          textCapitalization: TextCapitalization.characters,
-                          autofocus: true,
-                          decoration: InputDecoration(
-                            labelText: 'Código de retirada da rota',
-                            hintText: 'XXXXX',
-                            counterText: '',
-                            errorText: _error,
-                            prefixIcon: const Icon(Icons.key_outlined, size: 20),
-                            isDense: true,
+                        if (requirePickupCode) ...[
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _ctrl,
+                            maxLength: 5,
+                            textCapitalization: TextCapitalization.characters,
+                            autofocus: true,
+                            decoration: InputDecoration(
+                              labelText: 'Código de retirada da rota',
+                              hintText: 'XXXXX',
+                              counterText: '',
+                              errorText: _error,
+                              prefixIcon: const Icon(Icons.key_outlined, size: 20),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              letterSpacing: 4,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSubmitted: (_) => _confirm(),
                           ),
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            letterSpacing: 4,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSubmitted: (_) => _confirm(),
-                        ),
+                        ] else if (_error != null) ...[
+                          const SizedBox(height: 8),
+                          Text(_error!,
+                              style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+                        ],
                       ],
                     ),
                   ),
 
                   const SizedBox(height: 20),
 
-                  // Orders summary
                   Text(
                     'Pedidos incluídos',
                     style: TextStyle(
@@ -179,7 +192,7 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _loading ? null : _confirm,
+                  onPressed: _loading ? null : () => _confirm(skipCode: !requirePickupCode),
                   child: _loading
                       ? const SizedBox(
                           width: 22, height: 22,
