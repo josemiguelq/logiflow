@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 interface Props {
   order: Order
   onClose: () => void
-  onAssigned: () => void
+  onAssigned: (routeId: string) => void
 }
 
 const DELIVERER_STATUS = {
@@ -32,8 +32,11 @@ export function AssignModal({ order, onClose, onAssigned }: Props) {
     if (!selectedId) return
     setLoading(true)
     try {
-      await api.patch(`/orders/${order.id}/assign`, { delivererId: selectedId })
-      onAssigned()
+      const result = await api.patch<{ route: { id: string }; order: unknown }>(
+        `/orders/${order.id}/assign`,
+        { delivererId: selectedId }
+      )
+      onAssigned(result.route.id)
     } finally {
       setLoading(false)
     }

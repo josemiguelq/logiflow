@@ -103,6 +103,12 @@ export default function DeliverersPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/deliverers/${d.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                        >
+                          Ver detalhes
+                        </Link>
                         {!inactive && (
                           <Link
                             href={`/tracking/deliverer/${d.id}`}

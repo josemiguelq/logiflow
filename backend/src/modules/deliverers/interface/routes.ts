@@ -156,6 +156,47 @@ export async function delivererRoutes(app: FastifyInstance) {
     return reply.send({ ok: true })
   })
 
+  // Store user fetches a single deliverer with their status history
+  app.get(
+    '/deliverers/:id/history',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { rows: [d] } = await db.query(
+        `SELECT id, name, username, email, status, profile_image_url, is_active, created_at
+         FROM deliverers WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
+
+      const { rows: history } = await db.query(
+        `SELECT status, lat, lng, changed_at
+         FROM deliverer_status_history
+         WHERE deliverer_id = $1
+         ORDER BY changed_at DESC
+         LIMIT 100`,
+        [id]
+      )
+
+      return {
+        id:              d.id,
+        name:            d.name,
+        username:        d.username,
+        email:           d.email,
+        status:          d.status,
+        profileImageUrl: d.profile_image_url,
+        isActive:        d.is_active,
+        createdAt:       d.created_at,
+        history: history.map((h: Record<string, unknown>) => ({
+          status:    h.status,
+          lat:       h.lat,
+          lng:       h.lng,
+          changedAt: h.changed_at,
+        })),
+      }
+    }
+  )
+
   // Deliverer fetches own store info (for distance calculation)
   app.get('/deliverer/store', { preHandler: requireDeliverer }, async (req) => {
     const { rows: [store] } = await db.query(

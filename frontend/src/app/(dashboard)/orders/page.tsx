@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck } from 'lucide-react'
 import { Order, OrderStatus, Deliverer } from '@/types'
@@ -23,8 +24,9 @@ const STATUSES: (OrderStatus | '')[] = [
 const COMPLETED_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELLED']
 
 export default function OrdersPage() {
-  const { user } = useAuth()
-  const { on }   = useWebSocket(user?.storeId)
+  const { user }   = useAuth()
+  const { on }     = useWebSocket(user?.storeId)
+  const router     = useRouter()
 
   const [status,       setStatus]       = useState<OrderStatus | ''>('')
   const [delivererId,  setDelivererId]  = useState('')
@@ -102,12 +104,12 @@ export default function OrdersPage() {
     if (!batchDelivererId || batchSelected.size === 0) return
     setBatchLoading(true)
     try {
-      await api.post('/orders/batch-assign', {
-        orderIds:    Array.from(batchSelected),
-        delivererId: batchDelivererId,
-      })
-      mutate()
+      const result = await api.post<{ route: { id: string }; orders: unknown[] }>(
+        '/orders/batch-assign',
+        { orderIds: Array.from(batchSelected), delivererId: batchDelivererId }
+      )
       exitBatchMode()
+      router.push(`/routes/${result.route.id}`)
     } finally {
       setBatchLoading(false)
     }
@@ -411,7 +413,7 @@ export default function OrdersPage() {
         <AssignModal
           order={assigning}
           onClose={() => setAssigning(null)}
-          onAssigned={() => { setAssigning(null); mutate() }}
+          onAssigned={(routeId) => { setAssigning(null); router.push(`/routes/${routeId}`) }}
         />
       )}
     </div>

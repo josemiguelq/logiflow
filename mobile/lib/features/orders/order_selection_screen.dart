@@ -11,10 +11,11 @@ import '../../core/theme/app_theme.dart';
 
 // ── providers ────────────────────────────────────────────────────────────────
 
-final _assignedOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) async {
-  final res = await ApiClient().dio.get('/deliverer/orders');
-  final all = (res.data as List).map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
-  return all.where((o) => o.status == 'ASSIGNED').toList();
+final _routesProvider = FutureProvider.autoDispose<List<DelivererRoute>>((ref) async {
+  final res = await ApiClient().dio.get('/deliverer/routes');
+  return (res.data as List)
+      .map((e) => DelivererRoute.fromJson(e as Map<String, dynamic>))
+      .toList();
 });
 
 final _preparingOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) async {
@@ -73,19 +74,19 @@ class OrderSelectionScreen extends ConsumerStatefulWidget {
 
 class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   final Set<String> _selected = {};
-  bool _claiming = false;
+  bool _claiming       = false;
   bool _togglingStatus = false;
+  bool _openingRoute   = false;
 
   void _refresh() {
-    ref.invalidate(_assignedOrdersProvider);
+    ref.invalidate(_routesProvider);
     ref.invalidate(_preparingOrdersProvider);
     ref.invalidate(_activeOrdersProvider);
   }
 
   Future<void> _toggleStatus(String currentStatus) async {
-    final isOffline = currentStatus == 'OFFLINE';
+    final isOffline    = currentStatus == 'OFFLINE';
     final targetStatus = isOffline ? 'AVAILABLE' : 'OFFLINE';
-
     setState(() => _togglingStatus = true);
     try {
       double? lat, lng;
@@ -97,7 +98,6 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         lat = pos.latitude;
         lng = pos.longitude;
       } catch (_) {}
-
       final err = await ref.read(authProvider.notifier).updateStatus(targetStatus, lat: lat, lng: lng);
       if (err != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
@@ -107,30 +107,68 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     }
   }
 
+  Future<void> _openRoute(DelivererRoute summary) async {
+    if (summary.status == 'STARTED') {
+      context.push('/delivery');
+      return;
+    }
+    setState(() => _openingRoute = true);
+    try {
+      final res   = await ApiClient().dio.get('/deliverer/routes/${summary.id}');
+      final route = DelivererRoute.fromJson(res.data as Map<String, dynamic>);
+      if (mounted) context.push('/plan-route', extra: route);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao carregar rota. Tente novamente.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingRoute = false);
+    }
+  }
+
+  Future<void> _claimPreparing() async {
+    setState(() => _claiming = true);
+    try {
+      final prepList = ref.read(_preparingOrdersProvider).value ?? [];
+      final selected = prepList.where((o) => _selected.contains(o.id)).toList();
+      final res  = await ApiClient().dio.post('/deliverer/orders/claim', data: {
+        'orderIds': selected.map((o) => o.id).toList(),
+      });
+      final data  = res.data as Map<String, dynamic>;
+      final route = DelivererRoute.fromJson(data['route'] as Map<String, dynamic>);
+      ref.invalidate(_routesProvider);
+      ref.invalidate(_preparingOrdersProvider);
+      if (mounted) context.push('/plan-route', extra: route);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao iniciar rota. Tente novamente.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() { _claiming = false; _selected.clear(); });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final assigned    = ref.watch(_assignedOrdersProvider);
-    final preparing   = ref.watch(_preparingOrdersProvider);
+    final routes       = ref.watch(_routesProvider);
+    final preparing    = ref.watch(_preparingOrdersProvider);
     final activeOrders = ref.watch(_activeOrdersProvider);
-    final storeLoc    = ref.watch(_storeLocationProvider);
-    final session     = ref.watch(authProvider);
+    final storeLoc     = ref.watch(_storeLocationProvider);
+    final session      = ref.watch(authProvider);
 
-    // Determine which list to show
-    final assignedList  = assigned.value ?? [];
+    final routeList     = routes.value ?? [];
     final preparingList = preparing.value ?? [];
-    final isPreparing   = assignedList.isEmpty;
-    final displayList   = isPreparing ? preparingList : assignedList;
-    final isLoading     = isPreparing
-        ? (assigned.isLoading || preparing.isLoading)
-        : assigned.isLoading;
-
-    final isOffline = session?.status == 'OFFLINE';
+    final isOffline     = session?.status == 'OFFLINE';
+    final isLoading     = routes.isLoading || preparing.isLoading;
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Olá, ${session?.name.split(' ').first ?? ''}'),
         actions: [
-          // Status toggle
           Row(
             children: [
               Text(
@@ -144,12 +182,16 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
               _togglingStatus
                   ? const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
                     )
                   : Switch(
                       value: !isOffline,
                       activeColor: const Color(0xFF16A34A),
-                      onChanged: (_) => _toggleStatus(session?.status ?? 'AVAILABLE'),
+                      onChanged: (_) =>
+                          _toggleStatus(session?.status ?? 'AVAILABLE'),
                     ),
             ],
           ),
@@ -165,133 +207,162 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Offline banner
-                if (isOffline)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    color: Colors.grey.shade200,
-                    child: Row(children: [
-                      Icon(Icons.do_not_disturb_on_outlined, size: 16, color: Colors.grey.shade600),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Você está OFFLINE — não receberá novos pedidos',
-                        style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w500),
-                      ),
-                    ]),
-                  ),
-
-                // Active route banner
-                activeOrders.when(
-                  data: (active) => active.isEmpty
-                      ? const SizedBox.shrink()
-                      : _ActiveRouteBanner(
-                          count: active.length,
-                          onTap: () => context.push('/delivery')),
-                  loading: () => const SizedBox.shrink(),
-                  error:   (_, __) => const SizedBox.shrink(),
-                ),
-
-                // Section header when showing preparing orders
-                if (isPreparing && preparingList.isNotEmpty)
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFBBF7D0)),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.store_outlined, size: 16, color: Color(0xFF16A34A)),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${preparingList.length} pedido(s) prontos na loja para retirada',
-                        style: const TextStyle(
-                          color: Color(0xFF15803D),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ]),
-                  ),
-
-                if (displayList.isEmpty)
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.inbox_outlined, size: 56, color: Colors.grey.shade400),
-                          const SizedBox(height: 12),
-                          const Text('Nenhum pedido disponível',
-                              style: TextStyle(
-                                  color: Colors.grey, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 4),
-                          const Text('Aguarde a loja preparar pedidos',
-                              style: TextStyle(color: Colors.grey, fontSize: 13)),
-                        ],
+          : RefreshIndicator(
+              onRefresh: () async => _refresh(),
+              child: CustomScrollView(
+                slivers: [
+                  // ── Offline banner ───────────────────────────────────
+                  if (isOffline)
+                    SliverToBoxAdapter(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        color: Colors.grey.shade200,
+                        child: Row(children: [
+                          Icon(Icons.do_not_disturb_on_outlined,
+                              size: 16, color: Colors.grey.shade600),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Você está OFFLINE — não receberá novos pedidos',
+                            style: TextStyle(
+                                color: Colors.grey.shade700,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ]),
                       ),
                     ),
-                  )
-                else ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          isPreparing
-                              ? 'Selecione os pedidos que vai buscar'
-                              : '${displayList.length} pedido(s) atribuído(s)',
+
+                  // ── Active delivery banner ───────────────────────────
+                  SliverToBoxAdapter(
+                    child: activeOrders.when(
+                      data: (active) => active.isEmpty
+                          ? const SizedBox.shrink()
+                          : _ActiveRouteBanner(
+                              count: active.length,
+                              onTap: () => context.push('/delivery')),
+                      loading: () => const SizedBox.shrink(),
+                      error:   (_, __) => const SizedBox.shrink(),
+                    ),
+                  ),
+
+                  // ── Routes assigned by the store ─────────────────────
+                  if (routeList.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Text(
+                          'Rotas atribuídas (${routeList.length})',
                           style: const TextStyle(
                               fontWeight: FontWeight.w600, fontSize: 14),
                         ),
-                        if (_selected.isNotEmpty)
-                          TextButton(
-                            onPressed: () => setState(() => _selected.clear()),
-                            child: const Text('Limpar'),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: () async => _refresh(),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                        itemCount: displayList.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) {
-                          final store = storeLoc.value ?? const _StoreLocation(null, null);
-                          final o   = displayList[i];
-                          final dist = _distanceKm(store, o);
-                          final sel  = _selected.contains(o.id);
-                          return _OrderSelectionTile(
-                            order:    o,
-                            distance: dist,
-                            selected: sel,
-                            onTap: () => setState(() {
-                              if (sel) _selected.remove(o.id); else _selected.add(o.id);
-                            }),
-                          );
-                        },
                       ),
                     ),
-                  ),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (_, i) => Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                          child: _RouteSummaryCard(
+                            route:   routeList[i],
+                            loading: _openingRoute,
+                            onTap:   () => _openRoute(routeList[i]),
+                          ),
+                        ),
+                        childCount: routeList.length,
+                      ),
+                    ),
+                  ],
+
+                  // ── Preparing orders (self-claim) ────────────────────
+                  if (preparingList.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Selecione os pedidos que vai buscar',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
+                            if (_selected.isNotEmpty)
+                              TextButton(
+                                onPressed: () =>
+                                    setState(() => _selected.clear()),
+                                child: const Text('Limpar'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (_, i) {
+                            final store =
+                                storeLoc.value ?? const _StoreLocation(null, null);
+                            final o    = preparingList[i];
+                            final dist = _distanceKm(store, o);
+                            final sel  = _selected.contains(o.id);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _OrderSelectionTile(
+                                order:    o,
+                                distance: dist,
+                                selected: sel,
+                                onTap: () => setState(() {
+                                  if (sel)
+                                    _selected.remove(o.id);
+                                  else
+                                    _selected.add(o.id);
+                                }),
+                              ),
+                            );
+                          },
+                          childCount: preparingList.length,
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // ── Empty state ──────────────────────────────────────
+                  if (routeList.isEmpty && preparingList.isEmpty)
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inbox_outlined,
+                                size: 56, color: Colors.grey.shade400),
+                            const SizedBox(height: 12),
+                            const Text('Nenhum pedido disponível',
+                                style: TextStyle(
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.w500)),
+                            const SizedBox(height: 4),
+                            const Text('Aguarde a loja preparar pedidos',
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
-              ],
+              ),
             ),
       floatingActionButton: _selected.isEmpty
           ? null
           : FloatingActionButton.extended(
-              onPressed: _claiming ? null : () => _proceedToRoute(isPreparing),
+              onPressed: _claiming ? null : _claimPreparing,
               icon: _claiming
-                  ? const SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.route),
               label: Text('Iniciar rota (${_selected.length})'),
               backgroundColor: AppTheme.primary,
@@ -299,49 +370,9 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
             ),
     );
   }
-
-  Future<void> _proceedToRoute(bool isPreparing) async {
-    setState(() => _claiming = true);
-    try {
-      if (isPreparing) {
-        final prepList = ref.read(_preparingOrdersProvider).value ?? [];
-        final selected = prepList.where((o) => _selected.contains(o.id)).toList();
-        final res = await ApiClient().dio.post('/deliverer/orders/claim', data: {
-          'orderIds': selected.map((o) => o.id).toList(),
-        });
-        final route = DelivererRoute.fromJson(res.data as Map<String, dynamic>);
-        ref.invalidate(_assignedOrdersProvider);
-        ref.invalidate(_preparingOrdersProvider);
-        if (mounted) context.push('/plan-route', extra: route);
-      } else {
-        final list     = ref.read(_assignedOrdersProvider).value ?? [];
-        final selected = list.where((o) => _selected.contains(o.id)).toList();
-        // All batch-assigned orders have a routeId; fetch the route for plan screen
-        final routeId = selected.isNotEmpty ? selected.first.routeId : null;
-        if (routeId != null) {
-          final res = await ApiClient().dio.get('/deliverer/routes/$routeId');
-          final route = DelivererRoute.fromJson(res.data as Map<String, dynamic>);
-          if (mounted) context.push('/plan-route', extra: route);
-        } else {
-          // Fallback: individually assigned order without a route — wrap in a local route shell
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Pedidos sem rota não podem iniciar neste fluxo.')),
-            );
-          }
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erro ao iniciar rota. Tente novamente.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _claiming = false);
-    }
-  }
 }
+
+// ── widgets ──────────────────────────────────────────────────────────────────
 
 class _ActiveRouteBanner extends StatelessWidget {
   final int count;
@@ -363,7 +394,8 @@ class _ActiveRouteBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.local_shipping, color: Color(0xFFEA580C), size: 20),
+            const Icon(Icons.local_shipping,
+                color: Color(0xFFEA580C), size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -376,6 +408,103 @@ class _ActiveRouteBanner extends StatelessWidget {
                 style: TextStyle(
                     color: Color(0xFFEA580C), fontWeight: FontWeight.w600)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteSummaryCard extends StatelessWidget {
+  final DelivererRoute route;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _RouteSummaryCard({
+    required this.route,
+    required this.loading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isStarted = route.status == 'STARTED';
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isStarted
+                ? const Color(0xFFFED7AA)
+                : const Color(0xFFBBF7D0),
+            width: 1.5,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isStarted
+                      ? const Color(0xFFFFEDD5)
+                      : const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isStarted
+                      ? Icons.local_shipping_outlined
+                      : Icons.inventory_2_outlined,
+                  color: isStarted
+                      ? const Color(0xFFEA580C)
+                      : const Color(0xFF16A34A),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Código: ',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500),
+                        ),
+                        Text(
+                          route.pickupCode,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${route.orderCount} pedido(s) · ${isStarted ? 'Em andamento' : 'Pronto para coleta'}',
+                      style: TextStyle(
+                          fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+              loading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Icon(Icons.chevron_right,
+                      color: Colors.grey.shade400, size: 24),
+            ],
+          ),
         ),
       ),
     );
