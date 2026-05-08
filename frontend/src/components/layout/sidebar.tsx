@@ -3,21 +3,26 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog,
+  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog, BarChart2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 
+type Role = 'OWNER' | 'MANAGER' | 'ASSISTANT'
+
 const BASE_NAV = [
-  { href: '/orders',     label: 'Pedidos',      icon: Package,      feature: null },
-  { href: '/routes',     label: 'Rotas',        icon: Route,        feature: null },
-  { href: '/customers',  label: 'Clientes',     icon: Users,        feature: null },
-  { href: '/deliverers', label: 'Entregadores', icon: Truck,        feature: null },
-  { href: '/users',      label: 'Usuários',     icon: UserCog,      feature: null },
-  { href: '/whatsapp',   label: 'WhatsApp',     icon: MessageSquare, feature: 'whatsappEnabled' as const },
-  { href: '/settings',   label: 'Configurações', icon: Settings,    feature: null },
+  { href: '/orders',     label: 'Pedidos',      icon: Package,      feature: null,                   minRole: null as Role | null },
+  { href: '/routes',     label: 'Rotas',        icon: Route,        feature: null,                   minRole: null as Role | null },
+  { href: '/customers',  label: 'Clientes',     icon: Users,        feature: null,                   minRole: null as Role | null },
+  { href: '/deliverers', label: 'Entregadores', icon: Truck,        feature: null,                   minRole: null as Role | null },
+  { href: '/users',      label: 'Usuários',     icon: UserCog,      feature: null,                   minRole: null as Role | null },
+  { href: '/analytics',  label: 'Analítico',    icon: BarChart2,    feature: null,                   minRole: 'MANAGER' as Role },
+  { href: '/whatsapp',   label: 'WhatsApp',     icon: MessageSquare, feature: 'whatsappEnabled' as const, minRole: null as Role | null },
+  { href: '/settings',   label: 'Configurações', icon: Settings,    feature: null,                   minRole: null as Role | null },
 ]
+
+const roleLevel: Record<Role, number> = { OWNER: 3, MANAGER: 2, ASSISTANT: 1 }
 
 interface Props {
   isOpen: boolean
@@ -28,9 +33,12 @@ export function Sidebar({ isOpen, onClose }: Props) {
   const pathname  = usePathname()
   const { user, logout } = useAuth()
   const features  = useStoreFeatures()
-  const nav = BASE_NAV.filter(item =>
-    item.feature === null || features[item.feature]
-  )
+  const userLevel = roleLevel[(user?.role ?? 'ASSISTANT') as Role] ?? 1
+  const nav = BASE_NAV.filter(item => {
+    if (item.feature !== null && !features[item.feature]) return false
+    if (item.minRole !== null && userLevel < roleLevel[item.minRole]) return false
+    return true
+  })
 
   return (
     <>

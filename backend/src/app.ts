@@ -13,6 +13,7 @@ import { notificationRoutes } from './modules/notifications/interface/routes'
 import { settingsRoutes } from './modules/settings/interface/routes'
 import { routeRoutes } from './modules/routes/interface/routes'
 import { superAdminRoutes } from './modules/super-admin/interface/routes'
+import { analyticsRoutes } from './modules/analytics/interface/routes'
 import { wsHub } from './shared/infra/websocket'
 
 export function buildApp() {
@@ -112,6 +113,7 @@ export function buildApp() {
   app.register(settingsRoutes)
   app.register(routeRoutes)
   app.register(superAdminRoutes)
+  app.register(analyticsRoutes)
 
   app.get('/health', async (_req, reply) => {
     return reply.type('text/plain').send('ok')
