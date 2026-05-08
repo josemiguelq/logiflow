@@ -113,7 +113,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     setState(() => _navigating = true);
     try {
       // Mark as OUT_FOR_DELIVERY before opening maps
-      await ApiClient().dio.patch('/deliverer/orders/${widget.order.id}/start-route');
+      await ApiClient().dio.patch('/deliverer/orders/${widget.order.id}/start-route', data: {});
       widget.onDelivered(); // refresh the list
     } catch (_) {}
 
