@@ -91,7 +91,8 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
     },
 
     async sendMessage(phone, text) {
-      const normalizedPhone = phone.replace(/\D/g, '')
+      let normalizedPhone = phone.replace(/\D/g, '')
+      if (!normalizedPhone.startsWith('55')) normalizedPhone = `55${normalizedPhone}`
       const jid = `${normalizedPhone}@s.whatsapp.net`
 
       for (const [, socket] of sockets) {

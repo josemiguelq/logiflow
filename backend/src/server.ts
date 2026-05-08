@@ -55,7 +55,7 @@ async function start() {
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
     try {
-      await whatsapp.sendMessage(`+55${phone}`, message)
+      await whatsapp.sendMessage(phone, message)
       await messageLogRepo.markSent(logId)
     } catch (err) {
       await messageLogRepo.markFailed(logId)

@@ -1,9 +1,9 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Clock, MapPin, Package } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, Flag, MapPin, Package } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 
@@ -39,10 +39,22 @@ interface Props { params: Promise<{ id: string }> }
 
 export default function RouteDetailPage({ params }: Props) {
   const { id } = use(params)
-  const { data: route, isLoading } = useSWR<DeliveryRoute>(
+  const { data: route, isLoading, mutate } = useSWR<DeliveryRoute>(
     `/routes/${id}`,
     (url: string) => api.get<DeliveryRoute>(url)
   )
+  const [finishing, setFinishing] = useState(false)
+
+  async function forceFinish() {
+    if (!confirm('Marcar rota como finalizada?')) return
+    setFinishing(true)
+    try {
+      await api.patch(`/routes/${id}/status`, { status: 'FINISHED' })
+      await mutate()
+    } finally {
+      setFinishing(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -86,9 +98,21 @@ export default function RouteDetailPage({ params }: Props) {
             })}
           </p>
         </div>
-        <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${STATUS_COLOR[route.status]}`}>
-          {STATUS_LABEL[route.status]}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${STATUS_COLOR[route.status]}`}>
+            {STATUS_LABEL[route.status]}
+          </span>
+          {route.status !== 'FINISHED' && (
+            <button
+              onClick={forceFinish}
+              disabled={finishing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              <Flag className="h-3.5 w-3.5" />
+              {finishing ? 'Finalizando…' : 'Forçar finalização'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Info cards */}
