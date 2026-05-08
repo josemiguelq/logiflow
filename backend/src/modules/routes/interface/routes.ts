@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
+import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgRouteRepo } from '../infrastructure/repositories/pg-route-repo'
 import { createPgOrderRepo } from '../../orders/infrastructure/repositories/pg-order-repo'
 import { wsHub } from '../../../shared/infra/websocket'
@@ -88,7 +89,7 @@ export async function routeRoutes(app: FastifyInstance) {
 
   app.patch(
     '/routes/:id/status',
-    { preHandler: requireStoreUser },
+    { preHandler: [requireStoreUser, requireScope('routes:force_finish')] },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const { status } = z.object({

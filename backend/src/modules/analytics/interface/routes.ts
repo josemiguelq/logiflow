@@ -2,10 +2,10 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
-import { requireRole } from '../../../shared/middleware/rbac'
+import { requireScope } from '../../../shared/middleware/rbac'
 
 export async function analyticsRoutes(app: FastifyInstance) {
-  const guard = [requireStoreUser, requireRole('MANAGER')]
+  const guard = [requireStoreUser, requireScope('analytics:view')]
 
   // GET /analytics/orders/timeseries?scale=day|month
   app.get('/analytics/orders/timeseries', { preHandler: guard }, async (req) => {

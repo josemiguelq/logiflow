@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import { db } from './client'
+import { DEFAULT_ROLE_SCOPES } from '../scopes'
 
 function route(
   fromLat: number, fromLng: number,

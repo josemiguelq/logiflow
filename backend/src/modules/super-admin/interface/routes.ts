@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { requireSuperAdmin } from '../../../shared/middleware/auth'
+import { DEFAULT_ROLE_SCOPES, SCOPES, SCOPE_LABELS, SCOPE_GROUPS } from '../../../shared/scopes'
 
 const createStoreSchema = z.object({
   storeName:     z.string().min(2),
@@ -113,6 +114,16 @@ export async function superAdminRoutes(app: FastifyInstance) {
         [body.storeName]
       )
 
+      // Seed default role scopes for the new store
+      for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
+        await db.query(
+          `INSERT INTO store_role_scopes (store_id, role, scopes)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (store_id, role) DO NOTHING`,
+          [store.id, role, JSON.stringify(DEFAULT_ROLE_SCOPES[role])]
+        )
+      }
+
       const hash = await bcrypt.hash(body.ownerPassword, 10)
       const username = body.ownerEmail.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
       const { rows: [user] } = await db.query(
@@ -208,6 +219,70 @@ export async function superAdminRoutes(app: FastifyInstance) {
 
       await db.query('DELETE FROM store_users WHERE id = $1', [userId])
       return { ok: true }
+    }
+  )
+
+  // ── Scope definitions (read-only — consumed by the SA UI) ─────────────────
+
+  app.get('/super-admin/scopes', { preHandler: requireSuperAdmin }, async () => ({
+    scopes:  SCOPES,
+    labels:  SCOPE_LABELS,
+    groups:  SCOPE_GROUPS,
+    defaults: DEFAULT_ROLE_SCOPES,
+  }))
+
+  // ── Role scopes per store ─────────────────────────────────────────────────
+
+  app.get(
+    '/super-admin/stores/:storeId/role-scopes',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const { rows } = await db.query(
+        'SELECT role, scopes FROM store_role_scopes WHERE store_id = $1',
+        [storeId]
+      )
+
+      // Return all three roles, falling back to defaults if not yet seeded
+      const result: Record<string, string[]> = {}
+      for (const role of ['OWNER', 'MANAGER', 'ASSISTANT']) {
+        const row = rows.find((r: Record<string, unknown>) => r.role === role)
+        result[role] = (row?.scopes as string[] | undefined) ?? DEFAULT_ROLE_SCOPES[role] ?? []
+      }
+      return result
+    }
+  )
+
+  const updateScopesSchema = z.object({
+    scopes: z.array(z.string()),
+  })
+
+  app.put(
+    '/super-admin/stores/:storeId/role-scopes/:role',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId, role } = req.params as { storeId: string; role: string }
+      if (!['OWNER', 'MANAGER', 'ASSISTANT'].includes(role)) {
+        return reply.code(400).send({ error: 'Invalid role' })
+      }
+
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const { scopes } = updateScopesSchema.parse(req.body)
+
+      await db.query(
+        `INSERT INTO store_role_scopes (store_id, role, scopes, updated_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (store_id, role) DO UPDATE
+         SET scopes = $3, updated_at = now()`,
+        [storeId, role, JSON.stringify(scopes)]
+      )
+
+      return { storeId, role, scopes }
     }
   )
 }

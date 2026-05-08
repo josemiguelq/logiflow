@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
+import { requireScope } from '../../../shared/middleware/rbac'
 
 const DEFAULT_THEME = {
   primary:   '#2563EB',
@@ -188,7 +189,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   // ── Store user management (OWNER/MANAGER only) ─────────────────────────────
 
-  app.get('/store/users', { preHandler: requireStoreUser }, async (req) => {
+  app.get('/store/users', { preHandler: [requireStoreUser, requireScope('users:view')] }, async (req) => {
     const { rows } = await db.query(
       `SELECT id, name, email, username, role, created_at
        FROM store_users WHERE store_id = $1 ORDER BY created_at ASC`,
@@ -212,16 +213,9 @@ export async function settingsRoutes(app: FastifyInstance) {
     role:     z.enum(['MANAGER', 'ASSISTANT']),
   })
 
-  app.post('/store/users', { preHandler: requireStoreUser }, async (req, reply) => {
+  app.post('/store/users', { preHandler: [requireStoreUser, requireScope('users:create')] }, async (req, reply) => {
     const actor = req.actor as { role: string; storeId: string; sub: string }
-    if (!['OWNER', 'MANAGER'].includes(actor.role)) {
-      return reply.code(403).send({ error: 'Sem permissão' })
-    }
     const body = createUserSchema.parse(req.body)
-    // MANAGER can only create ASSISTANT
-    if (actor.role === 'MANAGER' && body.role !== 'ASSISTANT') {
-      return reply.code(403).send({ error: 'Managers só podem criar assistentes' })
-    }
 
     const { rows: [dup] } = await db.query(
       'SELECT id FROM store_users WHERE (email = $1 OR username = $2) AND store_id = $3',
@@ -238,11 +232,8 @@ export async function settingsRoutes(app: FastifyInstance) {
     return reply.code(201).send(user)
   })
 
-  app.delete('/store/users/:id', { preHandler: requireStoreUser }, async (req, reply) => {
+  app.delete('/store/users/:id', { preHandler: [requireStoreUser, requireScope('users:delete')] }, async (req, reply) => {
     const actor = req.actor as { role: string; storeId: string; sub: string }
-    if (!['OWNER', 'MANAGER'].includes(actor.role)) {
-      return reply.code(403).send({ error: 'Sem permissão' })
-    }
     const { id } = req.params as { id: string }
     if (id === actor.sub) return reply.code(400).send({ error: 'Não é possível remover a si mesmo' })
 

@@ -1,21 +1,20 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 
 export type JWTPayload =
-  | { type: 'store_user'; sub: string; storeId: string; role: string; name: string }
+  | { type: 'store_user'; sub: string; storeId: string; role: string; name: string; scopes: string[] }
   | { type: 'deliverer';  sub: string; storeId: string; name: string }
   | { type: 'super_admin'; sub: string; email: string }
 
-// Declared broadly so existing routes (always behind requireStoreUser/requireDeliverer)
-// can access storeId/name/role without narrowing. The middlewares enforce the actual type.
 declare module 'fastify' {
   interface FastifyRequest {
     actor: {
-      type: 'store_user' | 'deliverer' | 'super_admin'
-      sub: string
-      storeId: string
-      name: string
-      role?: string
-      email?: string
+      type:     'store_user' | 'deliverer' | 'super_admin'
+      sub:      string
+      storeId:  string
+      name:     string
+      role?:    string
+      email?:   string
+      scopes?:  string[]
     }
   }
 }
