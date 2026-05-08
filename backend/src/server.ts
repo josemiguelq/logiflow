@@ -63,6 +63,9 @@ async function start() {
     }
   })
 
+  // ── Reconnect previously active WhatsApp sessions ────────────────────────
+  whatsapp.reconnectAll().catch((err) => app.log.warn({ err }, 'WhatsApp reconnect failed'))
+
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)
   await app.listen({ port, host: '0.0.0.0' })

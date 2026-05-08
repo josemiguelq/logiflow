@@ -1,13 +1,10 @@
 import makeWASocket, {
   DisconnectReason,
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
-import { join } from 'path'
-import { mkdirSync } from 'fs'
 import { IWhatsAppProvider } from '../../domain/ports'
-import { createDbSessionStore } from './session-store'
+import { createDbSessionStore, useDbAuthState } from './session-store'
 import { DB } from '../../../../shared/db/client'
 
 type SocketInstance = ReturnType<typeof makeWASocket>
@@ -19,17 +16,14 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
   const sessionStore = createDbSessionStore(db)
 
   async function createSocket(storeId: string): Promise<SocketInstance> {
-    const sessionDir = join(process.cwd(), '.wa-sessions', storeId)
-    mkdirSync(sessionDir, { recursive: true })
-
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir)
+    const { state, saveCreds } = await useDbAuthState(db, storeId)
     const { version }          = await fetchLatestBaileysVersion()
 
     const socket = makeWASocket({
       version,
-      auth:          state,
+      auth:              state,
       printQRInTerminal: false,
-      browser: ['LogiFlow', 'Chrome', '1.0'],
+      browser:           ['LogiFlow', 'Chrome', '1.0'],
     })
 
     socket.ev.on('creds.update', saveCreds)
@@ -95,6 +89,15 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
         return
       }
       throw new Error('No active WhatsApp session')
+    },
+
+    async reconnectAll() {
+      const storeIds = await sessionStore.getConnectedStoreIds()
+      for (const storeId of storeIds) {
+        if (!sockets.has(storeId)) {
+          createSocket(storeId).catch(() => { /* will retry on its own */ })
+        }
+      }
     },
   }
 }

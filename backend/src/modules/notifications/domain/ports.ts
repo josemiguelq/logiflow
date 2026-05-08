@@ -6,6 +6,7 @@ export interface IWhatsAppProvider {
   connect(storeId: string): Promise<void>
   disconnect(storeId: string): Promise<void>
   getStatus(storeId: string): Promise<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>
+  reconnectAll(): Promise<void>
 }
 
 export interface IMessageLogRepository {
