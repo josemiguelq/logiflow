@@ -24,6 +24,16 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
       auth:              state,
       printQRInTerminal: false,
       browser:           ['LogiFlow', 'Chrome', '1.0'],
+      // Render cold-starts are slow — give WhatsApp more time to respond
+      connectTimeoutMs:      60_000,
+      defaultQueryTimeoutMs: 0,       // 0 = no timeout (wait indefinitely)
+      // Suppress Baileys' verbose internal error logs
+      logger: {
+        level: 'silent',
+        trace: () => {}, debug: () => {}, info: () => {},
+        warn:  () => {}, error: () => {}, fatal: () => {},
+        child: () => ({ level: 'silent', trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {}, child: () => ({} as never) }),
+      } as never,
     })
 
     socket.ev.on('creds.update', saveCreds)
