@@ -82,7 +82,7 @@ export default function OrdersPage() {
     }))
 
   async function handleCancel(orderId: string) {
-    await api.patch(`/orders/${orderId}/cancel`)
+    await api.patch(`/orders/${orderId}/cancel`, {})
     mutate()
   }
 
