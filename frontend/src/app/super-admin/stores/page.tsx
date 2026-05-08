@@ -3,26 +3,34 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp, CheckCircle, ShieldCheck } from 'lucide-react'
+import {
+  Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp,
+  CheckCircle, ShieldCheck, Download,
+} from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
+interface Feature {
+  id:          string
+  name:        string
+  description: string
+}
+
 interface StoreRow {
-  id: string
-  name: string
-  createdAt: string
-  customThemeEnabled: boolean
-  whatsappEnabled: boolean
-  deliveredCount: number
+  id:              string
+  name:            string
+  createdAt:       string
+  deliveredCount:  number
+  enabledFeatures: string[]
 }
 
 interface StoreUser {
-  id: string
-  name: string
-  email: string
-  username: string
-  role: 'OWNER' | 'MANAGER' | 'ASSISTANT'
+  id:        string
+  name:      string
+  email:     string
+  username:  string
+  role:      'OWNER' | 'MANAGER' | 'ASSISTANT'
   createdAt: string
 }
 
@@ -53,9 +61,16 @@ const ROLE_COLOR: Record<string, string> = {
   ASSISTANT: 'bg-gray-100 text-gray-600',
 }
 
+const FEATURE_META: Record<string, { label: string; icon: React.ReactNode }> = {
+  whatsapp:     { label: 'WhatsApp',  icon: <Zap className="h-3.5 w-3.5" /> },
+  custom_theme: { label: 'Tema',      icon: <Palette className="h-3.5 w-3.5" /> },
+  csv_export:   { label: 'CSV',       icon: <Download className="h-3.5 w-3.5" /> },
+}
+
 export default function SuperAdminStoresPage() {
   const router  = useRouter()
   const [stores,          setStores]          = useState<StoreRow[]>([])
+  const [features,        setFeatures]        = useState<Feature[]>([])
   const [loading,         setLoading]         = useState(true)
   const [showForm,        setShowForm]        = useState(false)
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null)
@@ -63,8 +78,12 @@ export default function SuperAdminStoresPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await saFetch<StoreRow[]>('/super-admin/stores')
-      setStores(data)
+      const [storeData, featureData] = await Promise.all([
+        saFetch<StoreRow[]>('/super-admin/stores'),
+        saFetch<Feature[]>('/super-admin/features'),
+      ])
+      setStores(storeData)
+      setFeatures(featureData)
     } catch {
       router.replace('/super-admin')
     } finally {
@@ -77,12 +96,24 @@ export default function SuperAdminStoresPage() {
     load()
   }, [load, router])
 
-  async function toggleFeature(storeId: string, feature: 'customThemeEnabled' | 'whatsappEnabled', val: boolean) {
-    await saFetch(`/super-admin/stores/${storeId}/features`, {
-      method: 'PATCH',
-      body: JSON.stringify({ [feature]: val }),
-    })
-    setStores(prev => prev.map(s => s.id === storeId ? { ...s, [feature]: val } : s))
+  async function toggleFeature(store: StoreRow, feature: Feature) {
+    const isEnabled = store.enabledFeatures.includes(feature.name)
+    if (isEnabled) {
+      await saFetch(`/super-admin/stores/${store.id}/features-enabled/${feature.id}`, { method: 'DELETE' })
+      setStores(prev => prev.map(s => s.id === store.id
+        ? { ...s, enabledFeatures: s.enabledFeatures.filter(n => n !== feature.name) }
+        : s
+      ))
+    } else {
+      await saFetch(`/super-admin/stores/${store.id}/features-enabled`, {
+        method: 'POST',
+        body: JSON.stringify({ featureId: feature.id }),
+      })
+      setStores(prev => prev.map(s => s.id === store.id
+        ? { ...s, enabledFeatures: [...s.enabledFeatures, feature.name] }
+        : s
+      ))
+    }
   }
 
   function logout() {
@@ -144,19 +175,17 @@ export default function SuperAdminStoresPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <FeatureToggle
-                      label="WhatsApp"
-                      icon={<Zap className="h-3.5 w-3.5" />}
-                      enabled={s.whatsappEnabled}
-                      onChange={v => toggleFeature(s.id, 'whatsappEnabled', v)}
-                    />
-                    <FeatureToggle
-                      label="Tema"
-                      icon={<Palette className="h-3.5 w-3.5" />}
-                      enabled={s.customThemeEnabled}
-                      onChange={v => toggleFeature(s.id, 'customThemeEnabled', v)}
-                    />
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {features.map(f => (
+                      <FeatureToggle
+                        key={f.id}
+                        label={(FEATURE_META[f.name]?.label) ?? f.name}
+                        icon={FEATURE_META[f.name]?.icon ?? null}
+                        enabled={s.enabledFeatures.includes(f.name)}
+                        onChange={() => toggleFeature(s, f)}
+                      />
+                    ))}
                     <button
                       onClick={() => toggleExpand(s.id)}
                       className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
@@ -271,14 +300,14 @@ function StoreUsersPanel({ store, onCreateUser }: { store: StoreRow; onCreateUse
 function FeatureToggle({
   label, icon, enabled, onChange,
 }: {
-  label: string
-  icon: React.ReactNode
-  enabled: boolean
-  onChange: (v: boolean) => void
+  label:    string
+  icon:     React.ReactNode
+  enabled:  boolean
+  onChange: () => void
 }) {
   return (
     <button
-      onClick={() => onChange(!enabled)}
+      onClick={onChange}
       className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
         enabled
           ? 'bg-green-100 text-green-700 hover:bg-green-200'
@@ -368,8 +397,8 @@ function CreateStoreModal({ onClose, onCreated }: { onClose: () => void; onCreat
 function CreateStoreUserModal({
   store, onClose, onCreated,
 }: {
-  store: StoreRow
-  onClose: () => void
+  store:     StoreRow
+  onClose:   () => void
   onCreated: () => void
 }) {
   const [name,     setName]     = useState('')
