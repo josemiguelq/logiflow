@@ -71,7 +71,7 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   OWNER: [...SCOPES],
   MANAGER: SCOPES.filter(s =>
-    !['users:view', 'users:create', 'users:delete'].includes(s)
+    !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect'].includes(s)
   ),
   ASSISTANT: [
     'orders:view', 'orders:create',

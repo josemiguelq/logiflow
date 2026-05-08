@@ -35,66 +35,84 @@ export async function superAdminRoutes(app: FastifyInstance) {
     return { token, email: admin.email }
   })
 
-  // ── Stores management ─────────────────────────────────────────────────────
-  app.get('/super-admin/stores', { preHandler: requireSuperAdmin }, async () => {
+  // ── Features catalog ──────────────────────────────────────────────────────
+
+  app.get('/super-admin/features', { preHandler: requireSuperAdmin }, async () => {
     const { rows } = await db.query(
-      `SELECT s.id, s.name, s.created_at,
-              sf.custom_theme_enabled,
-              sf.whatsapp_enabled,
-              COUNT(o.id) FILTER (WHERE o.status = 'DELIVERED') AS delivered_count
-       FROM stores s
-       LEFT JOIN store_features sf ON sf.store_id = s.id
-       LEFT JOIN orders o          ON o.store_id  = s.id
-       GROUP BY s.id, s.name, s.created_at, sf.custom_theme_enabled, sf.whatsapp_enabled
-       ORDER BY s.name ASC`
+      'SELECT id, name, description FROM features ORDER BY name'
     )
     return rows.map((r: Record<string, unknown>) => ({
-      id:                 r.id,
-      name:               r.name,
-      createdAt:          r.created_at,
-      customThemeEnabled: r.custom_theme_enabled ?? false,
-      whatsappEnabled:    r.whatsapp_enabled ?? false,
-      deliveredCount:     Number(r.delivered_count ?? 0),
+      id:          r.id,
+      name:        r.name,
+      description: r.description,
     }))
   })
 
-  const featuresSchema = z.object({
-    customThemeEnabled: z.boolean().optional(),
-    whatsappEnabled:    z.boolean().optional(),
+  // ── Stores management ─────────────────────────────────────────────────────
+  app.get('/super-admin/stores', { preHandler: requireSuperAdmin }, async () => {
+    const { rows } = await db.query(`
+      SELECT s.id, s.name, s.created_at,
+             COUNT(o.id) FILTER (WHERE o.status = 'DELIVERED') AS delivered_count,
+             COALESCE(
+               (SELECT jsonb_agg(f.name)
+                FROM store_features_enabled sfe
+                JOIN features f ON f.id = sfe.feature_id
+                WHERE sfe.store_id = s.id),
+               '[]'::jsonb
+             ) AS enabled_features
+      FROM stores s
+      LEFT JOIN orders o ON o.store_id = s.id
+      GROUP BY s.id, s.name, s.created_at
+      ORDER BY s.name ASC
+    `)
+    return rows.map((r: Record<string, unknown>) => ({
+      id:              r.id,
+      name:            r.name,
+      createdAt:       r.created_at,
+      deliveredCount:  Number(r.delivered_count ?? 0),
+      enabledFeatures: (r.enabled_features as string[] | null) ?? [],
+    }))
   })
 
-  app.patch(
-    '/super-admin/stores/:storeId/features',
+  // Enable a feature for a store
+  app.post(
+    '/super-admin/stores/:storeId/features-enabled',
     { preHandler: requireSuperAdmin },
     async (req, reply) => {
       const { storeId } = req.params as { storeId: string }
-      const body = featuresSchema.parse(req.body)
+      const { featureId } = z.object({ featureId: z.string().uuid() }).parse(req.body)
 
-      const { rows: [store] } = await db.query(
-        'SELECT id FROM stores WHERE id = $1', [storeId]
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const { rows: [feature] } = await db.query('SELECT id, name FROM features WHERE id = $1', [featureId])
+      if (!feature) return reply.code(404).send({ error: 'Feature not found' })
+
+      await db.query(
+        `INSERT INTO store_features_enabled (store_id, feature_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [storeId, featureId]
       )
+
+      return { storeId, featureId, featureName: feature.name }
+    }
+  )
+
+  // Disable a feature for a store
+  app.delete(
+    '/super-admin/stores/:storeId/features-enabled/:featureId',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId, featureId } = req.params as { storeId: string; featureId: string }
+
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
       if (!store) return reply.code(404).send({ error: 'Store not found' })
 
       await db.query(
-        `INSERT INTO store_features (store_id, custom_theme_enabled, whatsapp_enabled)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (store_id) DO UPDATE
-         SET custom_theme_enabled = COALESCE($2, store_features.custom_theme_enabled),
-             whatsapp_enabled     = COALESCE($3, store_features.whatsapp_enabled),
-             updated_at           = now()`,
-        [storeId, body.customThemeEnabled ?? null, body.whatsappEnabled ?? null]
+        'DELETE FROM store_features_enabled WHERE store_id = $1 AND feature_id = $2',
+        [storeId, featureId]
       )
 
-      const { rows: [features] } = await db.query(
-        'SELECT custom_theme_enabled, whatsapp_enabled FROM store_features WHERE store_id = $1',
-        [storeId]
-      )
-
-      return {
-        storeId,
-        customThemeEnabled: features.custom_theme_enabled as boolean,
-        whatsappEnabled:    features.whatsapp_enabled as boolean,
-      }
+      return { ok: true }
     }
   )
 
@@ -225,9 +243,9 @@ export async function superAdminRoutes(app: FastifyInstance) {
   // ── Scope definitions (read-only — consumed by the SA UI) ─────────────────
 
   app.get('/super-admin/scopes', { preHandler: requireSuperAdmin }, async () => ({
-    scopes:  SCOPES,
-    labels:  SCOPE_LABELS,
-    groups:  SCOPE_GROUPS,
+    scopes:   SCOPES,
+    labels:   SCOPE_LABELS,
+    groups:   SCOPE_GROUPS,
     defaults: DEFAULT_ROLE_SCOPES,
   }))
 
@@ -246,7 +264,6 @@ export async function superAdminRoutes(app: FastifyInstance) {
         [storeId]
       )
 
-      // Return all three roles, falling back to defaults if not yet seeded
       const result: Record<string, string[]> = {}
       for (const role of ['OWNER', 'MANAGER', 'ASSISTANT']) {
         const row = rows.find((r: Record<string, unknown>) => r.role === role)

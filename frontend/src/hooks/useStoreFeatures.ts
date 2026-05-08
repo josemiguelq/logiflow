@@ -6,9 +6,10 @@ import { api } from '@/lib/api'
 interface StoreFeatures {
   customThemeEnabled: boolean
   whatsappEnabled:    boolean
+  csvExportEnabled:   boolean
 }
 
-const DEFAULTS: StoreFeatures = { customThemeEnabled: false, whatsappEnabled: false }
+const DEFAULTS: StoreFeatures = { customThemeEnabled: false, whatsappEnabled: false, csvExportEnabled: false }
 
 export function useStoreFeatures(): StoreFeatures {
   const { data } = useSWR<StoreFeatures>(

@@ -15,13 +15,16 @@ const DEFAULT_THEME = {
 export async function settingsRoutes(app: FastifyInstance) {
   // GET /store/features — returns all enabled feature flags for the store
   app.get('/store/features', { preHandler: requireStoreUser }, async (req) => {
-    const { rows: [f] } = await db.query(
-      'SELECT custom_theme_enabled, whatsapp_enabled FROM store_features WHERE store_id = $1',
-      [req.actor.storeId]
-    )
+    const { rows } = await db.query(`
+      SELECT f.name FROM store_features_enabled sfe
+      JOIN features f ON f.id = sfe.feature_id
+      WHERE sfe.store_id = $1
+    `, [req.actor.storeId])
+    const names = rows.map((r: Record<string, unknown>) => r.name as string)
     return {
-      customThemeEnabled: f?.custom_theme_enabled ?? false,
-      whatsappEnabled:    f?.whatsapp_enabled     ?? false,
+      whatsappEnabled:    names.includes('whatsapp'),
+      customThemeEnabled: names.includes('custom_theme'),
+      csvExportEnabled:   names.includes('csv_export'),
     }
   })
 
@@ -29,15 +32,19 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get('/store/theme', { preHandler: requireStoreUser }, async (req) => {
     const storeId = req.actor.storeId
 
-    const { rows: [features] } = await db.query(
-      'SELECT custom_theme_enabled, whatsapp_enabled FROM store_features WHERE store_id = $1',
-      [storeId]
-    )
+    const { rows: featureRows } = await db.query(`
+      SELECT f.name FROM store_features_enabled sfe
+      JOIN features f ON f.id = sfe.feature_id
+      WHERE sfe.store_id = $1
+    `, [storeId])
+    const featureNames = featureRows.map((r: Record<string, unknown>) => r.name as string)
+    const customThemeEnabled = featureNames.includes('custom_theme')
+    const whatsappEnabled    = featureNames.includes('whatsapp')
 
-    if (!features?.custom_theme_enabled) {
+    if (!customThemeEnabled) {
       return {
         theme:    DEFAULT_THEME,
-        features: { customThemeEnabled: false, whatsappEnabled: features?.whatsapp_enabled ?? false },
+        features: { customThemeEnabled: false, whatsappEnabled, csvExportEnabled: featureNames.includes('csv_export') },
       }
     }
 
@@ -55,7 +62,7 @@ export async function settingsRoutes(app: FastifyInstance) {
             logoUrl:   theme.logo_url,
           }
         : DEFAULT_THEME,
-      features: { customThemeEnabled: true, whatsappEnabled: features.whatsapp_enabled ?? false },
+      features: { customThemeEnabled: true, whatsappEnabled, csvExportEnabled: featureNames.includes('csv_export') },
     }
   })
 
