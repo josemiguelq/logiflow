@@ -27,6 +27,65 @@ export async function routeRoutes(app: FastifyInstance) {
     return route
   })
 
+  // GET /routes/:id/map-data — order pins + deliverer trail for the map
+  app.get('/routes/:id/map-data', { preHandler: requireStoreUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+
+    // Verify route belongs to store
+    const { rows: [routeRow] } = await db.query(
+      `SELECT r.deliverer_id, r.started_at, r.finished_at
+       FROM routes r WHERE r.id = $1 AND r.store_id = $2`,
+      [id, req.actor.storeId]
+    )
+    if (!routeRow) return reply.code(404).send({ error: 'Not found' })
+    const { deliverer_id, started_at, finished_at } = routeRow as {
+      deliverer_id: string
+      started_at:   Date | null
+      finished_at:  Date | null
+    }
+
+    // Order pins with customer coordinates
+    const { rows: orderRows } = await db.query(
+      `SELECT o.id, o.status, o.route_position,
+              c.name    AS customer_name,
+              COALESCE(c.lat, NULL) AS lat,
+              COALESCE(c.lng, NULL) AS lng
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       WHERE o.route_id = $1
+       ORDER BY o.route_position ASC NULLS LAST, o.created_at ASC`,
+      [id]
+    )
+
+    // Deliverer trail between route started_at and finished_at (or now)
+    const { rows: trailRows } = started_at
+      ? await db.query(
+          `SELECT lat, lng
+           FROM location_history
+           WHERE deliverer_id = $1
+             AND recorded_at >= $2
+             AND recorded_at <= COALESCE($3, now())
+           ORDER BY recorded_at ASC`,
+          [deliverer_id, started_at, finished_at]
+        )
+      : { rows: [] }
+
+    return {
+      orders: (orderRows as Record<string, unknown>[]).map(o => ({
+        id:            o.id,
+        customerName:  o.customer_name,
+        status:        o.status,
+        routePosition: o.route_position,
+        lat:           o.lat,
+        lng:           o.lng,
+      })),
+      trail: (trailRows as { lat: number; lng: number }[]).map(p => ({
+        lat: p.lat,
+        lng: p.lng,
+      })),
+    }
+  })
+
   app.patch(
     '/routes/:id/status',
     { preHandler: requireStoreUser },
