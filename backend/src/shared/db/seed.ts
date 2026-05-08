@@ -27,6 +27,15 @@ async function seed() {
   console.log('[seed] iniciando...')
 
   await db.transaction(async (client) => {
+    // ── Super Admin ───────────────────────────────────────────────────────────
+    const saHash = await bcrypt.hash('superadmin123', 10)
+    await client.query(`
+      INSERT INTO super_admins (email, password_hash)
+      VALUES ('superadmin@logiflow.com', $1)
+      ON CONFLICT (email) DO NOTHING
+    `, [saHash])
+    console.log('[seed] superadmin: superadmin@logiflow.com / superadmin123')
+
     // ── Loja ─────────────────────────────────────────────────────────────────
     const { rows: [store] } = await client.query(`
       INSERT INTO stores (name, lat, lng)
@@ -56,18 +65,18 @@ async function seed() {
 
     // ── Usuários ──────────────────────────────────────────────────────────────
     const users = [
-      { name: 'Admin Owner',    email: 'admin@logiflow.com',    password: 'admin123',    role: 'OWNER'     },
-      { name: 'Maria Gerente',  email: 'gerente@logiflow.com',  password: 'gerente123',  role: 'MANAGER'   },
-      { name: 'João Atendente', email: 'joao@logiflow.com',     password: 'joao123',     role: 'ASSISTANT' },
+      { name: 'Admin Owner',    email: 'admin@logiflow.com',    username: 'admin',    password: 'admin123',    role: 'OWNER'     },
+      { name: 'Maria Gerente',  email: 'gerente@logiflow.com',  username: 'gerente',  password: 'gerente123',  role: 'MANAGER'   },
+      { name: 'João Atendente', email: 'joao@logiflow.com',     username: 'joao',     password: 'joao123',     role: 'ASSISTANT' },
     ]
 
     const userIds: string[] = []
     for (const u of users) {
       const hash = await bcrypt.hash(u.password, 10)
       const { rows: [row] } = await client.query(`
-        INSERT INTO store_users (store_id, name, email, password_hash, role)
-        VALUES ($1,$2,$3,$4,$5) RETURNING id
-      `, [storeId, u.name, u.email, hash, u.role])
+        INSERT INTO store_users (store_id, name, email, username, password_hash, role)
+        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+      `, [storeId, u.name, u.email, u.username, hash, u.role])
       userIds.push(row.id)
       console.log(`[seed] usuário: ${u.email} (${u.role}) senha: ${u.password}`)
     }
@@ -255,6 +264,9 @@ async function seed() {
   })
 
   console.log('\n[seed] concluído! ✓\n')
+  console.log('─────────────────────────────────────────────────')
+  console.log('  Super Admin: http://localhost:3000/super-admin')
+  console.log('  superadmin@logiflow.com  /  superadmin123')
   console.log('─────────────────────────────────────────────────')
   console.log('  Painel web:  http://localhost:3000/login')
   console.log('  admin@logiflow.com  /  admin123')

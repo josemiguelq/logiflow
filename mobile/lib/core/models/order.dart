@@ -27,6 +27,13 @@ class Order {
 
   String get shortId => id.substring(id.length - 8).toUpperCase();
 
+  /// Shows only the last 4 digits; everything else is masked with asterisks.
+  String get maskedPhone {
+    final digits = customerPhone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length <= 4) return digits;
+    return '${'*' * (digits.length - 4)}${digits.substring(digits.length - 4)}';
+  }
+
   factory Order.fromJson(Map<String, dynamic> j) {
     final c = j['customer'] as Map<String, dynamic>;
     return Order(

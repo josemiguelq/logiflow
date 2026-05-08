@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { Plus, Search, MapPin, Phone, Trash2, ChevronDown, Pencil, X, Check } from 'lucide-react'
 import { Customer, CustomerAddress } from '@/types'
 import { api } from '@/lib/api'
+import { maskPhone, stripPhone, formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -164,7 +165,7 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-gray-600">
                       <div className="flex items-center gap-1.5">
                         <Phone className="h-3.5 w-3.5 text-gray-400" />
-                        {c.phone}
+                        {formatPhone(c.phone)}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
@@ -291,7 +292,7 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
           }
         })
       )
-      await api.post('/customers', { name, phone, addresses: withCoords })
+      await api.post('/customers', { name, phone: stripPhone(phone), addresses: withCoords })
       onSaved()
     } catch (err: unknown) {
       setError((err as Error).message)
@@ -308,7 +309,13 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
             <Input value={name} onChange={e => setName(e.target.value)} required placeholder="Nome completo" />
           </Field>
           <Field label="Telefone">
-            <Input value={phone} onChange={e => setPhone(e.target.value)} required placeholder="(67) 99999-9999" />
+            <Input
+              value={phone}
+              onChange={e => setPhone(maskPhone(e.target.value))}
+              required
+              placeholder="(67) 99999-9999"
+              inputMode="numeric"
+            />
           </Field>
 
           <AddressList
@@ -359,7 +366,7 @@ function CustomerEditModal({
   onSaved: () => void
 }) {
   const [name,      setName]      = useState(customer.name)
-  const [phone,     setPhone]     = useState(customer.phone)
+  const [phone,     setPhone]     = useState(formatPhone(customer.phone))
   const [addresses, setAddresses] = useState<EditAddressEntry[]>(
     customer.addresses.map(toEditEntry)
   )
@@ -428,7 +435,7 @@ function CustomerEditModal({
           }
         })
       )
-      await api.put(`/customers/${customer.id}`, { name, phone, addresses: withCoords })
+      await api.put(`/customers/${customer.id}`, { name, phone: stripPhone(phone), addresses: withCoords })
       onSaved()
     } catch (err: unknown) {
       setError((err as Error).message)
@@ -446,7 +453,13 @@ function CustomerEditModal({
             <Input value={name} onChange={e => setName(e.target.value)} required />
           </Field>
           <Field label="Telefone">
-            <Input value={phone} onChange={e => setPhone(e.target.value)} required />
+            <Input
+              value={phone}
+              onChange={e => setPhone(maskPhone(e.target.value))}
+              required
+              placeholder="(67) 99999-9999"
+              inputMode="numeric"
+            />
           </Field>
 
           {/* Address list */}
