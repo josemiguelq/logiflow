@@ -12,9 +12,9 @@ import { Input } from '@/components/ui/input'
 
 interface NominatimResult { display_name: string; lat: string; lon: string }
 
-export interface GeoResult { address: string; lat: number; lng: number }
+interface GeoResult { address: string; lat: number; lng: number }
 
-export async function geocodeAddress(street: string, number: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodeAddress(street: string, number: string): Promise<{ lat: number; lng: number } | null> {
   const q = [street, number].filter(Boolean).join(', ')
   if (q.length < 4) return null
   try {
@@ -332,7 +332,7 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 interface EditAddressEntry extends AddressEntry {
   isEditing: boolean
   isRemoved: boolean
-  _orig: { label: string; address: string; number: string; complement: string }
+  _orig: { label: string; address: string; number: string; complement: string; lat?: number; lng?: number }
 }
 
 function toEditEntry(a: CustomerAddress): EditAddressEntry {
@@ -343,9 +343,11 @@ function toEditEntry(a: CustomerAddress): EditAddressEntry {
     number:     a.number ?? '',
     complement: a.complement ?? '',
     isDefault:  a.isDefault,
+    lat:        a.lat,
+    lng:        a.lng,
     isEditing:  false,
     isRemoved:  false,
-    _orig: { label: a.label, address: a.address, number: a.number ?? '', complement: a.complement ?? '' },
+    _orig: { label: a.label, address: a.address, number: a.number ?? '', complement: a.complement ?? '', lat: a.lat, lng: a.lng },
   }
 }
 
@@ -383,7 +385,7 @@ function CustomerEditModal({
     const a = addresses[i]!
     setAddr(i, {
       isEditing: false,
-      _orig: { label: a.label, address: a.address, number: a.number, complement: a.complement },
+      _orig: { label: a.label, address: a.address, number: a.number, complement: a.complement, lat: a.lat, lng: a.lng },
     })
   }
 
@@ -397,7 +399,7 @@ function CustomerEditModal({
       ...emptyAddress(),
       isEditing: true,
       isRemoved: false,
-      _orig: { label: 'Casa', address: '', complement: '' },
+      _orig: { label: 'Casa', address: '', number: '', complement: '' },
     }
     setAddresses(prev => [...prev, entry])
   }
@@ -407,18 +409,26 @@ function CustomerEditModal({
     if (!active.length) { setError('Informe pelo menos um endereço'); return }
     setLoading(true)
     try {
-      await api.put(`/customers/${customer.id}`, {
-        name,
-        phone,
-        addresses: active.map((a, i) => ({
-          id:         a.id,
-          label:      a.label,
-          address:    a.address.trim(),
-          number:     a.number.trim() || undefined,
-          complement: a.complement.trim() || undefined,
-          isDefault:  i === 0,
-        })),
-      })
+      const withCoords = await Promise.all(
+        active.map(async (a, i) => {
+          let { lat, lng } = a
+          if (!lat || !lng) {
+            const geo = await geocodeAddress(a.address.trim(), a.number.trim())
+            if (geo) { lat = geo.lat; lng = geo.lng }
+          }
+          return {
+            id:         a.id,
+            label:      a.label,
+            address:    a.address.trim(),
+            number:     a.number.trim() || undefined,
+            complement: a.complement.trim() || undefined,
+            isDefault:  i === 0,
+            lat,
+            lng,
+          }
+        })
+      )
+      await api.put(`/customers/${customer.id}`, { name, phone, addresses: withCoords })
       onSaved()
     } catch (err: unknown) {
       setError((err as Error).message)
@@ -487,7 +497,8 @@ function CustomerEditModal({
                     </div>
                     <AddressAutocomplete
                       value={addr.address}
-                      onChange={v => setAddr(i, { address: v })}
+                      onChange={v => setAddr(i, { address: v, lat: undefined, lng: undefined })}
+                      onPick={r => setAddr(i, { address: r.address, lat: r.lat, lng: r.lng })}
                       placeholder="Rua / Avenida"
                     />
                     <Input
@@ -618,7 +629,7 @@ function AddressList({
   addresses, onUpdate, onAdd, onRemove, isCreate,
 }: {
   addresses: AddressEntry[]
-  onUpdate: (i: number, field: keyof AddressEntry, value: string) => void
+  onUpdate: (i: number, field: keyof AddressEntry, value: string | number | undefined) => void
   onAdd: () => void
   onRemove: (i: number) => void
   isCreate?: boolean
@@ -663,7 +674,8 @@ function AddressList({
             </div>
             <AddressAutocomplete
               value={addr.address}
-              onChange={v => onUpdate(i, 'address', v)}
+              onChange={v => { onUpdate(i, 'address', v); onUpdate(i, 'lat', undefined); onUpdate(i, 'lng', undefined) }}
+              onPick={r => { onUpdate(i, 'address', r.address); onUpdate(i, 'lat', r.lat); onUpdate(i, 'lng', r.lng) }}
               placeholder="Rua / Avenida"
               className="mb-2 bg-white"
             />

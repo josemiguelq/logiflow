@@ -151,7 +151,7 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                     <p className="text-sm text-gray-800">
                     {selectedAddress
                       ? fullAddress(selectedAddress)
-                      : `${selected.address}${(selected as Record<string, unknown>).number ? `, ${(selected as Record<string, unknown>).number}` : ''}`}
+                      : `${selected.address}${selected.number ? `, ${selected.number}` : ''}`}
                   </p>
                     {(selectedAddress?.complement ?? selected.complement) && (
                       <p className="text-xs text-gray-500">{selectedAddress?.complement ?? selected.complement}</p>

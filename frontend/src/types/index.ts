@@ -27,6 +27,7 @@ export interface Customer {
   name: string
   phone: string
   address: string
+  number?: string
   complement?: string
   lat?: number
   lng?: number
