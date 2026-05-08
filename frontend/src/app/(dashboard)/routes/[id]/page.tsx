@@ -1,11 +1,14 @@
 'use client'
 
 import { use, useState } from 'react'
+import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, Clock, Flag, MapPin, Package } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
+
+const RouteMap = dynamic(() => import('./_map'), { ssr: false })
 
 const STATUS_LABEL: Record<RouteStatus, string> = {
   CREATED:  'Criada',
@@ -35,6 +38,20 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
   CANCELLED:        'bg-red-50 text-red-700',
 }
 
+interface MapPin {
+  id: string
+  customerName: string
+  status: string
+  routePosition?: number
+  lat: number
+  lng: number
+}
+
+interface MapData {
+  orders: MapPin[]
+  trail:  { lat: number; lng: number }[]
+}
+
 interface Props { params: Promise<{ id: string }> }
 
 export default function RouteDetailPage({ params }: Props) {
@@ -42,6 +59,10 @@ export default function RouteDetailPage({ params }: Props) {
   const { data: route, isLoading, mutate } = useSWR<DeliveryRoute>(
     `/routes/${id}`,
     (url: string) => api.get<DeliveryRoute>(url)
+  )
+  const { data: mapData } = useSWR<MapData>(
+    `/routes/${id}/map-data`,
+    (url: string) => api.get<MapData>(url)
   )
   const [finishing, setFinishing] = useState(false)
 
@@ -76,7 +97,7 @@ export default function RouteDetailPage({ params }: Props) {
   const deliveredCount = route.orders.filter(o => o.status === 'DELIVERED').length
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6 max-w-4xl">
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
         <Link
@@ -134,6 +155,16 @@ export default function RouteDetailPage({ params }: Props) {
           <p className="font-medium text-gray-900">{deliveredCount} / {route.orders.length}</p>
         </div>
       </div>
+
+      {/* Map */}
+      {mapData && (mapData.orders.some(o => o.lat && o.lng) || mapData.trail.length >= 2) && (
+        <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 shadow-sm" style={{ height: 360 }}>
+          <RouteMap
+            orders={mapData.orders.filter(o => o.lat != null && o.lng != null)}
+            trail={mapData.trail}
+          />
+        </div>
+      )}
 
       {/* Orders list */}
       <h2 className="mb-3 text-sm font-semibold text-gray-700 uppercase tracking-wide">
