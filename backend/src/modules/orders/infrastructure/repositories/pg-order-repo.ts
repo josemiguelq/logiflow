@@ -2,6 +2,30 @@ import { DB } from '../../../../shared/db/client'
 import { Order, OrderStatus, OrderWithDetails } from '../../domain/entities'
 import { IOrderRepository, OrderFilters, PublicOrderView } from '../../application/ports'
 
+function mapOrderRow(row: Record<string, unknown>): Order {
+  return {
+    id:              row.id as string,
+    storeId:         row.store_id as string,
+    delivererId:     row.deliverer_id as string | undefined,
+    customerId:      row.customer_id as string,
+    createdByUserId: row.created_by_user_id as string,
+    status:          row.status as OrderStatus,
+    routeId:         row.route_id as string | undefined,
+    routePosition:   row.route_position as number | undefined,
+    pickupCode:      row.pickup_code as string,
+    deliveryCode:    row.delivery_code as string,
+    notes:           row.notes as string | undefined,
+    lat:             row.lat as number | undefined,
+    lng:             row.lng as number | undefined,
+    deliveryAddress: row.delivery_address as string | undefined,
+    deliveryLat:     row.delivery_lat as number | undefined,
+    deliveryLng:     row.delivery_lng as number | undefined,
+    createdAt:       row.created_at as Date,
+    pickedUpAt:      row.picked_up_at as Date | undefined,
+    deliveredAt:     row.delivered_at as Date | undefined,
+  }
+}
+
 function mapRow(row: Record<string, unknown>): OrderWithDetails {
   return {
     id:              row.id as string,
@@ -168,7 +192,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         `UPDATE orders SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
         params
       )
-      return rows[0] as Order
+      return mapOrderRow(rows[0] as Record<string, unknown>)
     },
 
     async assignDeliverer(id, delivererId, routePosition) {
@@ -179,7 +203,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
          RETURNING *`,
         [id, delivererId, routePosition]
       )
-      return rows[0] as Order
+      return mapOrderRow(rows[0] as Record<string, unknown>)
     },
 
     async addProof(orderId, photoUrl, lat, lng) {
