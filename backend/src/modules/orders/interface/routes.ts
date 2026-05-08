@@ -277,7 +277,7 @@ export async function orderRoutes(app: FastifyInstance) {
   const pickupSchema   = z.object({ code: z.string() })
   const deliverySchema = z.object({
     code:     z.string().default(''),
-    photoUrl: z.string().url().optional(),
+    photoUrl: z.string().optional(),
     lat:      z.number().optional(),
     lng:      z.number().optional(),
   })

@@ -39,9 +39,12 @@ export async function superAdminRoutes(app: FastifyInstance) {
     const { rows } = await db.query(
       `SELECT s.id, s.name, s.created_at,
               sf.custom_theme_enabled,
-              sf.whatsapp_enabled
+              sf.whatsapp_enabled,
+              COUNT(o.id) FILTER (WHERE o.status = 'DELIVERED') AS delivered_count
        FROM stores s
        LEFT JOIN store_features sf ON sf.store_id = s.id
+       LEFT JOIN orders o          ON o.store_id  = s.id
+       GROUP BY s.id, s.name, s.created_at, sf.custom_theme_enabled, sf.whatsapp_enabled
        ORDER BY s.name ASC`
     )
     return rows.map((r: Record<string, unknown>) => ({
@@ -50,6 +53,7 @@ export async function superAdminRoutes(app: FastifyInstance) {
       createdAt:          r.created_at,
       customThemeEnabled: r.custom_theme_enabled ?? false,
       whatsappEnabled:    r.whatsapp_enabled ?? false,
+      deliveredCount:     Number(r.delivered_count ?? 0),
     }))
   })
 

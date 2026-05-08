@@ -8,6 +8,7 @@ import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
+import { formatPhone } from '@/lib/phone'
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -74,7 +75,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="flex items-center gap-2 text-gray-700">
                 <Phone className="h-4 w-4 text-gray-400" />
-                {order.customer.phone}
+                {formatPhone(order.customer.phone)}
               </div>
               <div className="flex items-start gap-2 text-gray-700">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
@@ -112,16 +113,24 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {order.proof && (
+          {order.proof?.photoUrl && (
             <section className="border-t border-gray-100 pt-4">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Comprovante de Entrega
               </h2>
-              <img
-                src={order.proof.photoUrl}
-                alt="Comprovante"
-                className="w-full rounded-xl object-cover"
-              />
+              <div className="overflow-hidden rounded-xl border border-gray-100">
+                <img
+                  src={order.proof.photoUrl}
+                  alt="Comprovante de entrega"
+                  className="w-full object-contain"
+                  style={{ maxHeight: 480 }}
+                />
+              </div>
+              {(order.proof.lat != null && order.proof.lng != null) && (
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Localização: {order.proof.lat.toFixed(5)}, {order.proof.lng.toFixed(5)}
+                </p>
+              )}
             </section>
           )}
         </div>

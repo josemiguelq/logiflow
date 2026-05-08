@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
@@ -13,6 +13,7 @@ interface StoreRow {
   createdAt: string
   customThemeEnabled: boolean
   whatsappEnabled: boolean
+  deliveredCount: number
 }
 
 interface StoreUser {
@@ -125,9 +126,15 @@ export default function SuperAdminStoresPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900">{s.name}</p>
-                      <p className="text-xs text-gray-400">
-                        {new Date(s.createdAt).toLocaleDateString('pt-BR')} · {s.id.slice(0, 8)}
-                      </p>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p className="text-xs text-gray-400">
+                          {new Date(s.createdAt).toLocaleDateString('pt-BR')} · {s.id.slice(0, 8)}
+                        </p>
+                        <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                          <CheckCircle className="h-3 w-3" />
+                          {s.deliveredCount} entregas
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
