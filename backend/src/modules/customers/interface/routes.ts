@@ -8,6 +8,7 @@ const addressSchema = z.object({
   id:         z.string().uuid().optional(),
   label:      z.string().min(1).default('Principal'),
   address:    z.string().min(1),
+  number:     z.string().optional(),
   complement: z.string().optional(),
   lat:        z.number().optional(),
   lng:        z.number().optional(),
@@ -64,10 +65,11 @@ export async function customerRoutes(app: FastifyInstance) {
           name:       body.name,
           phone:      body.phone,
           address:    defaultAddr.address,
+          number:     defaultAddr.number,
           complement: defaultAddr.complement,
           lat:        defaultAddr.lat,
           lng:        defaultAddr.lng,
-        },
+        } as Parameters<typeof repo.create>[0],
         body.addresses.map((a, i) => ({ ...a, isDefault: i === 0 || !!a.isDefault }))
       )
       return reply.code(201).send(customer)

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route,
+  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -14,6 +14,7 @@ const BASE_NAV = [
   { href: '/routes',     label: 'Rotas',        icon: Route,        feature: null },
   { href: '/customers',  label: 'Clientes',     icon: Users,        feature: null },
   { href: '/deliverers', label: 'Entregadores', icon: Truck,        feature: null },
+  { href: '/users',      label: 'Usuários',     icon: UserCog,      feature: null },
   { href: '/whatsapp',   label: 'WhatsApp',     icon: MessageSquare, feature: 'whatsappEnabled' as const },
   { href: '/settings',   label: 'Configurações', icon: Settings,    feature: null },
 ]

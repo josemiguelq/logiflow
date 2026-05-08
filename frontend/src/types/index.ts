@@ -10,10 +10,16 @@ export interface CustomerAddress {
   id: string
   label: string
   address: string
+  number?: string
   complement?: string
   lat?: number
   lng?: number
   isDefault: boolean
+}
+
+export function fullAddress(addr: Pick<CustomerAddress, 'address' | 'number' | 'complement'>): string {
+  const parts = [addr.address, addr.number].filter(Boolean).join(', ')
+  return addr.complement ? `${parts} - ${addr.complement}` : parts
 }
 
 export interface Customer {

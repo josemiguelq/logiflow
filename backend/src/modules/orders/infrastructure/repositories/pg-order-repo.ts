@@ -75,7 +75,7 @@ const WITH_JOINS = `
     o.*,
     c.name                                          AS customer_name,
     c.phone                                         AS customer_phone,
-    COALESCE(o.delivery_address, c.address)         AS customer_address,
+    COALESCE(o.delivery_address, c.address || COALESCE(', ' || NULLIF(c.number, ''), '')) AS customer_address,
     c.complement                                    AS customer_complement,
     COALESCE(o.delivery_lat,  c.lat)                AS customer_lat,
     COALESCE(o.delivery_lng,  c.lng)                AS customer_lng,

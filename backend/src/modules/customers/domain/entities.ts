@@ -2,6 +2,7 @@ export interface CustomerAddress {
   id: string
   label: string
   address: string
+  number?: string
   complement?: string
   lat?: number
   lng?: number
@@ -14,6 +15,7 @@ export interface Customer {
   name: string
   phone: string
   address: string
+  number?: string
   complement?: string
   lat?: number
   lng?: number

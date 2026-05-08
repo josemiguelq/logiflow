@@ -4,6 +4,13 @@ import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { requireSuperAdmin } from '../../../shared/middleware/auth'
 
+const createStoreSchema = z.object({
+  storeName:     z.string().min(2),
+  ownerName:     z.string().min(2),
+  ownerEmail:    z.string().email(),
+  ownerPassword: z.string().min(6),
+})
+
 export async function superAdminRoutes(app: FastifyInstance) {
   const signJwt = (payload: object) => app.jwt.sign(payload as Record<string, unknown>)
 
@@ -83,6 +90,37 @@ export async function superAdminRoutes(app: FastifyInstance) {
         customThemeEnabled: features.custom_theme_enabled as boolean,
         whatsappEnabled:    features.whatsapp_enabled as boolean,
       }
+    }
+  )
+
+  app.post(
+    '/super-admin/stores',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const body = createStoreSchema.parse(req.body)
+
+      const { rows: [existing] } = await db.query(
+        'SELECT id FROM store_users WHERE email = $1', [body.ownerEmail]
+      )
+      if (existing) return reply.code(409).send({ error: 'Email já está em uso' })
+
+      const { rows: [store] } = await db.query(
+        `INSERT INTO stores (name) VALUES ($1) RETURNING id, name, created_at`,
+        [body.storeName]
+      )
+
+      const hash = await bcrypt.hash(body.ownerPassword, 10)
+      const username = body.ownerEmail.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
+      const { rows: [user] } = await db.query(
+        `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
+         VALUES ($1,$2,$3,$4,$5,'OWNER') RETURNING id, name, email`,
+        [store.id, body.ownerName, body.ownerEmail, username, hash]
+      )
+
+      return reply.code(201).send({
+        store: { id: store.id, name: store.name, createdAt: store.created_at },
+        owner: { id: user.id, name: user.name, email: user.email },
+      })
     }
   )
 }

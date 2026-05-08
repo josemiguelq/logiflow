@@ -3,7 +3,7 @@
 import { useState, FormEvent } from 'react'
 import useSWR from 'swr'
 import { X, MapPin, Check } from 'lucide-react'
-import { Customer, CustomerAddress } from '@/types'
+import { Customer, CustomerAddress, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,7 +45,7 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
       }
       // Pass delivery address only when it's not the default (or when there's a single address)
       if (selectedAddress) {
-        body.deliveryAddress = selectedAddress.address
+        body.deliveryAddress = fullAddress(selectedAddress)
         if (selectedAddress.lat)  body.deliveryLat = selectedAddress.lat
         if (selectedAddress.lng)  body.deliveryLng = selectedAddress.lng
       }
@@ -133,7 +133,9 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                             {addr.label}
                           </p>
-                          <p className="text-sm text-gray-800 leading-snug">{addr.address}</p>
+                          <p className="text-sm text-gray-800 leading-snug">
+                            {addr.address}{addr.number ? `, ${addr.number}` : ''}
+                          </p>
                           {addr.complement && (
                             <p className="text-xs text-gray-500">{addr.complement}</p>
                           )}
@@ -146,7 +148,11 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                 <div className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                   <div>
-                    <p className="text-sm text-gray-800">{selectedAddress?.address ?? selected.address}</p>
+                    <p className="text-sm text-gray-800">
+                    {selectedAddress
+                      ? fullAddress(selectedAddress)
+                      : `${selected.address}${(selected as Record<string, unknown>).number ? `, ${(selected as Record<string, unknown>).number}` : ''}`}
+                  </p>
                     {(selectedAddress?.complement ?? selected.complement) && (
                       <p className="text-xs text-gray-500">{selectedAddress?.complement ?? selected.complement}</p>
                     )}

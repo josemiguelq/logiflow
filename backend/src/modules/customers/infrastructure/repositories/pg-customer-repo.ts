@@ -6,6 +6,7 @@ function mapAddressRow(r: Record<string, unknown>): CustomerAddress {
     id:         r.id as string,
     label:      r.label as string,
     address:    r.address as string,
+    number:     r.number as string | undefined,
     complement: r.complement as string | undefined,
     lat:        r.lat as number | undefined,
     lng:        r.lng as number | undefined,
@@ -37,6 +38,7 @@ const WITH_ADDRESSES = `
           'id',         ca.id,
           'label',      ca.label,
           'address',    ca.address,
+          'number',     ca.number,
           'complement', ca.complement,
           'lat',        ca.lat,
           'lng',        ca.lng,
@@ -90,12 +92,12 @@ export function createPgCustomerRepo(db: DB) {
 
     async create(
       data: Omit<Customer, 'id' | 'createdAt' | 'addresses'>,
-      addresses?: Array<{ label: string; address: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }>
+      addresses?: Array<{ label: string; address: string; number?: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }>
     ): Promise<Customer> {
       const { rows } = await db.query(
-        `INSERT INTO customers (store_id, name, phone, address, complement, lat, lng)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [data.storeId, data.name, data.phone, data.address, data.complement ?? null, data.lat ?? null, data.lng ?? null]
+        `INSERT INTO customers (store_id, name, phone, address, number, complement, lat, lng)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [data.storeId, data.name, data.phone, data.address, (data as Record<string, unknown>).number ?? null, data.complement ?? null, data.lat ?? null, data.lng ?? null]
       )
       const customer = rows[0] as Record<string, unknown>
 
@@ -107,9 +109,9 @@ export function createPgCustomerRepo(db: DB) {
       for (let i = 0; i < addrs.length; i++) {
         const a = addrs[i]!
         const { rows: ar } = await db.query(
-          `INSERT INTO customer_addresses (customer_id, store_id, label, address, complement, lat, lng, is_default)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-          [customer.id, data.storeId, a.label, a.address, a.complement ?? null, a.lat ?? null, a.lng ?? null, i === 0 || !!a.isDefault]
+          `INSERT INTO customer_addresses (customer_id, store_id, label, address, number, complement, lat, lng, is_default)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          [customer.id, data.storeId, a.label, a.address, a.number ?? null, a.complement ?? null, a.lat ?? null, a.lng ?? null, i === 0 || !!a.isDefault]
         )
         insertedAddrs.push(mapAddressRow(ar[0] as Record<string, unknown>))
       }
@@ -142,7 +144,7 @@ export function createPgCustomerRepo(db: DB) {
 
     async addAddress(
       customerId: string, storeId: string,
-      data: { label: string; address: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }
+      data: { label: string; address: string; number?: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }
     ): Promise<CustomerAddress> {
       if (data.isDefault) {
         await db.query(
@@ -151,16 +153,16 @@ export function createPgCustomerRepo(db: DB) {
         )
       }
       const { rows } = await db.query(
-        `INSERT INTO customer_addresses (customer_id, store_id, label, address, complement, lat, lng, is_default)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [customerId, storeId, data.label, data.address, data.complement ?? null, data.lat ?? null, data.lng ?? null, !!data.isDefault]
+        `INSERT INTO customer_addresses (customer_id, store_id, label, address, number, complement, lat, lng, is_default)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [customerId, storeId, data.label, data.address, data.number ?? null, data.complement ?? null, data.lat ?? null, data.lng ?? null, !!data.isDefault]
       )
       return mapAddressRow(rows[0] as Record<string, unknown>)
     },
 
     async updateAddress(
       addressId: string, customerId: string, storeId: string,
-      data: Partial<{ label: string; address: string; complement: string; lat: number; lng: number; isDefault: boolean }>
+      data: Partial<{ label: string; address: string; number: string; complement: string; lat: number; lng: number; isDefault: boolean }>
     ): Promise<CustomerAddress | null> {
       if (data.isDefault) {
         await db.query(
@@ -172,13 +174,14 @@ export function createPgCustomerRepo(db: DB) {
         `UPDATE customer_addresses
          SET label      = COALESCE($3, label),
              address    = COALESCE($4, address),
-             complement = COALESCE($5, complement),
-             lat        = COALESCE($6, lat),
-             lng        = COALESCE($7, lng),
-             is_default = COALESCE($8, is_default)
-         WHERE id = $1 AND customer_id = $2 AND store_id = $9
+             number     = COALESCE($5, number),
+             complement = COALESCE($6, complement),
+             lat        = COALESCE($7, lat),
+             lng        = COALESCE($8, lng),
+             is_default = COALESCE($9, is_default)
+         WHERE id = $1 AND customer_id = $2 AND store_id = $10
          RETURNING *`,
-        [addressId, customerId, data.label, data.address, data.complement, data.lat, data.lng, data.isDefault, storeId]
+        [addressId, customerId, data.label, data.address, data.number, data.complement, data.lat, data.lng, data.isDefault, storeId]
       )
       return rows[0] ? mapAddressRow(rows[0] as Record<string, unknown>) : null
     },

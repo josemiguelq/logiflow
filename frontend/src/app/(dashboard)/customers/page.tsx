@@ -10,17 +10,32 @@ import { Input } from '@/components/ui/input'
 
 // ── Address autocomplete (Nominatim / OpenStreetMap) ──────────────────────────
 
-interface NominatimResult { display_name: string }
+interface NominatimResult { display_name: string; lat: string; lon: string }
+
+export interface GeoResult { address: string; lat: number; lng: number }
+
+export async function geocodeAddress(street: string, number: string): Promise<{ lat: number; lng: number } | null> {
+  const q = [street, number].filter(Boolean).join(', ')
+  if (q.length < 4) return null
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(q)}`
+    const res  = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } })
+    const data = (await res.json()) as NominatimResult[]
+    if (!data[0]) return null
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+  } catch { return null }
+}
 
 function AddressAutocomplete({
-  value, onChange, placeholder, className,
+  value, onChange, onPick, placeholder, className,
 }: {
   value: string
   onChange: (v: string) => void
+  onPick?: (result: GeoResult) => void
   placeholder?: string
   className?: string
 }) {
-  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([])
   const [open,        setOpen]        = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ref   = useRef<HTMLDivElement>(null)
@@ -42,18 +57,22 @@ function AddressAutocomplete({
         const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=5&q=${encodeURIComponent(v)}`
         const res  = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } })
         const data = (await res.json()) as NominatimResult[]
-        const results = data.map(r => r.display_name)
-        setSuggestions(results)
-        setOpen(results.length > 0)
+        setSuggestions(data)
+        setOpen(data.length > 0)
       } catch { /* ignore */ }
     }, 400)
   }
 
-  function pick(s: string) {
-    // Nominatim returns full address like "Rua X, 123, Bairro, Cidade, Estado, Brasil"
-    // Strip the country suffix for cleaner storage
-    const clean = s.replace(/, Brasil$/, '').replace(/, Brazil$/, '')
-    onChange(clean)
+  function clean(s: string) {
+    return s.replace(/, Brasil$/, '').replace(/, Brazil$/, '')
+  }
+
+  function pick(r: NominatimResult) {
+    const label = clean(r.display_name)
+    // Extract just the street name (first segment before first comma)
+    const streetOnly = label.split(',')[0]?.trim() ?? label
+    onChange(streetOnly)
+    onPick?.({ address: streetOnly, lat: parseFloat(r.lat), lng: parseFloat(r.lon) })
     setSuggestions([])
     setOpen(false)
   }
@@ -70,14 +89,14 @@ function AddressAutocomplete({
       />
       {open && (
         <ul className="absolute z-50 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg text-sm max-h-52 overflow-y-auto">
-          {suggestions.map((s, i) => (
+          {suggestions.map((r, i) => (
             <li
               key={i}
               className="cursor-pointer px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 leading-snug"
-              onMouseDown={() => pick(s)}
+              onMouseDown={() => pick(r)}
             >
               <MapPin className="mr-1.5 inline h-3 w-3 shrink-0 text-gray-400" />
-              {s.replace(/, Brasil$/, '').replace(/, Brazil$/, '')}
+              {clean(r.display_name)}
             </li>
           ))}
         </ul>
@@ -200,12 +219,13 @@ interface AddressEntry {
   id?: string
   label: string
   address: string
+  number: string
   complement: string
   isDefault: boolean
 }
 
 function emptyAddress(label = 'Casa'): AddressEntry {
-  return { label, address: '', complement: '', isDefault: false }
+  return { label, address: '', number: '', complement: '', isDefault: false }
 }
 
 function AddressLabelSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -231,7 +251,7 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [error,     setError]     = useState('')
   const [name,      setName]      = useState('')
   const [phone,     setPhone]     = useState('')
-  const [addresses, setAddresses] = useState<AddressEntry[]>([{ ...emptyAddress('Principal'), isDefault: true }])
+  const [addresses, setAddresses] = useState<AddressEntry[]>([{ ...emptyAddress('Principal'), isDefault: true, number: '' }])
 
   function updateField(i: number, field: keyof AddressEntry, value: string) {
     setAddresses(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a))
@@ -256,6 +276,7 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
         addresses: filled.map((a, i) => ({
           label:      a.label,
           address:    a.address.trim(),
+          number:     a.number.trim() || undefined,
           complement: a.complement.trim() || undefined,
           isDefault:  i === 0,
         })),
@@ -300,7 +321,7 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 interface EditAddressEntry extends AddressEntry {
   isEditing: boolean
   isRemoved: boolean
-  _orig: { label: string; address: string; complement: string }
+  _orig: { label: string; address: string; number: string; complement: string }
 }
 
 function toEditEntry(a: CustomerAddress): EditAddressEntry {
@@ -308,11 +329,12 @@ function toEditEntry(a: CustomerAddress): EditAddressEntry {
     id:         a.id,
     label:      a.label,
     address:    a.address,
+    number:     a.number ?? '',
     complement: a.complement ?? '',
     isDefault:  a.isDefault,
     isEditing:  false,
     isRemoved:  false,
-    _orig: { label: a.label, address: a.address, complement: a.complement ?? '' },
+    _orig: { label: a.label, address: a.address, number: a.number ?? '', complement: a.complement ?? '' },
   }
 }
 
@@ -350,7 +372,7 @@ function CustomerEditModal({
     const a = addresses[i]!
     setAddr(i, {
       isEditing: false,
-      _orig: { label: a.label, address: a.address, complement: a.complement },
+      _orig: { label: a.label, address: a.address, number: a.number, complement: a.complement },
     })
   }
 
@@ -381,6 +403,7 @@ function CustomerEditModal({
           id:         a.id,
           label:      a.label,
           address:    a.address.trim(),
+          number:     a.number.trim() || undefined,
           complement: a.complement.trim() || undefined,
           isDefault:  i === 0,
         })),
@@ -454,7 +477,12 @@ function CustomerEditModal({
                     <AddressAutocomplete
                       value={addr.address}
                       onChange={v => setAddr(i, { address: v })}
-                      placeholder="Rua, número, bairro"
+                      placeholder="Rua / Avenida"
+                    />
+                    <Input
+                      value={addr.number}
+                      onChange={e => setAddr(i, { number: e.target.value })}
+                      placeholder="Número"
                     />
                     <Input
                       value={addr.complement}
@@ -480,7 +508,9 @@ function CustomerEditModal({
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-800 leading-snug">{addr.address}</p>
+                      <p className="text-sm text-gray-800 leading-snug">
+                        {addr.address}{addr.number ? `, ${addr.number}` : ''}
+                      </p>
                       {addr.complement && (
                         <p className="text-xs text-gray-500">{addr.complement}</p>
                       )}
@@ -623,7 +653,13 @@ function AddressList({
             <AddressAutocomplete
               value={addr.address}
               onChange={v => onUpdate(i, 'address', v)}
-              placeholder="Rua, número, bairro"
+              placeholder="Rua / Avenida"
+              className="mb-2 bg-white"
+            />
+            <Input
+              value={addr.number}
+              onChange={e => onUpdate(i, 'number', e.target.value)}
+              placeholder="Número"
               className="mb-2 bg-white"
             />
             <Input
