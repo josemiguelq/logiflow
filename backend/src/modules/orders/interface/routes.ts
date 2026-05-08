@@ -150,6 +150,11 @@ export async function orderRoutes(app: FastifyInstance) {
       const updated = await orderRepo.updateStatus(id, 'CANCELLED')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'CANCELLED')
+
+      if (order.routeId) {
+        await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
+      }
+
       return updated
     }
   )
