@@ -9,20 +9,16 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 
-type Role = 'OWNER' | 'MANAGER' | 'ASSISTANT'
-
 const BASE_NAV = [
-  { href: '/orders',     label: 'Pedidos',      icon: Package,      feature: null,                   minRole: null as Role | null },
-  { href: '/routes',     label: 'Rotas',        icon: Route,        feature: null,                   minRole: null as Role | null },
-  { href: '/customers',  label: 'Clientes',     icon: Users,        feature: null,                   minRole: null as Role | null },
-  { href: '/deliverers', label: 'Entregadores', icon: Truck,        feature: null,                   minRole: null as Role | null },
-  { href: '/users',      label: 'Usuários',     icon: UserCog,      feature: null,                   minRole: null as Role | null },
-  { href: '/analytics',  label: 'Analítico',    icon: BarChart2,    feature: null,                   minRole: 'MANAGER' as Role },
-  { href: '/whatsapp',   label: 'WhatsApp',     icon: MessageSquare, feature: 'whatsappEnabled' as const, minRole: null as Role | null },
-  { href: '/settings',   label: 'Configurações', icon: Settings,    feature: null,                   minRole: null as Role | null },
+  { href: '/orders',     label: 'Pedidos',       icon: Package,       scope: 'orders:view'     as string | null, feature: null },
+  { href: '/routes',     label: 'Rotas',          icon: Route,         scope: 'routes:view'     as string | null, feature: null },
+  { href: '/customers',  label: 'Clientes',       icon: Users,         scope: 'customers:view'  as string | null, feature: null },
+  { href: '/deliverers', label: 'Entregadores',   icon: Truck,         scope: 'deliverers:view' as string | null, feature: null },
+  { href: '/analytics',  label: 'Analítico',      icon: BarChart2,     scope: 'analytics:view'  as string | null, feature: null },
+  { href: '/users',      label: 'Usuários',       icon: UserCog,       scope: 'users:view'      as string | null, feature: null },
+  { href: '/whatsapp',   label: 'WhatsApp',       icon: MessageSquare, scope: 'whatsapp:view'   as string | null, feature: 'whatsappEnabled' as const },
+  { href: '/settings',   label: 'Configurações',  icon: Settings,      scope: 'settings:view'   as string | null, feature: null },
 ]
-
-const roleLevel: Record<Role, number> = { OWNER: 3, MANAGER: 2, ASSISTANT: 1 }
 
 interface Props {
   isOpen: boolean
@@ -30,19 +26,18 @@ interface Props {
 }
 
 export function Sidebar({ isOpen, onClose }: Props) {
-  const pathname  = usePathname()
-  const { user, logout } = useAuth()
-  const features  = useStoreFeatures()
-  const userLevel = roleLevel[(user?.role ?? 'ASSISTANT') as Role] ?? 1
+  const pathname       = usePathname()
+  const { user, logout, hasScope } = useAuth()
+  const features       = useStoreFeatures()
+
   const nav = BASE_NAV.filter(item => {
     if (item.feature !== null && !features[item.feature]) return false
-    if (item.minRole !== null && userLevel < roleLevel[item.minRole]) return false
+    if (item.scope !== null && !hasScope(item.scope)) return false
     return true
   })
 
   return (
     <>
-      {/* Backdrop (mobile only) */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 md:hidden"
@@ -57,7 +52,6 @@ export function Sidebar({ isOpen, onClose }: Props) {
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
           <div className="flex items-center gap-2.5">
             <div
@@ -68,7 +62,6 @@ export function Sidebar({ isOpen, onClose }: Props) {
             </div>
             <span className="text-lg font-bold text-gray-900">LogiFlow</span>
           </div>
-          {/* Close button (mobile only) */}
           <button
             className="rounded-md p-1 text-gray-400 hover:text-gray-700 md:hidden"
             onClick={onClose}
@@ -77,7 +70,6 @@ export function Sidebar({ isOpen, onClose }: Props) {
           </button>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-0.5">
             {nav.map(({ href, label, icon: Icon }) => {
@@ -104,7 +96,6 @@ export function Sidebar({ isOpen, onClose }: Props) {
           </ul>
         </nav>
 
-        {/* User */}
         <div className="border-t border-gray-200 p-4">
           <div className="mb-3 px-1">
             <p className="text-sm font-medium text-gray-900">{user?.name}</p>

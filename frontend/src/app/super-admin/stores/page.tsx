@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp, CheckCircle, ShieldCheck } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
@@ -98,6 +99,12 @@ export default function SuperAdminStoresPage() {
       <header className="flex h-14 items-center justify-between bg-gray-900 px-6">
         <span className="font-bold text-white">LogiFlow · Super Admin</span>
         <div className="flex items-center gap-3">
+          <Link
+            href="/super-admin/scopes"
+            className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-200 hover:bg-gray-700"
+          >
+            <ShieldCheck className="h-4 w-4" /> Roles & Scopes
+          </Link>
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-gray-900 hover:bg-gray-100"

@@ -110,6 +110,7 @@ export interface StoreUser {
   email: string
   role: 'OWNER' | 'MANAGER' | 'ASSISTANT'
   storeId: string
+  scopes: string[]
 }
 
 export interface AuthState {

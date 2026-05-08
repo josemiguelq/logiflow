@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, Clock, Flag, MapPin, Package } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
 
 const RouteMap = dynamic(() => import('./_map'), { ssr: false })
 
@@ -56,6 +57,7 @@ interface Props { params: Promise<{ id: string }> }
 
 export default function RouteDetailPage({ params }: Props) {
   const { id } = use(params)
+  const { hasScope } = useAuth()
   const { data: route, isLoading, mutate } = useSWR<DeliveryRoute>(
     `/routes/${id}`,
     (url: string) => api.get<DeliveryRoute>(url)
@@ -123,7 +125,7 @@ export default function RouteDetailPage({ params }: Props) {
           <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${STATUS_COLOR[route.status]}`}>
             {STATUS_LABEL[route.status]}
           </span>
-          {route.status !== 'FINISHED' && (
+          {route.status !== 'FINISHED' && hasScope('routes:force_finish') && (
             <button
               onClick={forceFinish}
               disabled={finishing}

@@ -64,6 +64,15 @@ async function seed() {
       VALUES ($1, false, true)
     `, [storeId])
 
+    // ── Role scopes ───────────────────────────────────────────────────────────
+    for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
+      await client.query(`
+        INSERT INTO store_role_scopes (store_id, role, scopes)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (store_id, role) DO NOTHING
+      `, [storeId, role, JSON.stringify(DEFAULT_ROLE_SCOPES[role])])
+    }
+
     // ── Usuários ──────────────────────────────────────────────────────────────
     const users = [
       { name: 'Admin Owner',    email: 'admin@logiflow.com',    username: 'admin',    password: 'admin123',    role: 'OWNER'     },

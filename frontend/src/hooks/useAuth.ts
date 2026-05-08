@@ -6,14 +6,15 @@ import { authStorage } from '@/lib/auth'
 import { api } from '@/lib/api'
 
 interface AuthStore {
-  user: StoreUser | null
-  token: string | null
-  login: (email: string, password: string) => Promise<void>
-  logout: () => void
-  init: () => void
+  user:      StoreUser | null
+  token:     string | null
+  login:     (email: string, password: string) => Promise<void>
+  logout:    () => void
+  init:      () => void
+  hasScope:  (scope: string) => boolean
 }
 
-export const useAuth = create<AuthStore>((set) => ({
+export const useAuth = create<AuthStore>((set, get) => ({
   user:  null,
   token: null,
 
@@ -36,5 +37,9 @@ export const useAuth = create<AuthStore>((set) => ({
     authStorage.clear()
     set({ token: null, user: null })
     window.location.href = '/login'
+  },
+
+  hasScope(scope: string): boolean {
+    return get().user?.scopes?.includes(scope) ?? false
   },
 }))

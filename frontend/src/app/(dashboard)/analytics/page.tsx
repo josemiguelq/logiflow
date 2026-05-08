@@ -91,12 +91,12 @@ function CustomTooltip({ active, payload, label }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const { user } = useAuth()
+  const { user, hasScope } = useAuth()
   const router   = useRouter()
 
   useEffect(() => {
-    if (user && user.role === 'ASSISTANT') router.replace('/orders')
-  }, [user, router])
+    if (user && !hasScope('analytics:view')) router.replace('/orders')
+  }, [user, hasScope, router])
 
   const [scale, setScale] = useState<'day' | 'month'>('day')
 
@@ -125,7 +125,7 @@ export default function AnalyticsPage() {
     ? Object.values(byStatus).reduce((a, b) => a + b, 0)
     : 0
 
-  if (user?.role === 'ASSISTANT') return null
+  if (user && !hasScope('analytics:view')) return null
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
