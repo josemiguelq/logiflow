@@ -222,6 +222,8 @@ interface AddressEntry {
   number: string
   complement: string
   isDefault: boolean
+  lat?: number
+  lng?: number
 }
 
 function emptyAddress(label = 'Casa'): AddressEntry {
@@ -253,7 +255,7 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [phone,     setPhone]     = useState('')
   const [addresses, setAddresses] = useState<AddressEntry[]>([{ ...emptyAddress('Principal'), isDefault: true, number: '' }])
 
-  function updateField(i: number, field: keyof AddressEntry, value: string) {
+  function updateField(i: number, field: keyof AddressEntry, value: string | number | undefined) {
     setAddresses(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a))
   }
 
@@ -271,16 +273,25 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
     if (!filled.length) { setError('Informe pelo menos um endereço'); return }
     setLoading(true)
     try {
-      await api.post('/customers', {
-        name, phone,
-        addresses: filled.map((a, i) => ({
-          label:      a.label,
-          address:    a.address.trim(),
-          number:     a.number.trim() || undefined,
-          complement: a.complement.trim() || undefined,
-          isDefault:  i === 0,
-        })),
-      })
+      const withCoords = await Promise.all(
+        filled.map(async (a, i) => {
+          let { lat, lng } = a
+          if (!lat || !lng) {
+            const geo = await geocodeAddress(a.address.trim(), a.number.trim())
+            if (geo) { lat = geo.lat; lng = geo.lng }
+          }
+          return {
+            label:      a.label,
+            address:    a.address.trim(),
+            number:     a.number.trim() || undefined,
+            complement: a.complement.trim() || undefined,
+            isDefault:  i === 0,
+            lat,
+            lng,
+          }
+        })
+      )
+      await api.post('/customers', { name, phone, addresses: withCoords })
       onSaved()
     } catch (err: unknown) {
       setError((err as Error).message)
