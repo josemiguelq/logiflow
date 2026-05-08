@@ -123,4 +123,87 @@ export async function superAdminRoutes(app: FastifyInstance) {
       })
     }
   )
+
+  // ── Store user management ─────────────────────────────────────────────────
+
+  app.get(
+    '/super-admin/stores/:storeId/users',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const { rows } = await db.query(
+        `SELECT id, name, email, username, role, created_at
+         FROM store_users WHERE store_id = $1 ORDER BY created_at ASC`,
+        [storeId]
+      )
+      return rows.map((r: Record<string, unknown>) => ({
+        id:        r.id,
+        name:      r.name,
+        email:     r.email,
+        username:  r.username,
+        role:      r.role,
+        createdAt: r.created_at,
+      }))
+    }
+  )
+
+  const createStoreUserSchema = z.object({
+    name:     z.string().min(2),
+    email:    z.string().email(),
+    username: z.string().min(3).regex(/^[a-z0-9_.]+$/),
+    password: z.string().min(6),
+    role:     z.enum(['OWNER', 'MANAGER', 'ASSISTANT']),
+  })
+
+  app.post(
+    '/super-admin/stores/:storeId/users',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const body = createStoreUserSchema.parse(req.body)
+
+      const { rows: [dup] } = await db.query(
+        'SELECT id FROM store_users WHERE email = $1 OR username = $2',
+        [body.email, body.username]
+      )
+      if (dup) return reply.code(409).send({ error: 'Email ou username já em uso' })
+
+      const hash = await bcrypt.hash(body.password, 10)
+      const { rows: [user] } = await db.query(
+        `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, email, username, role, created_at`,
+        [storeId, body.name, body.email, body.username, hash, body.role]
+      )
+      return reply.code(201).send({
+        id:        user.id,
+        name:      user.name,
+        email:     user.email,
+        username:  user.username,
+        role:      user.role,
+        createdAt: user.created_at,
+      })
+    }
+  )
+
+  app.delete(
+    '/super-admin/stores/:storeId/users/:userId',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId, userId } = req.params as { storeId: string; userId: string }
+      const { rows: [user] } = await db.query(
+        'SELECT id, role FROM store_users WHERE id = $1 AND store_id = $2',
+        [userId, storeId]
+      )
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado' })
+
+      await db.query('DELETE FROM store_users WHERE id = $1', [userId])
+      return { ok: true }
+    }
+  )
 }
