@@ -1,12 +1,90 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import { Plus, Search, MapPin, Phone, Trash2, ChevronDown, Pencil, X, Check } from 'lucide-react'
 import { Customer, CustomerAddress } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+
+// ── Address autocomplete (Nominatim / OpenStreetMap) ──────────────────────────
+
+interface NominatimResult { display_name: string }
+
+function AddressAutocomplete({
+  value, onChange, placeholder, className,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  className?: string
+}) {
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [open,        setOpen]        = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ref   = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function handleChange(v: string) {
+    onChange(v)
+    if (timer.current) clearTimeout(timer.current)
+    if (v.length < 4) { setSuggestions([]); setOpen(false); return }
+    timer.current = setTimeout(async () => {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=5&q=${encodeURIComponent(v)}`
+        const res  = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } })
+        const data = (await res.json()) as NominatimResult[]
+        const results = data.map(r => r.display_name)
+        setSuggestions(results)
+        setOpen(results.length > 0)
+      } catch { /* ignore */ }
+    }, 400)
+  }
+
+  function pick(s: string) {
+    // Nominatim returns full address like "Rua X, 123, Bairro, Cidade, Estado, Brasil"
+    // Strip the country suffix for cleaner storage
+    const clean = s.replace(/, Brasil$/, '').replace(/, Brazil$/, '')
+    onChange(clean)
+    setSuggestions([])
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        value={value}
+        onChange={e => handleChange(e.target.value)}
+        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        placeholder={placeholder}
+        className={className}
+        autoComplete="off"
+      />
+      {open && (
+        <ul className="absolute z-50 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg text-sm max-h-52 overflow-y-auto">
+          {suggestions.map((s, i) => (
+            <li
+              key={i}
+              className="cursor-pointer px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 leading-snug"
+              onMouseDown={() => pick(s)}
+            >
+              <MapPin className="mr-1.5 inline h-3 w-3 shrink-0 text-gray-400" />
+              {s.replace(/, Brasil$/, '').replace(/, Brazil$/, '')}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 const ADDRESS_LABELS = ['Principal', 'Casa', 'Trabalho', 'Outro']
 
@@ -373,11 +451,10 @@ function CustomerEditModal({
                         </button>
                       </div>
                     </div>
-                    <Input
+                    <AddressAutocomplete
                       value={addr.address}
-                      onChange={e => setAddr(i, { address: e.target.value })}
+                      onChange={v => setAddr(i, { address: v })}
                       placeholder="Rua, número, bairro"
-                      autoFocus
                     />
                     <Input
                       value={addr.complement}
@@ -543,12 +620,11 @@ function AddressList({
                 </button>
               )}
             </div>
-            <Input
+            <AddressAutocomplete
               value={addr.address}
-              onChange={e => onUpdate(i, 'address', e.target.value)}
+              onChange={v => onUpdate(i, 'address', v)}
               placeholder="Rua, número, bairro"
               className="mb-2 bg-white"
-              required={i === 0 || isCreate}
             />
             <Input
               value={addr.complement}

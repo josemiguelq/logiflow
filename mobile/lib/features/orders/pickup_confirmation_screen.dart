@@ -68,7 +68,15 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
   Widget build(BuildContext context) {
     final orders   = widget.route.orders;
     final settings = ref.watch(storeSettingsProvider);
-    final requirePickupCode = settings.value?.requirePickupCode ?? true;
+
+    if (settings.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Default to false (non-blocking) when settings can't be fetched
+    final requirePickupCode = settings.value?.requirePickupCode ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Confirmar retirada')),

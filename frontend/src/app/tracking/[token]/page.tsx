@@ -1,7 +1,10 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { MapPin, Truck, CheckCircle, XCircle, Clock } from 'lucide-react'
+
+const TrackingMap = dynamic(() => import('./_map'), { ssr: false })
 
 interface PublicOrder {
   id: string
@@ -10,6 +13,8 @@ interface PublicOrder {
   deliverer?: { name: string }
   routePosition?: number
   isCurrentStop: boolean
+  delivererLat?: number | null
+  delivererLng?: number | null
 }
 
 const STATUS_INFO: Record<string, { label: string; icon: typeof Clock; color: string }> = {
@@ -61,6 +66,8 @@ export default function PublicTrackingPage({ params }: { params: Promise<{ token
 
   const info = STATUS_INFO[order.status] ?? STATUS_INFO.PREPARING
   const Icon = info.icon
+  const showMap = order.delivererLat != null && order.delivererLng != null &&
+    ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -71,14 +78,25 @@ export default function PublicTrackingPage({ params }: { params: Promise<{ token
         <span className="font-bold text-gray-900">LogiFlow</span>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+      <main className="flex flex-1 flex-col items-center px-4 py-8">
         <div className="w-full max-w-sm">
           <div className="mb-6 flex flex-col items-center text-center">
-            <div className={`mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100`}>
+            <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
               <Icon className={`h-8 w-8 ${info.color}`} />
             </div>
             <h1 className="text-xl font-bold text-gray-900">{info.label}</h1>
           </div>
+
+          {/* Live map */}
+          {showMap && (
+            <div className="mb-4 overflow-hidden rounded-xl border border-gray-200 shadow-sm" style={{ height: 220 }}>
+              <TrackingMap
+                delivererLat={order.delivererLat!}
+                delivererLng={order.delivererLng!}
+                delivererName={order.deliverer?.name ?? 'Entregador'}
+              />
+            </div>
+          )}
 
           <div className="space-y-3">
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">

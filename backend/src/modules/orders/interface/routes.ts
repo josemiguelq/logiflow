@@ -26,7 +26,25 @@ export async function orderRoutes(app: FastifyInstance) {
     const { orderId } = req.params as { orderId: string }
     const order = await orderRepo.getPublic(orderId)
     if (!order) return reply.code(404).send({ error: 'Not found' })
-    return order
+
+    // Attach deliverer's last known location (from status history)
+    let delivererLat: number | null = null
+    let delivererLng: number | null = null
+    if ((order as { deliverer?: unknown }).deliverer) {
+      const { rows } = await db.query(
+        `SELECT lat, lng FROM deliverer_status_history
+         WHERE deliverer_id = (SELECT deliverer_id FROM orders WHERE id = $1)
+           AND lat IS NOT NULL AND lng IS NOT NULL
+         ORDER BY changed_at DESC LIMIT 1`,
+        [orderId]
+      )
+      if (rows[0]) {
+        delivererLat = (rows[0] as Record<string, unknown>).lat as number
+        delivererLng = (rows[0] as Record<string, unknown>).lng as number
+      }
+    }
+
+    return { ...order, delivererLat, delivererLng }
   })
 
   // ── Store user routes ────────────────────────────────────────────────────
