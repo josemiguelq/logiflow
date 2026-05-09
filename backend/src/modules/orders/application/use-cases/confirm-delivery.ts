@@ -27,7 +27,7 @@ export async function confirmDelivery(
     console.log('code', code)
     console.log('codeUpper', code.toUpperCase())
     console.log('order.deliveryCode', order.deliveryCode)
-  if (requireDeliveryCode && code && order.deliveryCode !== code.toUpperCase()) {
+  if (requireDeliveryCode && code && order.deliveryCode.trim() !== code.trim().toUpperCase()) {
     throw new Error('Código de entrega incorreto')
   }
 

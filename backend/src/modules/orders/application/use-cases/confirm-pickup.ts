@@ -11,7 +11,7 @@ export async function confirmPickup(
   if (!order) throw new Error('Order not found')
   if (order.delivererId !== delivererId) throw new Error('Not your order')
   if (order.status !== 'ASSIGNED') throw new Error('Order not assigned')
-  if (order.pickupCode !== code.toUpperCase()) throw new Error('Invalid pickup code')
+  if (order.pickupCode.trim() !== code.trim().toUpperCase()) throw new Error('Invalid pickup code')
 
   return orderRepo.updateStatus(orderId, 'ON_ROUTE', { pickedUpAt: new Date() })
 }
