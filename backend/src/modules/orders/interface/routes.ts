@@ -39,7 +39,7 @@ export async function orderRoutes(app: FastifyInstance) {
     // Expire link 15 min after final status for unauthenticated access
     if (!isAuthenticated && (order.status === 'DELIVERED' || order.status === 'CANCELLED')) {
       const { rows: [ts] } = await db.query(
-        `SELECT COALESCE(delivered_at, updated_at) AS final_at FROM orders WHERE id = $1`,
+        `SELECT COALESCE(delivered_at, created_at) AS final_at FROM orders WHERE id = $1`,
         [orderId]
       )
       const finalAt = ts?.final_at as Date | null
