@@ -1,21 +1,54 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
+import { useRouter } from 'next/navigation'
 import { MessageSquare, Wifi, WifiOff, QrCode, Power } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/hooks/useAuth'
+
+interface StoreFeatures {
+  whatsappEnabled:    boolean
+  customThemeEnabled: boolean
+  csvExportEnabled:   boolean
+}
 
 export default function WhatsAppPage() {
-  const [loading, setLoading] = useState(false)
+  const { user, hasScope } = useAuth()
+  const router = useRouter()
 
-  const { data, mutate } = useSWR<{ status: string }>(
-    '/whatsapp/status',
+  // Same SWR key as useStoreFeatures → served from cache, no extra request
+  const { data: features } = useSWR<StoreFeatures>(
+    '/store/features',
+    (url: string) => api.get<StoreFeatures>(url),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+
+  // All hooks must be at the top — before any conditional returns
+  const [loading, setLoading] = useState(false)
+  const [qrData,  setQrData]  = useState<string | null>(null)
+
+  const allowed = !!user && hasScope('whatsapp:view') && features?.whatsappEnabled === true
+
+  const { data: statusData, mutate } = useSWR<{ status: string }>(
+    allowed ? '/whatsapp/status' : null,   // only fetch when allowed
     (url: string) => api.get<{ status: string }>(url),
     { refreshInterval: 5_000 }
   )
 
-  const [qrData, setQrData] = useState<string | null>(null)
+  useEffect(() => {
+    if (!user) return
+    // Scope check is instant (JWT payload already in memory)
+    if (!hasScope('whatsapp:view')) { router.replace('/orders'); return }
+    // Feature check once the API response arrives
+    if (features !== undefined && !features.whatsappEnabled) {
+      router.replace('/orders')
+    }
+  }, [user, features, hasScope, router])
+
+  // Hold render until both checks pass — prevents any flash of content
+  if (!user || features === undefined || !allowed) return null
 
   async function handleConnect() {
     setLoading(true)
@@ -39,7 +72,7 @@ export default function WhatsAppPage() {
     }
   }
 
-  const status = data?.status ?? 'DISCONNECTED'
+  const status = statusData?.status ?? 'DISCONNECTED'
 
   return (
     <div className="p-6">
@@ -63,9 +96,9 @@ export default function WhatsAppPage() {
             <div>
               <p className="font-semibold text-gray-900">Sessão WhatsApp</p>
               <div className="flex items-center gap-1.5">
-                {status === 'CONNECTED'  && <Wifi className="h-3.5 w-3.5 text-green-500" />}
-                {status === 'CONNECTING' && <Wifi className="h-3.5 w-3.5 text-yellow-500" />}
-                {status === 'DISCONNECTED' && <WifiOff className="h-3.5 w-3.5 text-gray-400" />}
+                {status === 'CONNECTED'    && <Wifi    className="h-3.5 w-3.5 text-green-500"  />}
+                {status === 'CONNECTING'   && <Wifi    className="h-3.5 w-3.5 text-yellow-500" />}
+                {status === 'DISCONNECTED' && <WifiOff className="h-3.5 w-3.5 text-gray-400"   />}
                 <span className={`text-sm ${
                   status === 'CONNECTED'  ? 'text-green-600' :
                   status === 'CONNECTING' ? 'text-yellow-600' : 'text-gray-400'
