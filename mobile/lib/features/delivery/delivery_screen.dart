@@ -298,9 +298,10 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => _DeliveryConfirmSheet(
-        order:               widget.order,
-        requireDeliveryCode: settings.requireDeliveryCode,
-        onDelivered:         widget.onDelivered,
+        order:                widget.order,
+        requireDeliveryCode:  settings.requireDeliveryCode,
+        requireDeliveryPhoto: settings.requireDeliveryPhoto,
+        onDelivered:          widget.onDelivered,
       ),
     );
   }
@@ -309,10 +310,12 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
 class _DeliveryConfirmSheet extends StatefulWidget {
   final Order order;
   final bool requireDeliveryCode;
+  final bool requireDeliveryPhoto;
   final VoidCallback onDelivered;
   const _DeliveryConfirmSheet({
     required this.order,
     required this.requireDeliveryCode,
+    required this.requireDeliveryPhoto,
     required this.onDelivered,
   });
 
@@ -344,6 +347,10 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     final code = _codeCtrl.text.trim().toUpperCase();
     if (widget.requireDeliveryCode && code.length != 4) {
       setState(() => _error = 'Informe os 4 últimos dígitos do telefone');
+      return;
+    }
+    if (widget.requireDeliveryPhoto && _photo == null) {
+      setState(() => _error = 'Foto de comprovante é obrigatória');
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -427,34 +434,39 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
             const SizedBox(height: 16),
           ],
 
-          // Optional photo
-          GestureDetector(
-            onTap: _takePhoto,
-            child: Container(
-              height: 80,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
+          // Photo field — only shown when required or store wants it
+          if (widget.requireDeliveryPhoto) ...[
+            GestureDetector(
+              onTap: _takePhoto,
+              child: Container(
+                height: 80,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _photo == null && _error != null
+                        ? const Color(0xFFDC2626)
+                        : Colors.grey.shade200,
+                  ),
+                ),
+                child: _photo != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(File(_photo!.path), fit: BoxFit.cover))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.camera_alt_outlined, color: Colors.grey.shade400),
+                          const SizedBox(width: 8),
+                          Text('Foto de comprovante (obrigatória)',
+                              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                        ],
+                      ),
               ),
-              child: _photo != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(File(_photo!.path), fit: BoxFit.cover))
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.camera_alt_outlined, color: Colors.grey.shade400),
-                        const SizedBox(width: 8),
-                        Text('Foto de comprovante (opcional)',
-                            style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-                      ],
-                    ),
             ),
-          ),
-
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: _noteCtrl,
             maxLines: 2,

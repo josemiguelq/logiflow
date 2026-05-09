@@ -215,15 +215,16 @@ export async function delivererRoutes(app: FastifyInstance) {
       [req.actor.storeId]
     )
     const { rows: [settings] } = await db.query(
-      'SELECT require_pickup_code, require_delivery_code FROM store_settings WHERE store_id = $1',
+      'SELECT require_pickup_code, require_delivery_code, require_delivery_photo FROM store_settings WHERE store_id = $1',
       [req.actor.storeId]
     )
     return {
-      name:               store?.name ?? '',
-      lat:                store?.lat  ?? null,
-      lng:                store?.lng  ?? null,
-      requirePickupCode:  settings?.require_pickup_code  ?? true,
-      requireDeliveryCode: settings?.require_delivery_code ?? true,
+      name:                 store?.name ?? '',
+      lat:                  store?.lat  ?? null,
+      lng:                  store?.lng  ?? null,
+      requirePickupCode:    settings?.require_pickup_code    ?? true,
+      requireDeliveryCode:  settings?.require_delivery_code  ?? true,
+      requireDeliveryPhoto: settings?.require_delivery_photo ?? false,
     }
   })
 }
