@@ -21,6 +21,45 @@ export async function routeRoutes(app: FastifyInstance) {
     return routeRepo.findByStore(req.actor.storeId)
   })
 
+  // CSV export — all routes + orders for this store
+  app.get('/routes/export', { preHandler: requireStoreUser }, async (req, reply) => {
+    const { rows: feat } = await db.query(`
+      SELECT 1 FROM store_features_enabled sfe
+      JOIN features f ON f.id = sfe.feature_id
+      WHERE sfe.store_id = $1 AND f.name = 'csv_export'
+    `, [req.actor.storeId])
+    if (!feat.length) return reply.code(403).send({ error: 'Feature csv_export não habilitada' })
+
+    const { rows } = await db.query(`
+      SELECT
+        o.id                                              AS order_id,
+        r.id                                              AS route_id,
+        d.name                                            AS deliverer_name,
+        COALESCE(o.delivery_address, c.address)          AS delivery_address,
+        o.status,
+        o.created_at,
+        o.picked_up_at,
+        o.delivered_at
+      FROM routes r
+      JOIN deliverers d ON d.id = r.deliverer_id
+      JOIN orders     o ON o.route_id = r.id
+      JOIN customers  c ON c.id = o.customer_id
+      WHERE r.store_id = $1
+      ORDER BY r.created_at DESC, o.route_position ASC NULLS LAST
+    `, [req.actor.storeId])
+
+    return (rows as Record<string, unknown>[]).map(o => ({
+      orderId:         o.order_id,
+      routeId:         o.route_id,
+      delivererName:   o.deliverer_name,
+      deliveryAddress: o.delivery_address,
+      status:          o.status,
+      createdAt:       o.created_at,
+      pickedUpAt:      o.picked_up_at  ?? null,
+      deliveredAt:     o.delivered_at  ?? null,
+    }))
+  })
+
   app.get('/routes/:id', { preHandler: requireStoreUser }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const route = await routeRepo.findById(id, req.actor.storeId)

@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Eye } from 'lucide-react'
+import { Download, Eye, Loader2 } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
+import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 
 const STATUS_LABEL: Record<RouteStatus, string> = {
   CREATED:  'Criada',
@@ -18,17 +20,118 @@ const STATUS_COLOR: Record<RouteStatus, string> = {
   FINISHED: 'bg-green-100 text-green-700',
 }
 
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  PREPARING:        'Aguardando',
+  ASSIGNED:         'Atribuído',
+  ON_ROUTE:         'Em rota',
+  OUT_FOR_DELIVERY: 'Saiu p/ entrega',
+  DELIVERED:        'Entregue',
+  CANCELLED:        'Cancelado',
+}
+
+interface ExportRow {
+  orderId:         string
+  routeId:         string
+  delivererName:   string
+  deliveryAddress: string
+  status:          string
+  createdAt:       string | null
+  pickedUpAt:      string | null
+  deliveredAt:     string | null
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function shortId(uuid: string): string {
+  return `#${uuid.slice(-8).toUpperCase()}`
+}
+
+function escapeCsv(val: string): string {
+  if (val.includes('"') || val.includes(',') || val.includes('\n')) {
+    return `"${val.replace(/"/g, '""')}"`
+  }
+  return val
+}
+
+function buildCsv(rows: ExportRow[]): string {
+  const headers = [
+    'ID do Pedido', 'ID da Rota', 'Entregador',
+    'Endereço de Entrega', 'Status',
+    'Criado em', 'Retirado em', 'Entregue em',
+  ]
+  const lines = [headers.map(escapeCsv).join(',')]
+  for (const r of rows) {
+    lines.push([
+      shortId(r.orderId),
+      shortId(r.routeId),
+      r.delivererName,
+      r.deliveryAddress,
+      ORDER_STATUS_LABEL[r.status] ?? r.status,
+      fmtDate(r.createdAt),
+      fmtDate(r.pickedUpAt),
+      fmtDate(r.deliveredAt),
+    ].map(escapeCsv).join(','))
+  }
+  return lines.join('\r\n')
+}
+
+function downloadCsv(content: string, filename: string) {
+  const bom = '﻿'
+  const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function RoutesPage() {
   const { data: routes = [], isLoading } = useSWR<DeliveryRoute[]>(
     '/routes',
     (url: string) => api.get<DeliveryRoute[]>(url)
   )
+  const features     = useStoreFeatures()
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const rows = await api.get<ExportRow[]>('/routes/export')
+      const csv  = buildCsv(rows)
+      const date = new Date().toISOString().slice(0, 10)
+      downloadCsv(csv, `rotas-${date}.csv`)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Rotas</h1>
-        <p className="text-sm text-gray-500 mt-1">Rotas de entrega criadas pelos entregadores</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Rotas</h1>
+          <p className="text-sm text-gray-500 mt-1">Rotas de entrega criadas pelos entregadores</p>
+        </div>
+        {features.csvExportEnabled && (
+          <button
+            onClick={handleExport}
+            disabled={exporting || routes.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+          >
+            {exporting
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Download className="h-4 w-4" />
+            }
+            Baixar CSV
+          </button>
+        )}
       </div>
 
       {isLoading ? (
