@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp,
-  CheckCircle, Download, Info, MapPin, Calendar, Package, Truck,
+  CheckCircle, Download, Info, MapPin, Calendar, Package, Truck, Star,
 } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
@@ -75,9 +75,10 @@ const ROLE_COLOR: Record<string, string> = {
 }
 
 const FEATURE_META: Record<string, { label: string; icon: React.ReactNode }> = {
-  whatsapp:     { label: 'WhatsApp',  icon: <Zap className="h-3.5 w-3.5" /> },
-  custom_theme: { label: 'Tema',      icon: <Palette className="h-3.5 w-3.5" /> },
-  csv_export:   { label: 'CSV',       icon: <Download className="h-3.5 w-3.5" /> },
+  whatsapp:         { label: 'WhatsApp',   icon: <Zap className="h-3.5 w-3.5" /> },
+  custom_theme:     { label: 'Tema',       icon: <Palette className="h-3.5 w-3.5" /> },
+  csv_export:       { label: 'CSV',        icon: <Download className="h-3.5 w-3.5" /> },
+  customer_ratings: { label: 'Avaliações', icon: <Star className="h-3.5 w-3.5" /> },
 }
 
 export default function SuperAdminStoresPage() {
