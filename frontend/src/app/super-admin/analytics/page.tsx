@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, XCircle, Clock, Store, TrendingUp } from 'lucide-react'
+
+const StoresMap = dynamic(() => import('./_stores_map'), { ssr: false })
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
@@ -10,6 +13,9 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 interface StoreStats {
   id:         string
   name:       string
+  lat:        number | null
+  lng:        number | null
+  city:       string | null
   total:      number
   delivered:  number
   cancelled:  number
@@ -101,6 +107,24 @@ export default function SuperAdminAnalyticsPage() {
           bg="bg-gray-50"
         />
       </div>
+
+      {/* Stores map */}
+      {stats.some(s => s.lat != null && s.lng != null) && (
+        <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-5 py-3">
+            <h2 className="text-sm font-semibold text-gray-700">Localização das lojas</h2>
+          </div>
+          <div style={{ height: 360 }}>
+            <StoresMap
+              stores={stats
+                .filter((s): s is StoreStats & { lat: number; lng: number } =>
+                  s.lat != null && s.lng != null
+                )
+                .map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng, delivered: s.delivered }))}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Per-store table */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">

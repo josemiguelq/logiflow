@@ -47,18 +47,24 @@ export async function superAdminRoutes(app: FastifyInstance) {
       SELECT
         s.id,
         s.name,
+        s.lat,
+        s.lng,
+        s.city,
         COUNT(o.id)                                                    AS total_orders,
         COUNT(o.id) FILTER (WHERE o.status = 'DELIVERED')             AS delivered,
         COUNT(o.id) FILTER (WHERE o.status = 'CANCELLED')             AS cancelled,
         COUNT(o.id) FILTER (WHERE o.status NOT IN ('DELIVERED','CANCELLED')) AS in_progress
       FROM stores s
       LEFT JOIN orders o ON o.store_id = s.id
-      GROUP BY s.id, s.name
+      GROUP BY s.id, s.name, s.lat, s.lng, s.city
       ORDER BY delivered DESC, s.name ASC
     `)
     return rows.map((r: Record<string, unknown>) => ({
       id:         r.id,
       name:       r.name,
+      lat:        r.lat  != null ? Number(r.lat)  : null,
+      lng:        r.lng  != null ? Number(r.lng)  : null,
+      city:       r.city ?? null,
       total:      Number(r.total_orders),
       delivered:  Number(r.delivered),
       cancelled:  Number(r.cancelled),

@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import { Plus, Search, MapPin, Phone, Trash2, ChevronDown, Pencil, X, Check } from 'lucide-react'
+
+const AddressMapPicker = dynamic(() => import('./_address_map'), { ssr: false })
 import { Customer, CustomerAddress } from '@/types'
 import { api } from '@/lib/api'
 import { maskPhone, stripPhone, formatPhone } from '@/lib/phone'
@@ -517,6 +520,12 @@ function CustomerEditModal({
                     <Input
                       value={addr.number}
                       onChange={e => setAddr(i, { number: e.target.value })}
+                      onBlur={async () => {
+                        if (!addr.lat && !addr.lng && addr.address.trim() && addr.number.trim()) {
+                          const geo = await geocodeAddress(addr.address.trim(), addr.number.trim())
+                          if (geo) setAddr(i, { lat: geo.lat, lng: geo.lng })
+                        }
+                      }}
                       placeholder="Número"
                     />
                     <Input
@@ -524,6 +533,18 @@ function CustomerEditModal({
                       onChange={e => setAddr(i, { complement: e.target.value })}
                       placeholder="Complemento (opcional)"
                     />
+                    {addr.lat && addr.lng && (
+                      <div className="mt-2">
+                        <div className="overflow-hidden rounded-xl border border-gray-200" style={{ height: 220 }}>
+                          <AddressMapPicker
+                            lat={addr.lat}
+                            lng={addr.lng}
+                            onChange={(lat, lng) => setAddr(i, { lat, lng })}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-400">Arraste o pino ou clique para ajustar a posição exata</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   // ── View mode ──
@@ -595,7 +616,7 @@ function CustomerEditModal({
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
@@ -695,6 +716,12 @@ function AddressList({
             <Input
               value={addr.number}
               onChange={e => onUpdate(i, 'number', e.target.value)}
+              onBlur={async () => {
+                if (!addr.lat && !addr.lng && addr.address.trim() && addr.number.trim()) {
+                  const geo = await geocodeAddress(addr.address.trim(), addr.number.trim())
+                  if (geo) { onUpdate(i, 'lat', geo.lat); onUpdate(i, 'lng', geo.lng) }
+                }
+              }}
               placeholder="Número"
               className="mb-2 bg-white"
             />
@@ -704,6 +731,18 @@ function AddressList({
               placeholder="Complemento (opcional)"
               className="bg-white"
             />
+            {addr.lat && addr.lng && (
+              <div className="mt-3">
+                <div className="overflow-hidden rounded-xl border border-gray-200" style={{ height: 220 }}>
+                  <AddressMapPicker
+                    lat={addr.lat}
+                    lng={addr.lng}
+                    onChange={(lat, lng) => { onUpdate(i, 'lat', lat); onUpdate(i, 'lng', lng) }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Arraste o pino ou clique para ajustar a posição exata</p>
+              </div>
+            )}
           </div>
         ))}
       </div>
