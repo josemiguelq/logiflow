@@ -514,11 +514,23 @@ function FeatureToggle({
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 
+async function geocodeAddress(street: string, number: string, city: string) {
+  const q = `${street}, ${number}, ${city}, Brasil`
+  const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(q)}`
+  const res = await fetch(url, { headers: { 'User-Agent': 'LogiFlow/1.0' } })
+  const data = await res.json()
+  if (!data[0]) return null
+  return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+}
+
 function CreateStoreModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [storeName,     setStoreName]     = useState('')
   const [ownerName,     setOwnerName]     = useState('')
   const [ownerEmail,    setOwnerEmail]    = useState('')
   const [ownerPassword, setOwnerPassword] = useState('')
+  const [street,        setStreet]        = useState('')
+  const [streetNumber,  setStreetNumber]  = useState('')
+  const [city,          setCity]          = useState('')
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState('')
 
@@ -526,9 +538,22 @@ function CreateStoreModal({ onClose, onCreated }: { onClose: () => void; onCreat
     e.preventDefault()
     setLoading(true); setError('')
     try {
+      let lat: number | undefined
+      let lng: number | undefined
+      if (street && streetNumber && city) {
+        const coords = await geocodeAddress(street, streetNumber, city)
+        if (coords) { lat = coords.lat; lng = coords.lng }
+      }
       await saFetch('/super-admin/stores', {
         method: 'POST',
-        body: JSON.stringify({ storeName, ownerName, ownerEmail, ownerPassword }),
+        body: JSON.stringify({
+          storeName, ownerName, ownerEmail, ownerPassword,
+          street:       street       || undefined,
+          streetNumber: streetNumber || undefined,
+          city:         city         || undefined,
+          lat,
+          lng,
+        }),
       })
       onCreated()
     } catch (err) {
@@ -540,17 +565,38 @@ function CreateStoreModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="text-lg font-semibold">Nova Loja</h2>
           <button onClick={onClose}><X className="h-5 w-5 text-gray-400" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="overflow-y-auto px-6 py-4 space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Nome da loja</label>
             <input value={storeName} onChange={e => setStoreName(e.target.value)} required
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
+
+          <hr className="border-gray-100" />
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Endereço</p>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Rua</label>
+            <input value={street} onChange={e => setStreet(e.target.value)} placeholder="Ex: Rua das Flores"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Número</label>
+              <input value={streetNumber} onChange={e => setStreetNumber(e.target.value)} placeholder="Ex: 123"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Cidade</label>
+              <input value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: São Paulo"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+          </div>
+
           <hr className="border-gray-100" />
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Usuário owner</p>
           <div>
@@ -568,8 +614,9 @@ function CreateStoreModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <input type="password" value={ownerPassword} onChange={e => setOwnerPassword(e.target.value)} required minLength={6}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
+
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-2 pb-2">
             <button type="button" onClick={onClose}
               className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
               Cancelar
