@@ -185,7 +185,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       `INSERT INTO store_settings
          (store_id, max_orders_per_route, require_delivery_photo,
           require_pickup_code, require_delivery_code, allow_customer_ratings)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, COALESCE($2, 5), COALESCE($3, false), COALESCE($4, true), COALESCE($5, true), COALESCE($6, false))
        ON CONFLICT (store_id) DO UPDATE
        SET max_orders_per_route    = COALESCE($2, store_settings.max_orders_per_route),
            require_delivery_photo  = COALESCE($3, store_settings.require_delivery_photo),
