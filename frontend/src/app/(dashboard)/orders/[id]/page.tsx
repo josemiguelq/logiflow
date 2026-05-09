@@ -48,13 +48,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <StatusBadge status={order.status} />
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="rounded-xl bg-gray-50 p-4">
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
-              Código de Coleta
-            </p>
-            <p className="font-mono text-2xl font-bold text-gray-900">{order.pickupCode}</p>
-          </div>
+        <div className={`mt-6 grid gap-4 ${order.status !== 'PREPARING' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {order.status !== 'PREPARING' && (
+            <div className="rounded-xl bg-gray-50 p-4">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Código de Coleta
+              </p>
+              <p className="font-mono text-2xl font-bold text-gray-900">{order.pickupCode}</p>
+            </div>
+          )}
           <div className="rounded-xl bg-gray-50 p-4">
             <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
               Código de Entrega
