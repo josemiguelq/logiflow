@@ -164,6 +164,29 @@ export async function routeRoutes(app: FastifyInstance) {
     }
   })
 
+  // Cancel a CREATED route (deliverer self-service) — resets orders to PREPARING
+  app.delete('/deliverer/routes/:id', { preHandler: requireDeliverer }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { rows } = await db.query(
+      `SELECT id, status FROM routes WHERE id = $1 AND deliverer_id = $2`,
+      [id, req.actor.sub]
+    )
+    const route = rows[0] as Record<string, unknown> | undefined
+    if (!route) return reply.code(404).send({ error: 'Not found' })
+    if (route.status !== 'CREATED') {
+      return reply.code(400).send({ error: 'Só é possível cancelar rotas que ainda não foram iniciadas' })
+    }
+
+    await db.query(
+      `UPDATE orders SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
+       WHERE route_id = $1`,
+      [id]
+    )
+    await db.query('DELETE FROM routes WHERE id = $1', [id])
+
+    return { ok: true }
+  })
+
   // Confirm route pickup with ONE code — transitions all ASSIGNED orders to ON_ROUTE
   app.post(
     '/deliverer/routes/:id/pickup',

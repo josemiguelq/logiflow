@@ -13,6 +13,7 @@ import { confirmDelivery } from '../application/use-cases/confirm-delivery'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
+import { uploadBase64, getPublicUrl } from '../../../shared/storage/client'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
@@ -109,7 +110,7 @@ export async function orderRoutes(app: FastifyInstance) {
               primary:   t.primary   ?? '#2563EB',
               secondary: t.secondary ?? '#F9FAFB',
               accent:    t.accent    ?? '#F97316',
-              logoUrl:   t.logoUrl   ?? null,
+              logoUrl:   getPublicUrl(t.logoUrl) ?? null,
               storeName: t.storeName ?? null,
             }
           }
@@ -134,7 +135,7 @@ export async function orderRoutes(app: FastifyInstance) {
             primary:   (themeRow as Record<string, unknown> | undefined)?.primary_color   as string ?? '#2563EB',
             secondary: (themeRow as Record<string, unknown> | undefined)?.secondary_color as string ?? '#F9FAFB',
             accent:    (themeRow as Record<string, unknown> | undefined)?.accent_color    as string ?? '#F97316',
-            logoUrl:   (themeRow as Record<string, unknown> | undefined)?.logo_url        as string | null ?? null,
+            logoUrl:   getPublicUrl((themeRow as Record<string, unknown> | undefined)?.logo_url as string | null) ?? null,
             storeName: (nameRow  as Record<string, unknown> | undefined)?.name            as string | null ?? null,
           }
         }
@@ -463,10 +464,16 @@ export async function orderRoutes(app: FastifyInstance) {
       )
       const requireDeliveryCode = (settingRow as Record<string, unknown> | undefined)?.value !== 'false'
 
+      // Upload proof photo to storage if provided as base64 data URI
+      let photoUrl = body.photoUrl
+      if (photoUrl?.startsWith('data:')) {
+        photoUrl = await uploadBase64(`proof/${id}`, photoUrl)
+      }
+
       try {
         const order = await confirmDelivery(
           { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub,
-            requireDeliveryCode, ...body },
+            requireDeliveryCode, ...body, photoUrl },
           { orderRepo }
         )
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)

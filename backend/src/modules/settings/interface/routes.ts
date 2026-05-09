@@ -5,6 +5,7 @@ import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
+import { uploadBase64, getPublicUrl } from '../../../shared/storage/client'
 
 const DEFAULT_THEME = {
   primary:   '#2563EB',
@@ -76,7 +77,7 @@ export async function settingsRoutes(app: FastifyInstance) {
             primary:   themeRow.primary_color,
             secondary: themeRow.secondary_color,
             accent:    themeRow.accent_color,
-            logoUrl:   themeRow.logo_url,
+            logoUrl:   getPublicUrl(themeRow.logo_url as string | null),
             storeName,
           }
         : { ...DEFAULT_THEME, storeName },
@@ -106,6 +107,12 @@ export async function settingsRoutes(app: FastifyInstance) {
     const storeId = req.actor.storeId
     const hasLogo = 'logoUrl' in (req.body as object)
 
+    // Upload logo to storage if sent as base64 data URI
+    let logoUrl = body.logoUrl ?? null
+    if (logoUrl?.startsWith('data:')) {
+      logoUrl = await uploadBase64(`logos/${storeId}`, logoUrl)
+    }
+
     await db.query(
       `INSERT INTO store_theme (store_id, primary_color, secondary_color, accent_color, logo_url)
        VALUES ($1, $2, $3, $4, $5)
@@ -115,7 +122,7 @@ export async function settingsRoutes(app: FastifyInstance) {
            accent_color    = COALESCE($4, store_theme.accent_color),
            logo_url        = CASE WHEN $6 THEN $5 ELSE store_theme.logo_url END,
            updated_at      = now()`,
-      [storeId, body.primary, body.secondary, body.accent, body.logoUrl ?? null, hasLogo]
+      [storeId, body.primary, body.secondary, body.accent, logoUrl, hasLogo]
     )
 
     try { await redis.del(themeCacheKey(storeId)) } catch { /* ignore */ }

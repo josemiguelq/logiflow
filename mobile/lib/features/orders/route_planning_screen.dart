@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
@@ -16,11 +17,22 @@ class RoutePlanningScreen extends ConsumerStatefulWidget {
 
 class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
   late List<Order> _orders;
+  bool _cancelling = false;
 
   @override
   void initState() {
     super.initState();
     _orders = List.from(widget.route.orders);
+  }
+
+  Future<void> _cancel() async {
+    setState(() => _cancelling = true);
+    try {
+      await ApiClient().dio.delete('/deliverer/routes/${widget.route.id}');
+    } catch (_) {
+      // Best-effort — navigate back regardless
+    }
+    if (mounted) context.go('/orders');
   }
 
   @override
@@ -112,14 +124,34 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _confirm,
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Confirmar ordem da rota',
-                      style: TextStyle(fontSize: 16)),
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _cancelling ? null : _cancel,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey.shade700,
+                        side: BorderSide(color: Colors.grey.shade300),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: _cancelling
+                          ? const SizedBox(
+                              width: 20, height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('Cancelar', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: _confirm,
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Confirmar ordem',
+                          style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

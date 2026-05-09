@@ -1,6 +1,7 @@
 import { DB } from '../../../../shared/db/client'
 import { Order, OrderStatus, OrderWithDetails } from '../../domain/entities'
 import { IOrderRepository, OrderFilters, PublicOrderView } from '../../application/ports'
+import { getPublicUrl } from '../../../../shared/storage/client'
 
 function mapOrderRow(row: Record<string, unknown>): Order {
   return {
@@ -70,7 +71,7 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
       : undefined,
     proof: row.proof_photo_url
       ? {
-          photoUrl: row.proof_photo_url as string,
+          photoUrl: getPublicUrl(row.proof_photo_url as string) ?? (row.proof_photo_url as string),
           lat:      row.proof_lat as number | undefined,
           lng:      row.proof_lng as number | undefined,
         }

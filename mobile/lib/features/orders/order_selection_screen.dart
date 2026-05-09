@@ -137,8 +137,10 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       final res  = await ApiClient().dio.post('/deliverer/orders/claim', data: {
         'orderIds': selected.map((o) => o.id).toList(),
       });
-      final data  = res.data as Map<String, dynamic>;
-      final route = DelivererRoute.fromJson(data['route'] as Map<String, dynamic>);
+      final data     = res.data as Map<String, dynamic>;
+      final routeMap = Map<String, dynamic>.from(data['route'] as Map<String, dynamic>);
+      routeMap['orders'] = data['orders'];
+      final route = DelivererRoute.fromJson(routeMap);
       ref.invalidate(_routesProvider);
       ref.invalidate(_preparingOrdersProvider);
       if (mounted) context.push('/plan-route', extra: route);
