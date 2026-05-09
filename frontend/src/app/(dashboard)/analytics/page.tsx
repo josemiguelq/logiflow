@@ -11,7 +11,7 @@ import {
   Users, TrendingUp,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useAuth } from '@/hooks/useAuth'
+import { useAccess } from '@/hooks/useAccess'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
@@ -90,13 +90,16 @@ function CustomTooltip({ active, payload, label }: {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const ACCESS = { scope: 'analytics:view' } as const
+
 export default function AnalyticsPage() {
-  const { user, hasScope } = useAuth()
-  const router   = useRouter()
+  const { can, isLoading } = useAccess()
+  const router = useRouter()
 
   useEffect(() => {
-    if (user && !hasScope('analytics:view')) router.replace('/orders')
-  }, [user, hasScope, router])
+    if (isLoading) return
+    if (!can(ACCESS)) router.replace('/orders')
+  }, [isLoading, can, router])
 
   const [scale, setScale] = useState<'day' | 'month'>('day')
 
@@ -125,7 +128,7 @@ export default function AnalyticsPage() {
     ? Object.values(byStatus).reduce((a, b) => a + b, 0)
     : 0
 
-  if (user && !hasScope('analytics:view')) return null
+  if (isLoading || !can(ACCESS)) return null
 
   return (
     <div className="p-4 sm:p-6 space-y-6">

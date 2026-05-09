@@ -6,49 +6,31 @@ import { useRouter } from 'next/navigation'
 import { MessageSquare, Wifi, WifiOff, QrCode, Power } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/hooks/useAuth'
+import { useAccess } from '@/hooks/useAccess'
 
-interface StoreFeatures {
-  whatsappEnabled:    boolean
-  customThemeEnabled: boolean
-  csvExportEnabled:   boolean
-}
+const ACCESS = { scope: 'whatsapp:view', feature: 'whatsapp' } as const
 
 export default function WhatsAppPage() {
-  const { user, hasScope } = useAuth()
+  const { can, isLoading } = useAccess()
   const router = useRouter()
 
-  // Same SWR key as useStoreFeatures → served from cache, no extra request
-  const { data: features } = useSWR<StoreFeatures>(
-    '/store/features',
-    (url: string) => api.get<StoreFeatures>(url),
-    { revalidateOnFocus: false, dedupingInterval: 60_000 }
-  )
-
-  // All hooks must be at the top — before any conditional returns
-  const [loading, setLoading] = useState(false)
-  const [qrData,  setQrData]  = useState<string | null>(null)
-
-  const allowed = !!user && hasScope('whatsapp:view') && features?.whatsappEnabled === true
+  const allowed = can(ACCESS)
 
   const { data: statusData, mutate } = useSWR<{ status: string }>(
-    allowed ? '/whatsapp/status' : null,   // only fetch when allowed
+    allowed ? '/whatsapp/status' : null,
     (url: string) => api.get<{ status: string }>(url),
     { refreshInterval: 5_000 }
   )
 
-  useEffect(() => {
-    if (!user) return
-    // Scope check is instant (JWT payload already in memory)
-    if (!hasScope('whatsapp:view')) { router.replace('/orders'); return }
-    // Feature check once the API response arrives
-    if (features !== undefined && !features.whatsappEnabled) {
-      router.replace('/orders')
-    }
-  }, [user, features, hasScope, router])
+  const [loading, setLoading] = useState(false)
+  const [qrData,  setQrData]  = useState<string | null>(null)
 
-  // Hold render until both checks pass — prevents any flash of content
-  if (!user || features === undefined || !allowed) return null
+  useEffect(() => {
+    if (isLoading) return
+    if (!allowed) router.replace('/orders')
+  }, [isLoading, allowed, router])
+
+  if (isLoading || !allowed) return null
 
   async function handleConnect() {
     setLoading(true)
@@ -124,7 +106,11 @@ export default function WhatsAppPage() {
 
           <div className="flex gap-3">
             {status !== 'CONNECTED' ? (
-              <Button className="flex-1" onClick={handleConnect} disabled={loading}>
+              <Button
+                className="flex-1"
+                onClick={handleConnect}
+                disabled={loading || !can({ scope: 'whatsapp:connect', feature: 'whatsapp' })}
+              >
                 <QrCode className="h-4 w-4" />
                 {loading ? 'Conectando...' : 'Conectar WhatsApp'}
               </Button>
@@ -133,7 +119,7 @@ export default function WhatsAppPage() {
                 variant="outline"
                 className="flex-1 border-red-200 text-red-600 hover:bg-red-50"
                 onClick={handleDisconnect}
-                disabled={loading}
+                disabled={loading || !can({ scope: 'whatsapp:connect', feature: 'whatsapp' })}
               >
                 <Power className="h-4 w-4" />
                 Desconectar

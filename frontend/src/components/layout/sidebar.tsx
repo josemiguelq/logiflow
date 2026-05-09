@@ -7,17 +7,23 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
-import { useStoreFeatures } from '@/hooks/useStoreFeatures'
+import { useAccess } from '@/hooks/useAccess'
 
-const BASE_NAV = [
-  { href: '/orders',     label: 'Pedidos',       icon: Package,       scope: 'orders:view'     as string | null, feature: null },
-  { href: '/routes',     label: 'Rotas',          icon: Route,         scope: 'routes:view'     as string | null, feature: null },
-  { href: '/customers',  label: 'Clientes',       icon: Users,         scope: 'customers:view'  as string | null, feature: null },
-  { href: '/deliverers', label: 'Entregadores',   icon: Truck,         scope: 'deliverers:view' as string | null, feature: null },
-  { href: '/analytics',  label: 'Analítico',      icon: BarChart2,     scope: 'analytics:view'  as string | null, feature: null },
-  { href: '/users',      label: 'Usuários',       icon: UserCog,       scope: 'users:view'      as string | null, feature: null },
-  { href: '/whatsapp',   label: 'WhatsApp',       icon: MessageSquare, scope: 'whatsapp:view'   as string | null, feature: 'whatsappEnabled' as const },
-  { href: '/settings',   label: 'Configurações',  icon: Settings,      scope: 'settings:view'   as string | null, feature: null },
+const BASE_NAV: {
+  href:    string
+  label:   string
+  icon:    React.ElementType
+  scope:   string | null
+  feature: string | null   // canonical feature name, e.g. 'whatsapp'
+}[] = [
+  { href: '/orders',     label: 'Pedidos',      icon: Package,       scope: 'orders:view',     feature: null },
+  { href: '/routes',     label: 'Rotas',         icon: Route,         scope: 'routes:view',     feature: null },
+  { href: '/customers',  label: 'Clientes',      icon: Users,         scope: 'customers:view',  feature: null },
+  { href: '/deliverers', label: 'Entregadores',  icon: Truck,         scope: 'deliverers:view', feature: null },
+  { href: '/analytics',  label: 'Analítico',     icon: BarChart2,     scope: 'analytics:view',  feature: null },
+  { href: '/users',      label: 'Usuários',      icon: UserCog,       scope: 'users:view',      feature: null },
+  { href: '/whatsapp',   label: 'WhatsApp',      icon: MessageSquare, scope: 'whatsapp:view',   feature: 'whatsapp' },
+  { href: '/settings',   label: 'Configurações', icon: Settings,      scope: 'settings:view',   feature: null },
 ]
 
 interface Props {
@@ -26,15 +32,16 @@ interface Props {
 }
 
 export function Sidebar({ isOpen, onClose }: Props) {
-  const pathname       = usePathname()
-  const { user, logout, hasScope } = useAuth()
-  const features       = useStoreFeatures()
+  const pathname      = usePathname()
+  const { user, logout } = useAuth()
+  const { can }       = useAccess()
 
-  const nav = BASE_NAV.filter(item => {
-    if (item.feature !== null && !features[item.feature]) return false
-    if (item.scope !== null && !hasScope(item.scope)) return false
-    return true
-  })
+  const nav = BASE_NAV.filter(item =>
+    can({
+      scope:   item.scope   ?? undefined,
+      feature: item.feature ?? undefined,
+    })
+  )
 
   return (
     <>
