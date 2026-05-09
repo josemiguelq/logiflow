@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { Save, Lock, Palette, SlidersHorizontal, CheckCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -14,6 +15,7 @@ interface StoreSettings {
   requireDeliveryPhoto: boolean
   requirePickupCode:    boolean
   requireDeliveryCode:  boolean
+  allowCustomerRatings: boolean
 }
 
 interface ThemeData {
@@ -80,11 +82,13 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
     '/store/settings',
     (u: string) => api.get<StoreSettings>(u)
   )
+  const features = useStoreFeatures()
 
-  const [maxOrders,          setMaxOrders]          = useState(5)
-  const [requirePhoto,       setRequirePhoto]       = useState(false)
-  const [requirePickupCode,  setRequirePickupCode]  = useState(true)
-  const [requireDeliveryCode, setRequireDeliveryCode] = useState(true)
+  const [maxOrders,             setMaxOrders]             = useState(5)
+  const [requirePhoto,          setRequirePhoto]          = useState(false)
+  const [requirePickupCode,     setRequirePickupCode]     = useState(true)
+  const [requireDeliveryCode,   setRequireDeliveryCode]   = useState(true)
+  const [allowCustomerRatings,  setAllowCustomerRatings]  = useState(false)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -94,6 +98,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setRequirePhoto(data.requireDeliveryPhoto)
       setRequirePickupCode(data.requirePickupCode)
       setRequireDeliveryCode(data.requireDeliveryCode)
+      setAllowCustomerRatings(data.allowCustomerRatings ?? false)
     }
   }, [data])
 
@@ -106,6 +111,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         requireDeliveryPhoto: requirePhoto,
         requirePickupCode,
         requireDeliveryCode,
+        ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
       onSaved()
@@ -141,9 +147,12 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
 
         {(
           [
-            { label: 'Exigir foto na entrega',         desc: 'O entregador deve fotografar a entrega no app',               value: requirePhoto,       set: setRequirePhoto },
-            { label: 'Exigir código de coleta',        desc: 'Entregador confirma retirada com o código da rota',           value: requirePickupCode,  set: setRequirePickupCode },
-            { label: 'Exigir código de entrega',       desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode, set: setRequireDeliveryCode },
+            { label: 'Exigir foto na entrega',   desc: 'O entregador deve fotografar a entrega no app',                value: requirePhoto,       set: setRequirePhoto },
+            { label: 'Exigir código de coleta', desc: 'Entregador confirma retirada com o código da rota',            value: requirePickupCode,  set: setRequirePickupCode },
+            { label: 'Exigir código de entrega', desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode, set: setRequireDeliveryCode },
+            ...(features.customerRatingsEnabled
+              ? [{ label: 'Avaliação do cliente', desc: 'Clientes podem avaliar a entrega com até 5 estrelas na página de rastreamento', value: allowCustomerRatings, set: setAllowCustomerRatings }]
+              : []),
           ] as { label: string; desc: string; value: boolean; set: (v: boolean) => void }[]
         ).map(({ label, desc, value, set }) => (
           <div key={label} className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-4">

@@ -20,6 +20,7 @@ interface PublicOrder {
   deliveryNote?:  string
   rating?:        number
   ratingComment?: string
+  ratingEnabled:  boolean
 }
 
 const STATUS_INFO: Record<string, {
@@ -227,7 +228,7 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
         )}
 
         {/* Rating */}
-        {isDelivered && (
+        {isDelivered && order.ratingEnabled && (
           <RatingWidget
             orderId={order.id}
             existingRating={order.rating}

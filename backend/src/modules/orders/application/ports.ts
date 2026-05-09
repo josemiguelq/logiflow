@@ -30,7 +30,8 @@ export interface PublicOrderView {
   deliverer?: { name: string; lat?: number; lng?: number }
   routePosition?: number
   isCurrentStop: boolean
-  deliveryNote?: string
-  rating?: number
+  deliveryNote?:  string
+  rating?:        number
   ratingComment?: string
+  ratingEnabled:  boolean
 }

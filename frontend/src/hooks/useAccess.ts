@@ -6,16 +6,18 @@ import { useAuth } from './useAuth'
 import { api } from '@/lib/api'
 
 interface StoreFeatures {
-  whatsappEnabled:    boolean
-  customThemeEnabled: boolean
-  csvExportEnabled:   boolean
+  whatsappEnabled:        boolean
+  customThemeEnabled:     boolean
+  csvExportEnabled:       boolean
+  customerRatingsEnabled: boolean
 }
 
 // Maps canonical feature names (from DB) to their boolean flag
 const FEATURE_FLAGS: Record<string, keyof StoreFeatures> = {
-  whatsapp:     'whatsappEnabled',
-  custom_theme: 'customThemeEnabled',
-  csv_export:   'csvExportEnabled',
+  whatsapp:         'whatsappEnabled',
+  custom_theme:     'customThemeEnabled',
+  csv_export:       'csvExportEnabled',
+  customer_ratings: 'customerRatingsEnabled',
 }
 
 export interface AccessCheck {

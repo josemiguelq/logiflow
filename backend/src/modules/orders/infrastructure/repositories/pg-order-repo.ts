@@ -252,6 +252,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         deliveryNote:  o.deliveryNote,
         rating:        o.rating,
         ratingComment: o.ratingComment,
+        ratingEnabled: false, // overridden by route handler
       } as PublicOrderView
     },
   }

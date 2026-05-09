@@ -64,7 +64,23 @@ export async function orderRoutes(app: FastifyInstance) {
       }
     }
 
-    return { ...order, delivererLat, delivererLng }
+    // Compute whether customer ratings are enabled for this store
+    const { rows: [ratingCfg] } = await db.query(`
+      SELECT
+        COALESCE(ss.allow_customer_ratings, false) AS allow,
+        (SELECT COUNT(*) FROM store_features_enabled sfe
+         JOIN features f ON f.id = sfe.feature_id
+         WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings') > 0 AS feature_on
+      FROM orders o
+      LEFT JOIN store_settings ss ON ss.store_id = o.store_id
+      WHERE o.id = $1
+    `, [orderId])
+    const ratingEnabled = Boolean(
+      (ratingCfg as Record<string, unknown> | undefined)?.allow &&
+      (ratingCfg as Record<string, unknown> | undefined)?.feature_on
+    )
+
+    return { ...order, delivererLat, delivererLng, ratingEnabled }
   })
 
   // ── Public rating submission ──────────────────────────────────────────────
@@ -74,6 +90,24 @@ export async function orderRoutes(app: FastifyInstance) {
       rating:  z.number().int().min(1).max(5),
       comment: z.string().max(500).optional(),
     }).parse(req.body)
+
+    // Check feature + store setting
+    const { rows: [ratingCfg] } = await db.query(`
+      SELECT
+        COALESCE(ss.allow_customer_ratings, false) AS allow,
+        (SELECT COUNT(*) FROM store_features_enabled sfe
+         JOIN features f ON f.id = sfe.feature_id
+         WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings') > 0 AS feature_on
+      FROM orders o
+      LEFT JOIN store_settings ss ON ss.store_id = o.store_id
+      WHERE o.id = $1
+    `, [orderId])
+
+    if (!ratingCfg ||
+        !(ratingCfg as Record<string, unknown>).allow ||
+        !(ratingCfg as Record<string, unknown>).feature_on) {
+      return reply.code(403).send({ error: 'Avaliações não habilitadas para esta loja' })
+    }
 
     const { rows: [order] } = await db.query(
       'SELECT status, rating FROM orders WHERE id = $1',

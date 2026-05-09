@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { MapPin, Truck, CheckCircle, XCircle, Clock, Star, MessageSquare } from 'lucide-react'
+import { MapPin, Truck, CheckCircle, XCircle, Clock } from 'lucide-react'
 
 const TrackingMap = dynamic(() => import('./_map'), { ssr: false })
 
@@ -17,9 +17,6 @@ interface PublicOrder {
   isCurrentStop: boolean
   delivererLat?: number | null
   delivererLng?: number | null
-  deliveryNote?: string
-  rating?: number
-  ratingComment?: string
 }
 
 const STATUS_INFO: Record<string, { label: string; icon: typeof Clock; color: string }> = {
@@ -148,125 +145,11 @@ export default function PublicTrackingPage({ params }: { params: Promise<{ token
             )}
           </div>
 
-          {/* Delivery note */}
-          {order.deliveryNote && (
-            <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
-                <p className="text-xs font-medium uppercase tracking-wide text-amber-600">Observação do entregador</p>
-              </div>
-              <p className="text-sm text-gray-800">{order.deliveryNote}</p>
-            </div>
-          )}
-
-          {/* Customer rating */}
-          {order.status === 'DELIVERED' && (
-            <RatingWidget orderId={order.id} existingRating={order.rating} existingComment={order.ratingComment} />
-          )}
-
           <p className="mt-6 text-center text-xs text-gray-400">
             Atualiza automaticamente a cada 15 segundos
           </p>
         </div>
       </main>
-    </div>
-  )
-}
-
-// ── Rating widget ─────────────────────────────────────────────────────────────
-
-function RatingWidget({
-  orderId, existingRating, existingComment,
-}: {
-  orderId: string
-  existingRating?: number
-  existingComment?: string
-}) {
-  const [selected, setSelected] = useState(existingRating ?? 0)
-  const [hovered,  setHovered]  = useState(0)
-  const [comment,  setComment]  = useState(existingComment ?? '')
-  const [status,   setStatus]   = useState<'idle' | 'loading' | 'done'>(
-    existingRating ? 'done' : 'idle'
-  )
-
-  async function submit() {
-    if (!selected) return
-    setStatus('loading')
-    try {
-      await fetch(`${BASE}/tracking/${orderId}/rating`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating: selected, comment: comment.trim() || undefined }),
-      })
-      setStatus('done')
-    } catch {
-      setStatus('idle')
-    }
-  }
-
-  const display = hovered || selected
-
-  return (
-    <div className="mt-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      {status === 'done' ? (
-        <div className="flex flex-col items-center gap-2 text-center">
-          <CheckCircle className="h-8 w-8 text-green-500" />
-          <p className="font-semibold text-gray-900">Obrigado pela avaliação!</p>
-          <div className="flex gap-1 mt-1">
-            {[1,2,3,4,5].map(n => (
-              <Star
-                key={n}
-                className={`h-5 w-5 ${n <= selected ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}
-              />
-            ))}
-          </div>
-          {existingComment && (
-            <p className="text-sm text-gray-500 italic">"{existingComment}"</p>
-          )}
-        </div>
-      ) : (
-        <>
-          <p className="mb-3 text-center text-sm font-semibold text-gray-800">
-            Como foi sua entrega?
-          </p>
-          <div
-            className="flex justify-center gap-2 mb-4"
-            onMouseLeave={() => setHovered(0)}
-          >
-            {[1,2,3,4,5].map(n => (
-              <button
-                key={n}
-                onMouseEnter={() => setHovered(n)}
-                onClick={() => setSelected(n)}
-                className="transition-transform hover:scale-110 active:scale-95"
-              >
-                <Star
-                  className={`h-8 w-8 transition-colors ${
-                    n <= display
-                      ? 'fill-yellow-400 text-yellow-400'
-                      : 'text-gray-300'
-                  }`}
-                />
-              </button>
-            ))}
-          </div>
-          <textarea
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            maxLength={500}
-            rows={2}
-            placeholder="Deixe um comentário (opcional)"
-            className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-gray-400 focus:outline-none"
-          />
-          <button
-            onClick={submit}
-            disabled={!selected || status === 'loading'}
-            className="mt-3 w-full rounded-xl bg-gray-900 py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-40 hover:bg-gray-700"
-          >
-            {status === 'loading' ? 'Enviando...' : 'Enviar avaliação'}
-          </button>
-        </>
-      )}
     </div>
   )
 }

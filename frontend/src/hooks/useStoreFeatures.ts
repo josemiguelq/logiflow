@@ -4,12 +4,16 @@ import useSWR from 'swr'
 import { api } from '@/lib/api'
 
 interface StoreFeatures {
-  customThemeEnabled: boolean
-  whatsappEnabled:    boolean
-  csvExportEnabled:   boolean
+  customThemeEnabled:     boolean
+  whatsappEnabled:        boolean
+  csvExportEnabled:       boolean
+  customerRatingsEnabled: boolean
 }
 
-const DEFAULTS: StoreFeatures = { customThemeEnabled: false, whatsappEnabled: false, csvExportEnabled: false }
+const DEFAULTS: StoreFeatures = {
+  customThemeEnabled: false, whatsappEnabled: false,
+  csvExportEnabled: false, customerRatingsEnabled: false,
+}
 
 export function useStoreFeatures(): StoreFeatures {
   const { data } = useSWR<StoreFeatures>(

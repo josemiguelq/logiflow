@@ -22,9 +22,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     `, [req.actor.storeId])
     const names = rows.map((r: Record<string, unknown>) => r.name as string)
     return {
-      whatsappEnabled:    names.includes('whatsapp'),
-      customThemeEnabled: names.includes('custom_theme'),
-      csvExportEnabled:   names.includes('csv_export'),
+      whatsappEnabled:        names.includes('whatsapp'),
+      customThemeEnabled:     names.includes('custom_theme'),
+      csvExportEnabled:       names.includes('csv_export'),
+      customerRatingsEnabled: names.includes('customer_ratings'),
     }
   })
 
@@ -107,19 +108,21 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     const { rows: [settings] } = await db.query(
       `SELECT max_orders_per_route, require_delivery_photo,
-              require_pickup_code, require_delivery_code
+              require_pickup_code, require_delivery_code,
+              allow_customer_ratings
        FROM store_settings WHERE store_id = $1`,
       [storeId]
     )
 
     return {
-      storeName:            store?.name ?? '',
-      storeLat:             store?.lat  ?? null,
-      storeLng:             store?.lng  ?? null,
-      maxOrdersPerRoute:    settings?.max_orders_per_route    ?? 5,
-      requireDeliveryPhoto: settings?.require_delivery_photo  ?? false,
-      requirePickupCode:    settings?.require_pickup_code     ?? true,
-      requireDeliveryCode:  settings?.require_delivery_code   ?? true,
+      storeName:              store?.name ?? '',
+      storeLat:               store?.lat  ?? null,
+      storeLng:               store?.lng  ?? null,
+      maxOrdersPerRoute:      settings?.max_orders_per_route    ?? 5,
+      requireDeliveryPhoto:   settings?.require_delivery_photo  ?? false,
+      requirePickupCode:      settings?.require_pickup_code     ?? true,
+      requireDeliveryCode:    settings?.require_delivery_code   ?? true,
+      allowCustomerRatings:   settings?.allow_customer_ratings  ?? false,
     }
   })
 
@@ -129,6 +132,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     requireDeliveryPhoto: z.boolean().optional(),
     requirePickupCode:    z.boolean().optional(),
     requireDeliveryCode:  z.boolean().optional(),
+    allowCustomerRatings: z.boolean().optional(),
     storeLat:             z.number().optional().nullable(),
     storeLng:             z.number().optional().nullable(),
   })
@@ -140,22 +144,35 @@ export async function settingsRoutes(app: FastifyInstance) {
     const body    = storeSettingsSchema.parse(req.body)
     const storeId = req.actor.storeId
 
+    // Only allow toggling customer ratings if the feature is enabled for this store
+    let allowRatingsValue: boolean | null = null
+    if (body.allowCustomerRatings !== undefined) {
+      const { rows } = await db.query(`
+        SELECT 1 FROM store_features_enabled sfe
+        JOIN features f ON f.id = sfe.feature_id
+        WHERE sfe.store_id = $1 AND f.name = 'customer_ratings'
+      `, [storeId])
+      if (rows.length > 0) allowRatingsValue = body.allowCustomerRatings
+    }
+
     await db.query(
       `INSERT INTO store_settings
          (store_id, max_orders_per_route, require_delivery_photo,
-          require_pickup_code, require_delivery_code)
-       VALUES ($1, $2, $3, $4, $5)
+          require_pickup_code, require_delivery_code, allow_customer_ratings)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (store_id) DO UPDATE
        SET max_orders_per_route    = COALESCE($2, store_settings.max_orders_per_route),
            require_delivery_photo  = COALESCE($3, store_settings.require_delivery_photo),
            require_pickup_code     = COALESCE($4, store_settings.require_pickup_code),
            require_delivery_code   = COALESCE($5, store_settings.require_delivery_code),
+           allow_customer_ratings  = COALESCE($6, store_settings.allow_customer_ratings),
            updated_at              = now()`,
       [storeId,
        body.maxOrdersPerRoute    ?? null,
        body.requireDeliveryPhoto ?? null,
        body.requirePickupCode    ?? null,
-       body.requireDeliveryCode  ?? null]
+       body.requireDeliveryCode  ?? null,
+       allowRatingsValue]
     )
 
     if (body.storeLat !== undefined || body.storeLng !== undefined) {
