@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp,
-  CheckCircle, Download,
+  CheckCircle, Download, Info, MapPin, Calendar, Package, Truck,
 } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
@@ -31,6 +31,17 @@ interface StoreUser {
   username:  string
   role:      'OWNER' | 'MANAGER' | 'ASSISTANT'
   createdAt: string
+}
+
+interface StoreDetail {
+  id:                  string
+  name:                string
+  createdAt:           string
+  lat:                 number | null
+  lng:                 number | null
+  userCount:           number
+  deliveriesLastMonth: number
+  enabledFeatures:     Feature[]
 }
 
 function saFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -74,6 +85,8 @@ export default function SuperAdminStoresPage() {
   const [showForm,        setShowForm]        = useState(false)
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null)
   const [createUserFor,   setCreateUserFor]   = useState<StoreRow | null>(null)
+  const [detailStore,     setDetailStore]     = useState<StoreDetail | null>(null)
+  const [detailLoading,   setDetailLoading]   = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -94,6 +107,17 @@ export default function SuperAdminStoresPage() {
     if (!localStorage.getItem(SA_TOKEN_KEY)) { router.replace('/super-admin'); return }
     load()
   }, [load, router])
+
+  async function openDetail(storeId: string) {
+    setDetailLoading(true)
+    setDetailStore(null)
+    try {
+      const data = await saFetch<StoreDetail>(`/super-admin/stores/${storeId}`)
+      setDetailStore(data)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
   async function toggleFeature(store: StoreRow, feature: Feature) {
     const isEnabled = store.enabledFeatures.includes(feature.name)
@@ -131,66 +155,73 @@ export default function SuperAdminStoresPage() {
         </button>
       </div>
 
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {stores.map(s => (
-              <div key={s.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                <div className="flex items-start justify-between gap-4 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100">
-                      <Store className="h-4 w-4 text-gray-600" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{s.name}</p>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <p className="text-xs text-gray-400">
-                          {new Date(s.createdAt).toLocaleDateString('pt-BR')} · {s.id.slice(0, 8)}
-                        </p>
-                        <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
-                          <CheckCircle className="h-3 w-3" />
-                          {s.deliveredCount} entregas
-                        </span>
-                      </div>
-                    </div>
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {stores.map(s => (
+            <div key={s.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="flex items-start justify-between gap-4 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100">
+                    <Store className="h-4 w-4 text-gray-600" />
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {features.map(f => (
-                      <FeatureToggle
-                        key={f.id}
-                        label={(FEATURE_META[f.name]?.label) ?? f.name}
-                        icon={FEATURE_META[f.name]?.icon ?? null}
-                        enabled={s.enabledFeatures.includes(f.name)}
-                        onChange={() => toggleFeature(s, f)}
-                      />
-                    ))}
-                    <button
-                      onClick={() => toggleExpand(s.id)}
-                      className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
-                    >
-                      <Users className="h-3.5 w-3.5" />
-                      Usuários
-                      {expandedStoreId === s.id
-                        ? <ChevronUp className="h-3 w-3" />
-                        : <ChevronDown className="h-3 w-3" />}
-                    </button>
+                  <div>
+                    <p className="font-semibold text-gray-900">{s.name}</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <p className="text-xs text-gray-400">
+                        {new Date(s.createdAt).toLocaleDateString('pt-BR')} · {s.id.slice(0, 8)}
+                      </p>
+                      <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                        <CheckCircle className="h-3 w-3" />
+                        {s.deliveredCount} entregas
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {expandedStoreId === s.id && (
-                  <StoreUsersPanel
-                    store={s}
-                    onCreateUser={() => setCreateUserFor(s)}
-                  />
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {features.map(f => (
+                    <FeatureToggle
+                      key={f.id}
+                      label={(FEATURE_META[f.name]?.label) ?? f.name}
+                      icon={FEATURE_META[f.name]?.icon ?? null}
+                      enabled={s.enabledFeatures.includes(f.name)}
+                      onChange={() => toggleFeature(s, f)}
+                    />
+                  ))}
+                  <button
+                    onClick={() => openDetail(s.id)}
+                    className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                    Detalhes
+                  </button>
+                  <button
+                    onClick={() => toggleExpand(s.id)}
+                    className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    Usuários
+                    {expandedStoreId === s.id
+                      ? <ChevronUp className="h-3 w-3" />
+                      : <ChevronDown className="h-3 w-3" />}
+                  </button>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+
+              {expandedStoreId === s.id && (
+                <StoreUsersPanel
+                  store={s}
+                  onCreateUser={() => setCreateUserFor(s)}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {showForm && (
         <CreateStoreModal
@@ -206,9 +237,175 @@ export default function SuperAdminStoresPage() {
           onCreated={() => setCreateUserFor(null)}
         />
       )}
+
+      {/* Detail drawer */}
+      {(detailStore || detailLoading) && (
+        <StoreDetailDrawer
+          detail={detailStore}
+          loading={detailLoading}
+          onClose={() => { setDetailStore(null); setDetailLoading(false) }}
+        />
+      )}
     </div>
   )
 }
+
+// ── Store Detail Drawer ────────────────────────────────────────────────────────
+
+function StoreDetailDrawer({
+  detail, loading, onClose,
+}: {
+  detail:  StoreDetail | null
+  loading: boolean
+  onClose: () => void
+}) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/30"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-5">
+          <div className="flex items-center gap-2">
+            <Store className="h-4 w-4 text-gray-500" />
+            <span className="font-semibold text-gray-900">
+              {detail ? detail.name : 'Detalhes da loja'}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          {loading ? (
+            <div className="flex h-40 items-center justify-center">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+            </div>
+          ) : detail ? (
+            <div className="space-y-6">
+              {/* Stats row */}
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard
+                  icon={<Users className="h-4 w-4 text-blue-500" />}
+                  label="Usuários"
+                  value={detail.userCount}
+                  bg="bg-blue-50"
+                />
+                <StatCard
+                  icon={<Truck className="h-4 w-4 text-green-500" />}
+                  label="Entregas (30 dias)"
+                  value={detail.deliveriesLastMonth}
+                  bg="bg-green-50"
+                />
+              </div>
+
+              {/* Info rows */}
+              <div className="space-y-3">
+                <DetailRow
+                  icon={<Calendar className="h-4 w-4 text-gray-400" />}
+                  label="Criada em"
+                  value={new Date(detail.createdAt).toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: 'long', year: 'numeric',
+                  })}
+                />
+                <DetailRow
+                  icon={<Package className="h-4 w-4 text-gray-400" />}
+                  label="ID"
+                  value={<span className="font-mono text-xs">{detail.id}</span>}
+                />
+                <DetailRow
+                  icon={<MapPin className="h-4 w-4 text-gray-400" />}
+                  label="Localização"
+                  value={
+                    detail.lat != null && detail.lng != null
+                      ? `${detail.lat.toFixed(5)}, ${detail.lng.toFixed(5)}`
+                      : 'Não configurada'
+                  }
+                />
+              </div>
+
+              {/* Features */}
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Funcionalidades ativas
+                </p>
+                {detail.enabledFeatures.length === 0 ? (
+                  <p className="text-sm text-gray-400">Nenhuma funcionalidade habilitada</p>
+                ) : (
+                  <div className="space-y-2">
+                    {detail.enabledFeatures.map(f => (
+                      <div
+                        key={f.id}
+                        className="flex items-center gap-2.5 rounded-lg border border-green-100 bg-green-50 px-3 py-2"
+                      >
+                        <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            {FEATURE_META[f.name]?.label ?? f.name}
+                          </p>
+                          <p className="truncate text-xs text-gray-500">{f.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function StatCard({
+  icon, label, value, bg,
+}: {
+  icon:  React.ReactNode
+  label: string
+  value: number
+  bg:    string
+}) {
+  return (
+    <div className={`rounded-xl border border-gray-100 ${bg} px-4 py-3`}>
+      <div className="mb-1 flex items-center gap-1.5">
+        {icon}
+        <span className="text-xs font-medium text-gray-600">{label}</span>
+      </div>
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
+    </div>
+  )
+}
+
+function DetailRow({
+  icon, label, value,
+}: {
+  icon:  React.ReactNode
+  label: string
+  value: string | React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+      <div className="mt-0.5 shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <p className="text-xs text-gray-400">{label}</p>
+        <p className="mt-0.5 text-sm font-medium text-gray-800 break-all">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Store Users Panel ──────────────────────────────────────────────────────────
 
 function StoreUsersPanel({ store, onCreateUser }: { store: StoreRow; onCreateUser: () => void }) {
   const [users,   setUsers]   = useState<StoreUser[]>([])
@@ -278,6 +475,8 @@ function StoreUsersPanel({ store, onCreateUser }: { store: StoreRow; onCreateUse
   )
 }
 
+// ── Feature Toggle ─────────────────────────────────────────────────────────────
+
 function FeatureToggle({
   label, icon, enabled, onChange,
 }: {
@@ -303,6 +502,8 @@ function FeatureToggle({
     </button>
   )
 }
+
+// ── Modals ────────────────────────────────────────────────────────────────────
 
 function CreateStoreModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [storeName,     setStoreName]     = useState('')

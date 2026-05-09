@@ -74,6 +74,58 @@ export async function superAdminRoutes(app: FastifyInstance) {
     }))
   })
 
+  // ── Store detail ──────────────────────────────────────────────────────────
+
+  app.get(
+    '/super-admin/stores/:storeId',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+
+      const { rows: [store] } = await db.query(
+        'SELECT id, name, lat, lng, created_at FROM stores WHERE id = $1',
+        [storeId]
+      )
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const [usersRes, deliveriesRes, featuresRes] = await Promise.all([
+        db.query(
+          'SELECT COUNT(*) AS cnt FROM store_users WHERE store_id = $1',
+          [storeId]
+        ),
+        db.query(
+          `SELECT COUNT(*) AS cnt FROM orders
+           WHERE store_id = $1 AND status = 'DELIVERED'
+             AND delivered_at >= now() - INTERVAL '30 days'`,
+          [storeId]
+        ),
+        db.query(
+          `SELECT f.id, f.name, f.description
+           FROM store_features_enabled sfe
+           JOIN features f ON f.id = sfe.feature_id
+           WHERE sfe.store_id = $1
+           ORDER BY f.name`,
+          [storeId]
+        ),
+      ])
+
+      return {
+        id:                   store.id,
+        name:                 store.name,
+        createdAt:            store.created_at,
+        lat:                  store.lat ?? null,
+        lng:                  store.lng ?? null,
+        userCount:            Number(usersRes.rows[0]?.cnt ?? 0),
+        deliveriesLastMonth:  Number(deliveriesRes.rows[0]?.cnt ?? 0),
+        enabledFeatures:      featuresRes.rows.map((r: Record<string, unknown>) => ({
+          id:          r.id,
+          name:        r.name,
+          description: r.description,
+        })),
+      }
+    }
+  )
+
   // ── Stores management ─────────────────────────────────────────────────────
   app.get('/super-admin/stores', { preHandler: requireSuperAdmin }, async () => {
     const { rows } = await db.query(`
