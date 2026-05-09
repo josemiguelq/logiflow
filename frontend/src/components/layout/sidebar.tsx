@@ -12,7 +12,7 @@ import { useAccess } from '@/hooks/useAccess'
 import { api } from '@/lib/api'
 
 interface ThemeData {
-  theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null }
+  theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null; storeName?: string | null }
   features: { customThemeEnabled: boolean }
 }
 
@@ -43,7 +43,10 @@ export function Sidebar({ isOpen, onClose }: Props) {
   const { user, logout } = useAuth()
   const { can }       = useAccess()
   const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
-  const logoUrl = themeData?.theme?.logoUrl ?? null
+  const logoUrl          = themeData?.theme?.logoUrl ?? null
+  const customTheme      = themeData?.features?.customThemeEnabled ?? false
+  const storeName        = themeData?.theme?.storeName ?? null
+  const brandName        = customTheme && storeName ? storeName : 'LogiFlow'
 
   const nav = BASE_NAV.filter(item =>
     can({
@@ -71,7 +74,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
           <div className="flex items-center gap-2.5">
             {logoUrl ? (
-              <img src={logoUrl} alt="Logo" className="h-8 w-auto max-w-[140px] object-contain" />
+              <img src={logoUrl} alt={brandName} className="h-8 w-auto max-w-[140px] object-contain" />
             ) : (
               <>
                 <div
@@ -80,7 +83,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
                 >
                   <Truck className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-lg font-bold text-gray-900">LogiFlow</span>
+                <span className="text-lg font-bold text-gray-900">{brandName}</span>
               </>
             )}
           </div>

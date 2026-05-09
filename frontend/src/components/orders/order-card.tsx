@@ -1,10 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Order } from '@/types'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
-import { MapPin, Phone, Truck, Clock, Navigation } from 'lucide-react'
+import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check } from 'lucide-react'
 
 interface Props {
   order: Order
@@ -14,6 +15,18 @@ interface Props {
 
 export function OrderCard({ order, onAssign, onCancel }: Props) {
   const canTrack = ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
+  const [copied, setCopied] = useState(false)
+
+  function handleShare() {
+    const url = `${window.location.origin}/rastreio/${order.id}`
+    if (navigator.share) {
+      navigator.share({ title: `Rastreio do pedido #${order.id.slice(-8).toUpperCase()}`, url }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
 
   return (
     <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
@@ -66,6 +79,15 @@ export function OrderCard({ order, onAssign, onCancel }: Props) {
             Rastrear
           </Link>
         )}
+
+        <button
+          onClick={handleShare}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium transition-colors"
+          style={copied ? { borderColor: '#86efac', color: '#16a34a', background: '#f0fdf4' } : { color: '#4B5563' }}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+          {copied ? 'Copiado!' : 'Compartilhar'}
+        </button>
 
         {onAssign && order.status === 'PREPARING' && (
           <button

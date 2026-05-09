@@ -10,7 +10,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { api } from '@/lib/api'
 
 interface ThemeData {
-  theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null }
+  theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null; storeName?: string | null }
   features: { customThemeEnabled: boolean }
 }
 
@@ -20,7 +20,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, init }   = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
-  const logoUrl = themeData?.theme?.logoUrl ?? null
+  const logoUrl     = themeData?.theme?.logoUrl ?? null
+  const customTheme = themeData?.features?.customThemeEnabled ?? false
+  const storeName   = themeData?.theme?.storeName ?? null
+  const brandName   = customTheme && storeName ? storeName : 'LogiFlow'
 
   useTheme()
 
@@ -50,7 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
         <div className="flex items-center gap-2">
           {logoUrl ? (
-            <img src={logoUrl} alt="Logo" className="h-7 w-auto max-w-[120px] object-contain" />
+            <img src={logoUrl} alt={brandName} className="h-7 w-auto max-w-[120px] object-contain" />
           ) : (
             <>
               <div
@@ -59,7 +62,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               >
                 <Truck className="h-3.5 w-3.5 text-white" />
               </div>
-              <span className="font-bold text-gray-900">LogiFlow</span>
+              <span className="font-bold text-gray-900">{brandName}</span>
             </>
           )}
         </div>

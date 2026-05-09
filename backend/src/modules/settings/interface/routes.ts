@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
+import { redis } from '../../../shared/infra/redis'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 
@@ -9,7 +10,12 @@ const DEFAULT_THEME = {
   primary:   '#2563EB',
   secondary: '#F9FAFB',
   accent:    '#F97316',
-  logoUrl:   null,
+  logoUrl:   null as string | null,
+  storeName: null as string | null,
+}
+
+function themeCacheKey(storeId: string) {
+  return `theme:store:${storeId}`
 }
 
 export async function settingsRoutes(app: FastifyInstance) {
@@ -33,38 +39,55 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get('/store/theme', { preHandler: requireStoreUser }, async (req) => {
     const storeId = req.actor.storeId
 
+    // Redis cache
+    try {
+      const cached = await redis.get(themeCacheKey(storeId))
+      if (cached) return JSON.parse(cached)
+    } catch { /* redis unavailable — fall through to DB */ }
+
     const { rows: featureRows } = await db.query(`
       SELECT f.name FROM store_features_enabled sfe
       JOIN features f ON f.id = sfe.feature_id
       WHERE sfe.store_id = $1
     `, [storeId])
-    const featureNames = featureRows.map((r: Record<string, unknown>) => r.name as string)
+    const featureNames      = featureRows.map((r: Record<string, unknown>) => r.name as string)
     const customThemeEnabled = featureNames.includes('custom_theme')
     const whatsappEnabled    = featureNames.includes('whatsapp')
+    const csvExportEnabled   = featureNames.includes('csv_export')
 
-    if (!customThemeEnabled) {
-      return {
-        theme:    DEFAULT_THEME,
-        features: { customThemeEnabled: false, whatsappEnabled, csvExportEnabled: featureNames.includes('csv_export') },
-      }
-    }
-
-    const { rows: [theme] } = await db.query(
-      'SELECT primary_color, secondary_color, accent_color, logo_url FROM store_theme WHERE store_id = $1',
+    const { rows: [store] } = await db.query(
+      'SELECT name FROM stores WHERE id = $1',
       [storeId]
     )
+    const storeName = (store?.name as string | null) ?? null
 
-    return {
-      theme: theme
-        ? {
-            primary:   theme.primary_color,
-            secondary: theme.secondary_color,
-            accent:    theme.accent_color,
-            logoUrl:   theme.logo_url,
-          }
-        : DEFAULT_THEME,
-      features: { customThemeEnabled: true, whatsappEnabled, csvExportEnabled: featureNames.includes('csv_export') },
+    let themeRow: Record<string, unknown> | null = null
+    if (customThemeEnabled) {
+      const { rows: [t] } = await db.query(
+        'SELECT primary_color, secondary_color, accent_color, logo_url FROM store_theme WHERE store_id = $1',
+        [storeId]
+      )
+      themeRow = t ?? null
     }
+
+    const result = {
+      theme: themeRow
+        ? {
+            primary:   themeRow.primary_color,
+            secondary: themeRow.secondary_color,
+            accent:    themeRow.accent_color,
+            logoUrl:   themeRow.logo_url,
+            storeName,
+          }
+        : { ...DEFAULT_THEME, storeName },
+      features: { customThemeEnabled, whatsappEnabled, csvExportEnabled },
+    }
+
+    try {
+      await redis.setex(themeCacheKey(storeId), 3600, JSON.stringify(result))
+    } catch { /* ignore */ }
+
+    return result
   })
 
   // PATCH /store/theme
@@ -94,6 +117,8 @@ export async function settingsRoutes(app: FastifyInstance) {
            updated_at      = now()`,
       [storeId, body.primary, body.secondary, body.accent, body.logoUrl ?? null, hasLogo]
     )
+
+    try { await redis.del(themeCacheKey(storeId)) } catch { /* ignore */ }
 
     return { ok: true }
   })

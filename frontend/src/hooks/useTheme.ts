@@ -2,14 +2,8 @@
 
 import { useEffect } from 'react'
 import { api } from '@/lib/api'
+import { themeStorageKey } from '@/lib/auth'
 
-const DEFAULT = {
-  primary:   '#2563EB',
-  secondary: '#F9FAFB',
-  accent:    '#F97316',
-}
-
-const CACHE_KEY = 'logiflow_theme'
 const CACHE_TTL = 60 * 60 * 1000 // 1h
 
 interface ThemePayload {
@@ -17,6 +11,12 @@ interface ThemePayload {
   secondary: string
   accent:    string
   logoUrl?:  string | null
+  storeName?: string | null
+}
+
+interface CacheEntry {
+  theme:     ThemePayload
+  timestamp: number
 }
 
 function applyTheme(theme: ThemePayload) {
@@ -26,47 +26,50 @@ function applyTheme(theme: ThemePayload) {
   root.style.setProperty('--color-accent',    theme.accent)
 }
 
+function currentStoreId(): string | null {
+  try {
+    const raw = localStorage.getItem('logiflow_user')
+    if (!raw) return null
+    return (JSON.parse(raw) as { storeId?: string }).storeId ?? null
+  } catch { return null }
+}
+
 function readCache(): ThemePayload | null {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY)
+    const storeId = currentStoreId()
+    if (!storeId) return null
+    const raw = localStorage.getItem(themeStorageKey(storeId))
     if (!raw) return null
-    const { theme, storeId, timestamp } = JSON.parse(raw)
-    const currentStore = localStorage.getItem('logiflow_user')
-      ? JSON.parse(localStorage.getItem('logiflow_user')!).storeId
-      : null
-    if (storeId !== currentStore) return null
-    if (Date.now() - timestamp > CACHE_TTL) return null
-    return theme
-  } catch {
-    return null
-  }
+    const entry = JSON.parse(raw) as CacheEntry
+    if (Date.now() - entry.timestamp > CACHE_TTL) return null
+    return entry.theme
+  } catch { return null }
 }
 
 function writeCache(storeId: string, theme: ThemePayload) {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ storeId, theme, timestamp: Date.now() }))
-  } catch {}
+    const entry: CacheEntry = { theme, timestamp: Date.now() }
+    localStorage.setItem(themeStorageKey(storeId), JSON.stringify(entry))
+  } catch { /* ignore quota errors */ }
 }
 
 export function useTheme() {
   useEffect(() => {
-    // Aplica do cache imediatamente (sem flash)
     const cached = readCache()
     if (cached) applyTheme(cached)
 
-    // Valida com o backend em background
     api.get<{ theme: ThemePayload; features: { customThemeEnabled: boolean } }>('/store/theme')
       .then(({ theme }) => {
         applyTheme(theme)
-        const user = localStorage.getItem('logiflow_user')
-        if (user) {
-          const { storeId } = JSON.parse(user)
-          writeCache(storeId, theme)
-        }
+        const storeId = currentStoreId()
+        if (storeId) writeCache(storeId, theme)
       })
       .catch(() => {
-        // Sem tema configurado ou sem auth — mantém o padrão
-        if (!cached) applyTheme(DEFAULT)
+        if (!cached) {
+          document.documentElement.style.setProperty('--color-primary',   '#2563EB')
+          document.documentElement.style.setProperty('--color-secondary', '#F9FAFB')
+          document.documentElement.style.setProperty('--color-accent',    '#F97316')
+        }
       })
   }, [])
 }

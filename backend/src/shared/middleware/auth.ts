@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
+import { db } from '../db/client'
 
 export type JWTPayload =
   | { type: 'store_user'; sub: string; storeId: string; role: string; name: string; scopes: string[] }

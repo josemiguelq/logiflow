@@ -615,11 +615,18 @@ function CustomerEditModal({
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
