@@ -28,8 +28,9 @@ const STATUS_INFO: Record<string, { label: string; icon: typeof Clock; color: st
 
 export default function PublicTrackingPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
-  const [order, setOrder]     = useState<PublicOrder | null>(null)
+  const [order,   setOrder]   = useState<PublicOrder | null>(null)
   const [loading, setLoading] = useState(true)
+  const [expired, setExpired] = useState(false)
 
   useEffect(() => {
     const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
@@ -37,6 +38,7 @@ export default function PublicTrackingPage({ params }: { params: Promise<{ token
     async function load() {
       try {
         const res = await fetch(`${BASE}/tracking/${token}`)
+        if (res.status === 410) { setExpired(true); return }
         if (res.ok) setOrder(await res.json())
       } finally {
         setLoading(false)
@@ -52,6 +54,21 @@ export default function PublicTrackingPage({ params }: { params: Promise<{ token
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (expired) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-gray-50 px-4 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+          <Clock className="h-8 w-8 text-gray-400" />
+        </div>
+        <p className="text-lg font-semibold text-gray-800">Link expirado</p>
+        <p className="text-sm text-gray-500">
+          Este link de rastreamento não está mais disponível.<br />
+          O prazo de 15 minutos após a finalização foi atingido.
+        </p>
       </div>
     )
   }

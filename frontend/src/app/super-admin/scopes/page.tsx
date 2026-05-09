@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Save, RotateCcw } from 'lucide-react'
-import Link from 'next/link'
+import { Save, RotateCcw } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
@@ -129,15 +128,7 @@ export default function SuperAdminScopesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="flex h-14 items-center gap-4 bg-gray-900 px-6">
-        <Link href="/super-admin/stores" className="text-gray-400 hover:text-white">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <span className="font-bold text-white">LogiFlow · Roles & Scopes</span>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-6 py-8">
+    <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-800">Selecione a loja</h2>
           <p className="text-sm text-gray-500">Escolha uma loja para visualizar e editar os scopes por role.</p>
@@ -242,7 +233,6 @@ export default function SuperAdminScopesPage() {
             Selecione uma loja acima para gerenciar os scopes
           </div>
         )}
-      </main>
     </div>
   )
 }

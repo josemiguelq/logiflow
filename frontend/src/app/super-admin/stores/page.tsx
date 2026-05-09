@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import {
   Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp,
-  CheckCircle, ShieldCheck, Download,
+  CheckCircle, Download,
 } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
@@ -116,38 +115,21 @@ export default function SuperAdminStoresPage() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem(SA_TOKEN_KEY)
-    router.replace('/super-admin')
-  }
-
   function toggleExpand(storeId: string) {
     setExpandedStoreId(prev => prev === storeId ? null : storeId)
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="flex h-14 items-center justify-between bg-gray-900 px-6">
-        <span className="font-bold text-white">LogiFlow · Super Admin</span>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/super-admin/scopes"
-            className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-200 hover:bg-gray-700"
-          >
-            <ShieldCheck className="h-4 w-4" /> Roles & Scopes
-          </Link>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-gray-900 hover:bg-gray-100"
-          >
-            <Plus className="h-4 w-4" /> Nova Loja
-          </button>
-          <button onClick={logout} className="text-sm text-gray-400 hover:text-white">Sair</button>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-4xl px-6 py-8">
-        <h2 className="mb-4 text-lg font-semibold text-gray-800">Lojas ({stores.length})</h2>
+    <div className="mx-auto max-w-4xl px-6 py-8">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-800">Lojas ({stores.length})</h2>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+        >
+          <Plus className="h-4 w-4" /> Nova Loja
+        </button>
+      </div>
 
         {loading ? (
           <div className="flex justify-center py-16">
@@ -209,7 +191,6 @@ export default function SuperAdminStoresPage() {
             ))}
           </div>
         )}
-      </main>
 
       {showForm && (
         <CreateStoreModal

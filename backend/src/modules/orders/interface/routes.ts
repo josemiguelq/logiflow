@@ -24,10 +24,30 @@ export async function orderRoutes(app: FastifyInstance) {
   // ── Public tracking (no auth) ────────────────────────────────────────────
   app.get('/tracking/:orderId', async (req, reply) => {
     const { orderId } = req.params as { orderId: string }
+
+    // Authenticated users (JWT present and valid) always bypass expiry
+    let isAuthenticated = false
+    try {
+      await req.jwtVerify()
+      isAuthenticated = true
+    } catch { /* public access — ok */ }
+
     const order = await orderRepo.getPublic(orderId)
     if (!order) return reply.code(404).send({ error: 'Not found' })
 
-    // Attach deliverer's last known location (from status history)
+    // Expire link 15 min after final status for unauthenticated access
+    if (!isAuthenticated && (order.status === 'DELIVERED' || order.status === 'CANCELLED')) {
+      const { rows: [ts] } = await db.query(
+        `SELECT COALESCE(delivered_at, updated_at) AS final_at FROM orders WHERE id = $1`,
+        [orderId]
+      )
+      const finalAt = ts?.final_at as Date | null
+      if (finalAt && Date.now() - new Date(finalAt).getTime() > 15 * 60 * 1000) {
+        return reply.code(410).send({ error: 'Tracking link expired' })
+      }
+    }
+
+    // Attach deliverer's last known location
     let delivererLat: number | null = null
     let delivererLng: number | null = null
     if ((order as { deliverer?: unknown }).deliverer) {

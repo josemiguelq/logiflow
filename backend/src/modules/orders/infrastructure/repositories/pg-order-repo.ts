@@ -181,7 +181,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     },
 
     async updateStatus(id, status, extra = {}) {
-      const sets: string[]   = ['status = $2']
+      const sets: string[]   = ['status = $2', 'updated_at = now()']
       const params: unknown[] = [id, status]
       let idx = 3
 

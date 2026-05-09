@@ -35,6 +35,32 @@ export async function superAdminRoutes(app: FastifyInstance) {
     return { token, email: admin.email }
   })
 
+  // ── Analytics ─────────────────────────────────────────────────────────────
+
+  app.get('/super-admin/analytics', { preHandler: requireSuperAdmin }, async () => {
+    const { rows } = await db.query(`
+      SELECT
+        s.id,
+        s.name,
+        COUNT(o.id)                                                    AS total_orders,
+        COUNT(o.id) FILTER (WHERE o.status = 'DELIVERED')             AS delivered,
+        COUNT(o.id) FILTER (WHERE o.status = 'CANCELLED')             AS cancelled,
+        COUNT(o.id) FILTER (WHERE o.status NOT IN ('DELIVERED','CANCELLED')) AS in_progress
+      FROM stores s
+      LEFT JOIN orders o ON o.store_id = s.id
+      GROUP BY s.id, s.name
+      ORDER BY delivered DESC, s.name ASC
+    `)
+    return rows.map((r: Record<string, unknown>) => ({
+      id:         r.id,
+      name:       r.name,
+      total:      Number(r.total_orders),
+      delivered:  Number(r.delivered),
+      cancelled:  Number(r.cancelled),
+      inProgress: Number(r.in_progress),
+    }))
+  })
+
   // ── Features catalog ──────────────────────────────────────────────────────
 
   app.get('/super-admin/features', { preHandler: requireSuperAdmin }, async () => {
