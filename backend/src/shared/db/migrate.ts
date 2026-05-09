@@ -12,7 +12,7 @@ async function migrate() {
   `)
 
   const migrationDir = join(__dirname, 'migrations')
-  const files = ['001_initial.sql', '002_theme.sql', '003_deliverer_active.sql', '004_deliverer_onboarding.sql', '005_customer_addresses.sql', '006_routes.sql', '007_features.sql', '008_location_simple.sql', '009_deliverer_status_history.sql', '010_code_settings.sql', '011_whatsapp_keys.sql', '012_address_number.sql', '013_store_users_username.sql', '014_role_scopes.sql', '015_features_table.sql']
+  const files = ['001_initial.sql', '002_theme.sql', '003_deliverer_active.sql', '004_deliverer_onboarding.sql', '005_customer_addresses.sql', '006_routes.sql', '007_features.sql', '008_location_simple.sql', '009_deliverer_status_history.sql', '010_code_settings.sql', '011_whatsapp_keys.sql', '012_address_number.sql', '013_store_users_username.sql', '014_role_scopes.sql', '015_features_table.sql', '016_store_address.sql']
 
   for (const file of files) {
     const { rows } = await db.query('SELECT name FROM _migrations WHERE name = $1', [file])

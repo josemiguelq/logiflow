@@ -10,6 +10,11 @@ const createStoreSchema = z.object({
   ownerName:     z.string().min(2),
   ownerEmail:    z.string().email(),
   ownerPassword: z.string().min(6),
+  street:        z.string().optional(),
+  streetNumber:  z.string().optional(),
+  city:          z.string().optional(),
+  lat:           z.number().optional(),
+  lng:           z.number().optional(),
 })
 
 export async function superAdminRoutes(app: FastifyInstance) {
@@ -83,7 +88,7 @@ export async function superAdminRoutes(app: FastifyInstance) {
       const { storeId } = req.params as { storeId: string }
 
       const { rows: [store] } = await db.query(
-        'SELECT id, name, lat, lng, created_at FROM stores WHERE id = $1',
+        'SELECT id, name, street, street_number, city, lat, lng, created_at FROM stores WHERE id = $1',
         [storeId]
       )
       if (!store) return reply.code(404).send({ error: 'Store not found' })
@@ -113,8 +118,11 @@ export async function superAdminRoutes(app: FastifyInstance) {
         id:                   store.id,
         name:                 store.name,
         createdAt:            store.created_at,
-        lat:                  store.lat ?? null,
-        lng:                  store.lng ?? null,
+        street:               store.street        ?? null,
+        streetNumber:         store.street_number ?? null,
+        city:                 store.city          ?? null,
+        lat:                  store.lat           ?? null,
+        lng:                  store.lng           ?? null,
         userCount:            Number(usersRes.rows[0]?.cnt ?? 0),
         deliveriesLastMonth:  Number(deliveriesRes.rows[0]?.cnt ?? 0),
         enabledFeatures:      featuresRes.rows.map((r: Record<string, unknown>) => ({
@@ -206,8 +214,17 @@ export async function superAdminRoutes(app: FastifyInstance) {
       if (existing) return reply.code(409).send({ error: 'Email já está em uso' })
 
       const { rows: [store] } = await db.query(
-        `INSERT INTO stores (name) VALUES ($1) RETURNING id, name, created_at`,
-        [body.storeName]
+        `INSERT INTO stores (name, street, street_number, city, lat, lng)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, name, created_at`,
+        [
+          body.storeName,
+          body.street       ?? null,
+          body.streetNumber ?? null,
+          body.city         ?? null,
+          body.lat          ?? null,
+          body.lng          ?? null,
+        ]
       )
 
       // Seed default role scopes for the new store

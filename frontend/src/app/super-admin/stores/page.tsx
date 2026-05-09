@@ -37,6 +37,9 @@ interface StoreDetail {
   id:                  string
   name:                string
   createdAt:           string
+  street:              string | null
+  streetNumber:        string | null
+  city:                string | null
   lat:                 number | null
   lng:                 number | null
   userCount:           number
@@ -325,11 +328,17 @@ function StoreDetailDrawer({
                 />
                 <DetailRow
                   icon={<MapPin className="h-4 w-4 text-gray-400" />}
-                  label="Localização"
+                  label="Endereço"
                   value={
-                    detail.lat != null && detail.lng != null
-                      ? `${detail.lat.toFixed(5)}, ${detail.lng.toFixed(5)}`
-                      : 'Não configurada'
+                    detail.street
+                      ? [
+                          detail.street,
+                          detail.streetNumber,
+                          detail.city,
+                        ].filter(Boolean).join(', ')
+                      : detail.lat != null
+                        ? `${detail.lat.toFixed(5)}, ${detail.lng?.toFixed(5)}`
+                        : 'Não configurado'
                   }
                 />
               </div>
