@@ -42,7 +42,14 @@ export async function requireDeliverer(req: FastifyRequest, reply: FastifyReply)
   await requireAuth(req, reply)
   if (reply.sent) return
   if (req.actor.type !== 'deliverer') {
-    reply.code(403).send({ error: 'Forbidden' })
+    return reply.code(403).send({ error: 'Forbidden' })
+  }
+  const { rows: [d] } = await db.query(
+    'SELECT is_active FROM deliverers WHERE id = $1',
+    [req.actor.sub]
+  )
+  if (!d?.is_active) {
+    return reply.code(401).send({ error: 'ACCOUNT_DISABLED' })
   }
 }
 

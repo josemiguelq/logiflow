@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,7 +8,6 @@ const String _baseUrl = String.fromEnvironment(
   defaultValue: 'https://logiflow-cgqc.onrender.com',
 );
 
-// Derives the WebSocket URL from the HTTP base URL
 String get wsBaseUrl =>
     _baseUrl.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
 
@@ -15,6 +15,10 @@ class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
   ApiClient._internal();
+
+  /// Set by AuthNotifier. Called when the backend returns 401 so the API layer
+  /// can trigger logout without creating a circular dependency.
+  static void Function()? onUnauthorized;
 
   final _storage = const FlutterSecureStorage();
 
@@ -33,6 +37,9 @@ class ApiClient {
           handler.next(options);
         },
         onError: (err, handler) {
+          if (err.response?.statusCode == 401) {
+            onUnauthorized?.call();
+          }
           handler.next(err);
         },
       ),
@@ -49,4 +56,19 @@ class ApiClient {
   Future<void> clearToken() => _storage.delete(key: 'token');
 
   Future<String?> getToken() => _storage.read(key: 'token');
+
+  Future<void> saveSession(Map<String, dynamic> json) =>
+      _storage.write(key: 'session', value: jsonEncode(json));
+
+  Future<Map<String, dynamic>?> loadSession() async {
+    final raw = await _storage.read(key: 'session');
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearSession() => _storage.delete(key: 'session');
 }
