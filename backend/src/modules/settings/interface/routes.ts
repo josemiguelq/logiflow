@@ -127,28 +127,29 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get('/store/settings', { preHandler: requireStoreUser }, async (req) => {
     const storeId = req.actor.storeId
 
-    const { rows: [store] } = await db.query(
-      'SELECT name, lat, lng FROM stores WHERE id = $1',
-      [storeId]
-    )
+    const [{ rows: [store] }, { rows: settingRows }] = await Promise.all([
+      db.query('SELECT name, lat, lng FROM stores WHERE id = $1', [storeId]),
+      db.query(
+        `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
+         FROM settings s
+         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1`,
+        [storeId]
+      ),
+    ])
 
-    const { rows: [settings] } = await db.query(
-      `SELECT max_orders_per_route, require_delivery_photo,
-              require_pickup_code, require_delivery_code,
-              allow_customer_ratings
-       FROM store_settings WHERE store_id = $1`,
-      [storeId]
+    const s = Object.fromEntries(
+      settingRows.map((r: Record<string, unknown>) => [r.name as string, r.value as string])
     )
 
     return {
-      storeName:              store?.name ?? '',
-      storeLat:               store?.lat  ?? null,
-      storeLng:               store?.lng  ?? null,
-      maxOrdersPerRoute:      settings?.max_orders_per_route    ?? 5,
-      requireDeliveryPhoto:   settings?.require_delivery_photo  ?? false,
-      requirePickupCode:      settings?.require_pickup_code     ?? true,
-      requireDeliveryCode:    settings?.require_delivery_code   ?? true,
-      allowCustomerRatings:   settings?.allow_customer_ratings  ?? false,
+      storeName:            (store as Record<string, unknown> | undefined)?.name ?? '',
+      storeLat:             (store as Record<string, unknown> | undefined)?.lat  ?? null,
+      storeLng:             (store as Record<string, unknown> | undefined)?.lng  ?? null,
+      maxOrdersPerRoute:    parseInt(s.max_orders_per_route    ?? '5'),
+      requireDeliveryPhoto: s.require_delivery_photo === 'true',
+      requirePickupCode:    s.require_pickup_code    !== 'false',
+      requireDeliveryCode:  s.require_delivery_code  !== 'false',
+      allowCustomerRatings: s.allow_customer_ratings === 'true',
     }
   })
 
@@ -170,36 +171,32 @@ export async function settingsRoutes(app: FastifyInstance) {
     const body    = storeSettingsSchema.parse(req.body)
     const storeId = req.actor.storeId
 
-    // Only allow toggling customer ratings if the feature is enabled for this store
-    let allowRatingsValue: boolean | null = null
+    const upsertSetting = (name: string, value: string) =>
+      db.query(
+        `INSERT INTO store_setting_values (store_id, setting_id, value)
+         SELECT $1, id, $2 FROM settings WHERE name = $3
+         ON CONFLICT (store_id, setting_id) DO UPDATE SET value = EXCLUDED.value`,
+        [storeId, value, name]
+      )
+
+    const simpleMap: [keyof typeof body, string][] = [
+      ['maxOrdersPerRoute',    'max_orders_per_route'],
+      ['requireDeliveryPhoto', 'require_delivery_photo'],
+      ['requirePickupCode',    'require_pickup_code'],
+      ['requireDeliveryCode',  'require_delivery_code'],
+    ]
+    for (const [key, dbName] of simpleMap) {
+      if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))
+    }
+
     if (body.allowCustomerRatings !== undefined) {
       const { rows } = await db.query(`
         SELECT 1 FROM store_features_enabled sfe
         JOIN features f ON f.id = sfe.feature_id
         WHERE sfe.store_id = $1 AND f.name = 'customer_ratings'
       `, [storeId])
-      if (rows.length > 0) allowRatingsValue = body.allowCustomerRatings
+      if (rows.length > 0) await upsertSetting('allow_customer_ratings', String(body.allowCustomerRatings))
     }
-
-    await db.query(
-      `INSERT INTO store_settings
-         (store_id, max_orders_per_route, require_delivery_photo,
-          require_pickup_code, require_delivery_code, allow_customer_ratings)
-       VALUES ($1, COALESCE($2, 5), COALESCE($3, false), COALESCE($4, true), COALESCE($5, true), COALESCE($6, false))
-       ON CONFLICT (store_id) DO UPDATE
-       SET max_orders_per_route    = COALESCE($2, store_settings.max_orders_per_route),
-           require_delivery_photo  = COALESCE($3, store_settings.require_delivery_photo),
-           require_pickup_code     = COALESCE($4, store_settings.require_pickup_code),
-           require_delivery_code   = COALESCE($5, store_settings.require_delivery_code),
-           allow_customer_ratings  = COALESCE($6, store_settings.allow_customer_ratings),
-           updated_at              = now()`,
-      [storeId,
-       body.maxOrdersPerRoute    ?? null,
-       body.requireDeliveryPhoto ?? null,
-       body.requirePickupCode    ?? null,
-       body.requireDeliveryCode  ?? null,
-       allowRatingsValue]
-    )
 
     if (body.storeLat !== undefined || body.storeLng !== undefined) {
       await db.query(

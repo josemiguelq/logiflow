@@ -141,11 +141,14 @@ export async function routeRoutes(app: FastifyInstance) {
       if (!route) return reply.code(404).send({ error: 'Not found' })
       if (route.status === 'FINISHED') return reply.code(400).send({ error: 'Route already finished' })
 
-      const { rows: [settings] } = await db.query(
-        'SELECT require_pickup_code FROM store_settings WHERE store_id = $1',
+      const { rows: [settingRow] } = await db.query(
+        `SELECT COALESCE(ssv.value, s.default_value) AS value
+         FROM settings s
+         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
+         WHERE s.name = 'require_pickup_code'`,
         [route.store_id]
       )
-      const requirePickupCode = (settings?.require_pickup_code ?? true) as boolean
+      const requirePickupCode = (settingRow as Record<string, unknown> | undefined)?.value !== 'false'
 
       if (requirePickupCode && (route.pickup_code as string) !== code.toUpperCase()) {
         return reply.code(400).send({ error: 'Código inválido' })

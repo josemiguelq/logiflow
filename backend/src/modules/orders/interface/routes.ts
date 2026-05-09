@@ -73,12 +73,18 @@ export async function orderRoutes(app: FastifyInstance) {
 
     const { rows: [ratingCfg] } = await db.query(`
       SELECT
-        COALESCE(ss.allow_customer_ratings, false) AS allow,
-        (SELECT COUNT(*) FROM store_features_enabled sfe
-         JOIN features f ON f.id = sfe.feature_id
-         WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings') > 0 AS feature_on
+        COALESCE(
+          (SELECT ssv.value = 'true'
+           FROM settings s JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = o.store_id
+           WHERE s.name = 'allow_customer_ratings'),
+          false
+        ) AS allow,
+        EXISTS (
+          SELECT 1 FROM store_features_enabled sfe
+          JOIN features f ON f.id = sfe.feature_id
+          WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings'
+        ) AS feature_on
       FROM orders o
-      LEFT JOIN store_settings ss ON ss.store_id = o.store_id
       WHERE o.id = $1
     `, [orderId])
     const ratingEnabled = Boolean(
@@ -149,12 +155,18 @@ export async function orderRoutes(app: FastifyInstance) {
     // Check feature + store setting
     const { rows: [ratingCfg] } = await db.query(`
       SELECT
-        COALESCE(ss.allow_customer_ratings, false) AS allow,
-        (SELECT COUNT(*) FROM store_features_enabled sfe
-         JOIN features f ON f.id = sfe.feature_id
-         WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings') > 0 AS feature_on
+        COALESCE(
+          (SELECT ssv.value = 'true'
+           FROM settings s JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = o.store_id
+           WHERE s.name = 'allow_customer_ratings'),
+          false
+        ) AS allow,
+        EXISTS (
+          SELECT 1 FROM store_features_enabled sfe
+          JOIN features f ON f.id = sfe.feature_id
+          WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings'
+        ) AS feature_on
       FROM orders o
-      LEFT JOIN store_settings ss ON ss.store_id = o.store_id
       WHERE o.id = $1
     `, [orderId])
 
@@ -442,11 +454,14 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const body = deliverySchema.parse(req.body)
 
-      const { rows: [settings] } = await db.query(
-        'SELECT require_delivery_code FROM store_settings WHERE store_id = $1',
+      const { rows: [settingRow] } = await db.query(
+        `SELECT COALESCE(ssv.value, s.default_value) AS value
+         FROM settings s
+         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
+         WHERE s.name = 'require_delivery_code'`,
         [req.actor.storeId]
       )
-      const requireDeliveryCode = (settings?.require_delivery_code ?? true) as boolean
+      const requireDeliveryCode = (settingRow as Record<string, unknown> | undefined)?.value !== 'false'
 
       try {
         const order = await confirmDelivery(

@@ -33,6 +33,24 @@ async function enableAllFeatures(client: PoolClient, storeId: string) {
   `, [storeId])
 }
 
+async function enableAllSettings(client: PoolClient, storeId: string) {
+  // All settings enabled/on for seed stores
+  const values: Record<string, string> = {
+    max_orders_per_route:   '5',
+    require_delivery_photo: 'true',
+    require_pickup_code:    'true',
+    require_delivery_code:  'true',
+    allow_customer_ratings: 'true',
+  }
+  for (const [name, value] of Object.entries(values)) {
+    await client.query(`
+      INSERT INTO store_setting_values (store_id, setting_id, value)
+      SELECT $1, id, $2 FROM settings WHERE name = $3
+      ON CONFLICT (store_id, setting_id) DO UPDATE SET value = EXCLUDED.value
+    `, [storeId, value, name])
+  }
+}
+
 async function seed() {
   console.log('[seed] iniciando...')
 
@@ -65,17 +83,13 @@ async function seed() {
       console.log(`[seed] loja já existe: ${storeId}`)
     }
 
-    // Always enable all features (idempotent)
+    // Always enable all features and settings (idempotent)
     await enableAllFeatures(client, storeId)
+    await enableAllSettings(client, storeId)
 
     if (!isNewStore) {
       console.log('[seed] loja já existia, pulando dados demo...')
     } else {
-      // ── Configurações ──────────────────────────────────────────────────────
-      await client.query(`
-        INSERT INTO store_settings (store_id, max_orders_per_route, require_delivery_photo)
-        VALUES ($1, 5, true)
-      `, [storeId])
 
       // ── Role scopes ────────────────────────────────────────────────────────
       for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
@@ -212,15 +226,11 @@ async function seed() {
       console.log(`[seed] loja 2 já existe: ${store2Id}`)
     }
 
-    // Always enable all features (idempotent)
+    // Always enable all features and settings (idempotent)
     await enableAllFeatures(client, store2Id)
+    await enableAllSettings(client, store2Id)
 
     if (isNewStore2) {
-      // Settings
-      await client.query(`
-        INSERT INTO store_settings (store_id, max_orders_per_route, require_delivery_photo)
-        VALUES ($1, 8, false)
-      `, [store2Id])
 
       // Role scopes
       for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {

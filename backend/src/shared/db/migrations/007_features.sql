@@ -1,1 +1,0 @@
-ALTER TABLE store_features ADD COLUMN IF NOT EXISTS whatsapp_enabled BOOLEAN NOT NULL DEFAULT false;
