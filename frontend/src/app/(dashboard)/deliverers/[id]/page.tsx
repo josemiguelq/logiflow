@@ -3,9 +3,10 @@
 import { use } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck, Star } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
 
 interface StatusEntry {
   status:    string
@@ -23,6 +24,8 @@ interface DelivererDetail {
   profileImageUrl: string | null
   isActive:        boolean
   createdAt:       string
+  avgRating:       number | null
+  ratingCount:     number
   history:         StatusEntry[]
 }
 
@@ -59,6 +62,8 @@ function StatusBadgeInline({ status }: { status: string }) {
 
 export default function DelivererDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'OWNER' || user?.role === 'MANAGER'
 
   const { data, isLoading } = useSWR<DelivererDetail>(
     `/deliverers/${id}/history`,
@@ -105,6 +110,20 @@ export default function DelivererDetailPage({ params }: { params: Promise<{ id: 
             <h1 className="text-xl font-bold text-gray-900">{data.name}</h1>
             <p className="text-sm text-gray-500">@{data.username}</p>
             {data.email && <p className="text-sm text-gray-500">{data.email}</p>}
+            {isAdmin && data.ratingCount > 0 && (
+              <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-yellow-50 border border-yellow-200 px-2.5 py-1">
+                <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                <span className="text-sm font-semibold text-yellow-700">
+                  {data.avgRating?.toFixed(1)}
+                </span>
+                <span className="text-xs text-yellow-600">
+                  ({data.ratingCount} {data.ratingCount === 1 ? 'avaliação' : 'avaliações'})
+                </span>
+              </div>
+            )}
+            {isAdmin && data.ratingCount === 0 && (
+              <p className="mt-2 text-xs text-gray-400">Sem avaliações ainda</p>
+            )}
           </div>
           <StatusBadgeInline status={data.status} />
         </div>

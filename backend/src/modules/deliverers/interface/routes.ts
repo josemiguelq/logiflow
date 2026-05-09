@@ -178,6 +178,15 @@ export async function delivererRoutes(app: FastifyInstance) {
         [id]
       )
 
+      const { rows: [ratingRow] } = await db.query(
+        `SELECT
+           ROUND(AVG(rating)::numeric, 1) AS avg_rating,
+           COUNT(*) FILTER (WHERE rating IS NOT NULL) AS rating_count
+         FROM orders
+         WHERE deliverer_id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+
       return {
         id:              d.id,
         name:            d.name,
@@ -187,6 +196,8 @@ export async function delivererRoutes(app: FastifyInstance) {
         profileImageUrl: d.profile_image_url,
         isActive:        d.is_active,
         createdAt:       d.created_at,
+        avgRating:       ratingRow?.avg_rating != null ? Number(ratingRow.avg_rating) : null,
+        ratingCount:     Number(ratingRow?.rating_count ?? 0),
         history: history.map((h: Record<string, unknown>) => ({
           status:    h.status,
           lat:       h.lat,
