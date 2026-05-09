@@ -72,7 +72,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     primary:   z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     secondary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     accent:    z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-    logoUrl:   z.string().url().nullable().optional(),
+    logoUrl:   z.string().nullable().optional(),
   })
 
   app.patch('/store/theme', { preHandler: requireStoreUser }, async (req, reply) => {
@@ -81,6 +81,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
     const body    = themeSchema.parse(req.body)
     const storeId = req.actor.storeId
+    const hasLogo = 'logoUrl' in (req.body as object)
 
     await db.query(
       `INSERT INTO store_theme (store_id, primary_color, secondary_color, accent_color, logo_url)
@@ -89,9 +90,9 @@ export async function settingsRoutes(app: FastifyInstance) {
        SET primary_color   = COALESCE($2, store_theme.primary_color),
            secondary_color = COALESCE($3, store_theme.secondary_color),
            accent_color    = COALESCE($4, store_theme.accent_color),
-           logo_url        = COALESCE($5, store_theme.logo_url),
+           logo_url        = CASE WHEN $6 THEN $5 ELSE store_theme.logo_url END,
            updated_at      = now()`,
-      [storeId, body.primary, body.secondary, body.accent, body.logoUrl]
+      [storeId, body.primary, body.secondary, body.accent, body.logoUrl ?? null, hasLogo]
     )
 
     return { ok: true }

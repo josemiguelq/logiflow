@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
-import { Save, Lock, Palette, SlidersHorizontal, CheckCircle } from 'lucide-react'
+import { Save, Lock, Palette, SlidersHorizontal, CheckCircle, Upload, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -195,14 +195,17 @@ function ThemeSection({ isManager, onSaved }: { isManager: boolean; onSaved: () 
   const [primary,   setPrimary]   = useState('#2563EB')
   const [secondary, setSecondary] = useState('#F9FAFB')
   const [accent,    setAccent]    = useState('#F97316')
+  const [logoUrl,   setLogoUrl]   = useState<string | null>(null)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState('')
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (data?.theme) {
       setPrimary(data.theme.primary)
       setSecondary(data.theme.secondary)
       setAccent(data.theme.accent)
+      setLogoUrl(data.theme.logoUrl ?? null)
     }
   }, [data])
 
@@ -218,11 +221,24 @@ function ThemeSection({ isManager, onSaved }: { isManager: boolean; onSaved: () 
     )
   }
 
+  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 512 * 1024) {
+      setError('A logo deve ter no máximo 512 KB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setLogoUrl(reader.result as string)
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
   async function handleSave() {
     setLoading(true)
     setError('')
     try {
-      await api.patch('/store/theme', { primary, secondary, accent })
+      await api.patch('/store/theme', { primary, secondary, accent, logoUrl })
       document.documentElement.style.setProperty('--color-primary',   primary)
       document.documentElement.style.setProperty('--color-secondary', secondary)
       document.documentElement.style.setProperty('--color-accent',    accent)
@@ -243,6 +259,53 @@ function ThemeSection({ isManager, onSaved }: { isManager: boolean; onSaved: () 
   return (
     <SectionCard icon={Palette} title="Aparência">
       <div className="space-y-4">
+        {/* Logo upload */}
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700">Logo da loja</label>
+          <p className="mb-3 text-xs text-gray-500">
+            Substitui o ícone LogiFlow no menu. Use PNG com fundo transparente (máx. 512 KB).
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-1" />
+              ) : (
+                <span className="text-xs text-gray-400">Sem logo</span>
+              )}
+            </div>
+            {isManager && (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Upload className="h-4 w-4" />
+                  {logoUrl ? 'Trocar logo' : 'Enviar logo'}
+                </button>
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setLogoUrl(null)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                    Remover logo
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept=".png,image/png"
+            className="hidden"
+            onChange={handleLogoFile}
+          />
+        </div>
+
+        {/* Color pickers */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {colors.map(({ label, value, set }) => (
             <div key={label}>

@@ -3,15 +3,24 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Menu, Truck } from 'lucide-react'
+import useSWR from 'swr'
 import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
+import { api } from '@/lib/api'
+
+interface ThemeData {
+  theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null }
+  features: { customThemeEnabled: boolean }
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router           = useRouter()
   const pathname         = usePathname()
   const { user, init }   = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
+  const logoUrl = themeData?.theme?.logoUrl ?? null
 
   useTheme()
 
@@ -40,13 +49,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Menu className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-2">
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ background: 'var(--color-primary)' }}
-          >
-            <Truck className="h-3.5 w-3.5 text-white" />
-          </div>
-          <span className="font-bold text-gray-900">LogiFlow</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="h-7 w-auto max-w-[120px] object-contain" />
+          ) : (
+            <>
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-lg"
+                style={{ background: 'var(--color-primary)' }}
+              >
+                <Truck className="h-3.5 w-3.5 text-white" />
+              </div>
+              <span className="font-bold text-gray-900">LogiFlow</span>
+            </>
+          )}
         </div>
       </header>
 
