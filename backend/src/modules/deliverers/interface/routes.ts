@@ -210,23 +210,31 @@ export async function delivererRoutes(app: FastifyInstance) {
 
   // Deliverer fetches own store info (for distance calculation + settings)
   app.get('/deliverer/store', { preHandler: requireDeliverer }, async (req) => {
-    const { rows: [store] } = await db.query(
-      'SELECT name, lat, lng FROM stores WHERE id = $1',
-      [req.actor.storeId]
-    )
-    const { rows: settingRows } = await db.query(
-      `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
-       FROM settings s
-       LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1`,
-      [req.actor.storeId]
-    )
+    const [{ rows: [store] }, { rows: settingRows }, { rows: themeRows }] = await Promise.all([
+      db.query('SELECT name, lat, lng FROM stores WHERE id = $1', [req.actor.storeId]),
+      db.query(
+        `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
+         FROM settings s
+         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1`,
+        [req.actor.storeId]
+      ),
+      db.query(
+        `SELECT 1 FROM store_features_enabled sfe
+         JOIN features f ON f.id = sfe.feature_id
+         WHERE sfe.store_id = $1 AND f.name = 'custom_theme'`,
+        [req.actor.storeId]
+      ),
+    ])
     const sv = Object.fromEntries(
       settingRows.map((r: Record<string, unknown>) => [r.name as string, r.value as string])
     )
+    const customThemeEnabled = themeRows.length > 0
+    const storeRow = store as Record<string, unknown> | undefined
     return {
-      name:                 (store as Record<string, unknown> | undefined)?.name ?? '',
-      lat:                  (store as Record<string, unknown> | undefined)?.lat  ?? null,
-      lng:                  (store as Record<string, unknown> | undefined)?.lng  ?? null,
+      name:                 storeRow?.name ?? '',
+      storeName:            customThemeEnabled ? (storeRow?.name as string ?? null) : null,
+      lat:                  storeRow?.lat  ?? null,
+      lng:                  storeRow?.lng  ?? null,
       requirePickupCode:    sv.require_pickup_code    !== 'false',
       requireDeliveryCode:  sv.require_delivery_code  !== 'false',
       requireDeliveryPhoto: sv.require_delivery_photo === 'true',

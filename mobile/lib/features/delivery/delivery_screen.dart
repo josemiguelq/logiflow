@@ -25,11 +25,16 @@ class DeliveryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final orders = ref.watch(_activeDeliveryProvider);
+    final orders   = ref.watch(_activeDeliveryProvider);
+    final settings = ref.watch(storeSettingsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Entregas em rota'),
+        centerTitle: true,
+        title: _BrandTitle(
+          brand:    settings.value?.brandName ?? 'LogiFlow',
+          subtitle: 'Entregas em rota',
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/orders'),
@@ -507,4 +512,21 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       ),
     );
   }
+}
+
+class _BrandTitle extends StatelessWidget {
+  final String brand;
+  final String subtitle;
+  const _BrandTitle({required this.brand, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(brand,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      Text(subtitle,
+          style: const TextStyle(fontSize: 11, color: Colors.white70)),
+    ],
+  );
 }

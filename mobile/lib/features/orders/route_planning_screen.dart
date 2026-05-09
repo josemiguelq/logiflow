@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
+import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 
-class RoutePlanningScreen extends StatefulWidget {
+class RoutePlanningScreen extends ConsumerStatefulWidget {
   final DelivererRoute route;
   const RoutePlanningScreen({super.key, required this.route});
 
   @override
-  State<RoutePlanningScreen> createState() => _RoutePlanningScreenState();
+  ConsumerState<RoutePlanningScreen> createState() => _RoutePlanningScreenState();
 }
 
-class _RoutePlanningScreenState extends State<RoutePlanningScreen> {
+class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
   late List<Order> _orders;
 
   @override
@@ -23,9 +25,19 @@ class _RoutePlanningScreenState extends State<RoutePlanningScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final brandName = ref.watch(storeSettingsProvider).value?.brandName ?? 'LogiFlow';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Planejar rota'),
+        centerTitle: true,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(brandName,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text('Planejar rota',
+                style: TextStyle(fontSize: 11, color: Colors.white70)),
+          ],
+        ),
         actions: [
           // Premium-locked "Otimizar rota" button
           Tooltip(

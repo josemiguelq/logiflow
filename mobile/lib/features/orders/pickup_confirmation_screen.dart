@@ -78,8 +78,20 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
     // Default to false (non-blocking) when settings can't be fetched
     final requirePickupCode = settings.value?.requirePickupCode ?? false;
 
+    final brandName = ref.watch(storeSettingsProvider).value?.brandName ?? 'LogiFlow';
     return Scaffold(
-      appBar: AppBar(title: const Text('Confirmar retirada')),
+      appBar: AppBar(
+        centerTitle: true,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(brandName,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text('Confirmar retirada',
+                style: TextStyle(fontSize: 11, color: Colors.white70)),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           // Info banner

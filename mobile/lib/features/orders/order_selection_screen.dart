@@ -7,6 +7,7 @@ import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
+import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 
 // ── providers ────────────────────────────────────────────────────────────────
@@ -165,9 +166,22 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     final isOffline     = session?.status == 'OFFLINE';
     final isLoading     = routes.isLoading || preparing.isLoading;
 
+    final storeSettings = ref.watch(storeSettingsProvider);
+    final brandName     = storeSettings.value?.brandName ?? 'LogiFlow';
+    final firstName     = session?.name.split(' ').first ?? '';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Olá, ${session?.name.split(' ').first ?? ''}'),
+        centerTitle: true,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(brandName,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text('Olá, $firstName',
+                style: const TextStyle(fontSize: 11, color: Colors.white70)),
+          ],
+        ),
         actions: [
           Row(
             children: [
