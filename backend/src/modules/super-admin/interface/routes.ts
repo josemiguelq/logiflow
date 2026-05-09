@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
+import { redis } from '../../../shared/infra/redis'
 import { requireSuperAdmin } from '../../../shared/middleware/auth'
 import { DEFAULT_ROLE_SCOPES, SCOPES, SCOPE_LABELS, SCOPE_GROUPS } from '../../../shared/scopes'
 
@@ -185,6 +186,8 @@ export async function superAdminRoutes(app: FastifyInstance) {
         [storeId, featureId]
       )
 
+      try { await redis.del(`theme:store:${storeId}`) } catch { /* ignore */ }
+
       return { storeId, featureId, featureName: feature.name }
     }
   )
@@ -203,6 +206,8 @@ export async function superAdminRoutes(app: FastifyInstance) {
         'DELETE FROM store_features_enabled WHERE store_id = $1 AND feature_id = $2',
         [storeId, featureId]
       )
+
+      try { await redis.del(`theme:store:${storeId}`) } catch { /* ignore */ }
 
       return { ok: true }
     }
