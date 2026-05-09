@@ -12,6 +12,7 @@ import { confirmPickup } from '../application/use-cases/confirm-pickup'
 import { confirmDelivery } from '../application/use-cases/confirm-delivery'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
+import { redis } from '../../../shared/infra/redis'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
@@ -47,15 +48,14 @@ export async function orderRoutes(app: FastifyInstance) {
       }
     }
 
-    // Attach deliverer's last known location
+    // Attach deliverer's last known live position (from location_history, updated every ~15s)
     let delivererLat: number | null = null
     let delivererLng: number | null = null
     if ((order as { deliverer?: unknown }).deliverer) {
       const { rows } = await db.query(
-        `SELECT lat, lng FROM deliverer_status_history
+        `SELECT lat, lng FROM location_history
          WHERE deliverer_id = (SELECT deliverer_id FROM orders WHERE id = $1)
-           AND lat IS NOT NULL AND lng IS NOT NULL
-         ORDER BY changed_at DESC LIMIT 1`,
+         ORDER BY recorded_at DESC LIMIT 1`,
         [orderId]
       )
       if (rows[0]) {
@@ -64,7 +64,13 @@ export async function orderRoutes(app: FastifyInstance) {
       }
     }
 
-    // Compute whether customer ratings are enabled for this store
+    // Compute whether customer ratings are enabled for this store + fetch store theme
+    const { rows: [storeRow] } = await db.query(
+      'SELECT id, store_id FROM orders WHERE id = $1',
+      [orderId]
+    )
+    const storeId = (storeRow as Record<string, unknown> | undefined)?.store_id as string | undefined
+
     const { rows: [ratingCfg] } = await db.query(`
       SELECT
         COALESCE(ss.allow_customer_ratings, false) AS allow,
@@ -80,7 +86,56 @@ export async function orderRoutes(app: FastifyInstance) {
       (ratingCfg as Record<string, unknown> | undefined)?.feature_on
     )
 
-    return { ...order, delivererLat, delivererLng, ratingEnabled }
+    // Fetch store theme (try Redis cache first)
+    let storeTheme: {
+      primary: string; secondary: string; accent: string;
+      logoUrl: string | null; storeName: string | null
+    } | null = null
+
+    if (storeId) {
+      try {
+        const cached = await redis.get(`theme:store:${storeId}`)
+        if (cached) {
+          const parsed = JSON.parse(cached)
+          const t = parsed.theme
+          if (parsed.features?.customThemeEnabled && t) {
+            storeTheme = {
+              primary:   t.primary   ?? '#2563EB',
+              secondary: t.secondary ?? '#F9FAFB',
+              accent:    t.accent    ?? '#F97316',
+              logoUrl:   t.logoUrl   ?? null,
+              storeName: t.storeName ?? null,
+            }
+          }
+        }
+      } catch { /* Redis unavailable */ }
+
+      if (!storeTheme) {
+        const { rows: featureRows } = await db.query(`
+          SELECT f.name FROM store_features_enabled sfe
+          JOIN features f ON f.id = sfe.feature_id
+          WHERE sfe.store_id = $1 AND f.name = 'custom_theme'
+        `, [storeId])
+        if (featureRows.length > 0) {
+          const [{ rows: [themeRow] }, { rows: [nameRow] }] = await Promise.all([
+            db.query(
+              'SELECT primary_color, secondary_color, accent_color, logo_url FROM store_theme WHERE store_id = $1',
+              [storeId]
+            ),
+            db.query('SELECT name FROM stores WHERE id = $1', [storeId]),
+          ])
+          storeTheme = {
+            primary:   (themeRow as Record<string, unknown> | undefined)?.primary_color   as string ?? '#2563EB',
+            secondary: (themeRow as Record<string, unknown> | undefined)?.secondary_color as string ?? '#F9FAFB',
+            accent:    (themeRow as Record<string, unknown> | undefined)?.accent_color    as string ?? '#F97316',
+            logoUrl:   (themeRow as Record<string, unknown> | undefined)?.logo_url        as string | null ?? null,
+            storeName: (nameRow  as Record<string, unknown> | undefined)?.name            as string | null ?? null,
+          }
+        }
+      }
+    }
+
+    return { ...order, delivererLat, delivererLng, ratingEnabled, storeTheme }
   })
 
   // ── Public rating submission ──────────────────────────────────────────────

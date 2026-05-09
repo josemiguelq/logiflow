@@ -23,6 +23,10 @@ export async function confirmDelivery(
   if (!order) throw new Error('Order not found')
   if (order.delivererId !== delivererId) throw new Error('Not your order')
 
+    console.log('requireDeliveryCode', requireDeliveryCode)
+    console.log('code', code)
+    console.log('codeUpper', code.toUpperCase())
+    console.log('order.deliveryCode', order.deliveryCode)
   if (requireDeliveryCode && code && order.deliveryCode !== code.toUpperCase()) {
     throw new Error('Código de entrega incorreto')
   }

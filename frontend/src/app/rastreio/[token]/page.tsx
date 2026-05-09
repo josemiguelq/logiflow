@@ -8,6 +8,14 @@ const TrackingMap = dynamic(() => import('./_map'), { ssr: false })
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
+interface StoreTheme {
+  primary:   string
+  secondary: string
+  accent:    string
+  logoUrl:   string | null
+  storeName: string | null
+}
+
 interface PublicOrder {
   id:            string
   status:        string
@@ -21,6 +29,7 @@ interface PublicOrder {
   rating?:        number
   ratingComment?: string
   ratingEnabled:  boolean
+  storeTheme?:   StoreTheme | null
 }
 
 const STATUS_INFO: Record<string, {
@@ -57,7 +66,17 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
       try {
         const res = await fetch(`${BASE}/tracking/${token}`)
         if (res.status === 410) { setExpired(true); return }
-        if (res.ok) setOrder(await res.json())
+        if (res.ok) {
+          const data: PublicOrder = await res.json()
+          setOrder(data)
+          // Apply store custom theme as CSS variables
+          if (data.storeTheme) {
+            const r = document.documentElement
+            r.style.setProperty('--color-primary',   data.storeTheme.primary)
+            r.style.setProperty('--color-secondary', data.storeTheme.secondary)
+            r.style.setProperty('--color-accent',    data.storeTheme.accent)
+          }
+        }
       } finally {
         setLoading(false)
       }
@@ -107,16 +126,27 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
   const currentStep = stepIndex(order.status)
   const showMap     = order.delivererLat != null && order.delivererLng != null &&
     ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
+  const theme     = order.storeTheme
+  const brandName = theme?.storeName ?? 'LogiFlow'
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="mx-auto flex max-w-lg items-center gap-2 px-4 py-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900">
-            <Truck className="h-3.5 w-3.5 text-white" />
-          </div>
-          <span className="font-bold text-gray-900">LogiFlow</span>
+          {theme?.logoUrl ? (
+            <img src={theme.logoUrl} alt={brandName} className="h-7 w-auto max-w-[120px] object-contain" />
+          ) : (
+            <>
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-lg"
+                style={{ background: theme ? 'var(--color-primary)' : '#111827' }}
+              >
+                <Truck className="h-3.5 w-3.5 text-white" />
+              </div>
+              <span className="font-bold text-gray-900">{brandName}</span>
+            </>
+          )}
           <span className="ml-auto text-xs text-gray-400">Rastreamento de pedido</span>
         </div>
       </div>
