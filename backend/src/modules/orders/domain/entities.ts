@@ -26,6 +26,10 @@ export interface Order {
   createdAt: Date
   pickedUpAt?: Date
   deliveredAt?: Date
+  deliveryNote?: string
+  rating?: number
+  ratingComment?: string
+  ratedAt?: Date
 }
 
 export interface OrderWithDetails extends Order {

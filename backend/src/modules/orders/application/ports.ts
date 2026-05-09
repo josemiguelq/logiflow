@@ -10,6 +10,7 @@ export interface IOrderRepository {
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>
   assignDeliverer(id: string, delivererId: string, routePosition: number): Promise<Order>
   addProof(orderId: string, photoUrl: string, lat?: number, lng?: number): Promise<void>
+  submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
 }
 
@@ -29,4 +30,7 @@ export interface PublicOrderView {
   deliverer?: { name: string; lat?: number; lng?: number }
   routePosition?: number
   isCurrentStop: boolean
+  deliveryNote?: string
+  rating?: number
+  ratingComment?: string
 }

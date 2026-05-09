@@ -322,6 +322,7 @@ class _DeliveryConfirmSheet extends StatefulWidget {
 
 class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
   XFile? _photo;
   bool _loading = false;
   String? _error;
@@ -329,6 +330,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   @override
   void dispose() {
     _codeCtrl.dispose();
+    _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -361,6 +363,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         photoUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       }
 
+      final note = _noteCtrl.text.trim();
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
         data: {
@@ -368,6 +371,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           if (photoUrl != null) 'photoUrl': photoUrl,
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
+          if (note.isNotEmpty) 'note': note,
         },
       );
 
@@ -447,6 +451,22 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
                             style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
                       ],
                     ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+          TextField(
+            controller: _noteCtrl,
+            maxLines: 2,
+            maxLength: 500,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              labelText: 'Observação (opcional)',
+              hintText: 'Ex: deixado com porteiro, cliente ausente...',
+              alignLabelWithHint: true,
+              counterText: '',
+              prefixIcon: const Icon(Icons.notes_outlined),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
 

@@ -50,7 +50,7 @@ async function start() {
     const phone = order.customer.phone
     if (!phone) return
 
-    const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'https://logiflow-beige.vercel.app/tracking'}/${orderId}`
+    const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'https://logiflow-beige.vercel.app/rastreio'}/${orderId}`
     const message = buildStatusMessage(statusEvent, order.customer.name, trackingUrl, order.deliveryCode)
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })

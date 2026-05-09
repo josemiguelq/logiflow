@@ -23,6 +23,10 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     createdAt:       row.created_at as Date,
     pickedUpAt:      row.picked_up_at as Date | undefined,
     deliveredAt:     row.delivered_at as Date | undefined,
+    deliveryNote:    row.delivery_note as string | undefined,
+    rating:          row.rating as number | undefined,
+    ratingComment:   row.rating_comment as string | undefined,
+    ratedAt:         row.rated_at as Date | undefined,
   }
 }
 
@@ -44,6 +48,10 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     createdAt:       row.created_at as Date,
     pickedUpAt:      row.picked_up_at as Date | undefined,
     deliveredAt:     row.delivered_at as Date | undefined,
+    deliveryNote:    row.delivery_note as string | undefined,
+    rating:          row.rating as number | undefined,
+    ratingComment:   row.rating_comment as string | undefined,
+    ratedAt:         row.rated_at as Date | undefined,
     customer: {
       id:         row.customer_id as string,
       name:       row.customer_name as string,
@@ -185,8 +193,9 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const params: unknown[] = [id, status]
       let idx = 3
 
-      if (extra.pickedUpAt) { sets.push(`picked_up_at = $${idx++}`); params.push(extra.pickedUpAt) }
-      if (extra.deliveredAt) { sets.push(`delivered_at = $${idx++}`); params.push(extra.deliveredAt) }
+      if (extra.pickedUpAt)                  { sets.push(`picked_up_at = $${idx++}`);  params.push(extra.pickedUpAt) }
+      if (extra.deliveredAt)                 { sets.push(`delivered_at = $${idx++}`);  params.push(extra.deliveredAt) }
+      if (extra.deliveryNote !== undefined)  { sets.push(`delivery_note = $${idx++}`); params.push(extra.deliveryNote) }
 
       const { rows } = await db.query(
         `UPDATE orders SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
@@ -216,6 +225,15 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       )
     },
 
+    async submitRating(orderId, rating, comment) {
+      await db.query(
+        `UPDATE orders
+         SET rating = $2, rating_comment = $3, rated_at = now()
+         WHERE id = $1 AND status = 'DELIVERED' AND rating IS NULL`,
+        [orderId, rating, comment ?? null]
+      )
+    },
+
     async getPublic(id) {
       const { rows } = await db.query(
         `${WITH_JOINS} WHERE o.id = $1`,
@@ -224,15 +242,16 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       if (!rows[0]) return null
       const o = mapRow(rows[0])
       return {
-        id:           o.id,
-        status:       o.status,
-        deliveryCode: o.deliveryCode,
-        customer:     { name: o.customer.name, address: o.customer.address },
-        deliverer:    o.deliverer
-          ? { name: o.deliverer.name }
-          : undefined,
+        id:            o.id,
+        status:        o.status,
+        deliveryCode:  o.deliveryCode,
+        customer:      { name: o.customer.name, address: o.customer.address },
+        deliverer:     o.deliverer ? { name: o.deliverer.name } : undefined,
         routePosition: o.routePosition,
         isCurrentStop: o.routePosition === 1,
+        deliveryNote:  o.deliveryNote,
+        rating:        o.rating,
+        ratingComment: o.ratingComment,
       } as PublicOrderView
     },
   }

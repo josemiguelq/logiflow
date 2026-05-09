@@ -4,7 +4,8 @@ interface Deps { orderRepo: IOrderRepository }
 
 export async function confirmDelivery(
   {
-    orderId, storeId, delivererId, code, photoUrl, lat, lng, requireDeliveryCode = true,
+    orderId, storeId, delivererId, code, photoUrl, lat, lng,
+    requireDeliveryCode = true, note,
   }: {
     orderId: string
     storeId: string
@@ -14,21 +15,24 @@ export async function confirmDelivery(
     lat?: number
     lng?: number
     requireDeliveryCode?: boolean
+    note?: string
   },
   { orderRepo }: Deps
 ) {
   const order = await orderRepo.findById(orderId, storeId)
   if (!order) throw new Error('Order not found')
   if (order.delivererId !== delivererId) throw new Error('Not your order')
-  // if (order.status !== 'OUT_FOR_DELIVERY') throw new Error('Order not out for delivery')
-  console.log(requireDeliveryCode, order.deliveryCode, code.toUpperCase())
-  // if (requireDeliveryCode && order.deliveryCode !== code.toUpperCase()) {
-  //   throw new Error('Invalid delivery code')
-  // }
+
+  if (requireDeliveryCode && code && order.deliveryCode !== code.toUpperCase()) {
+    throw new Error('Código de entrega incorreto')
+  }
 
   if (photoUrl) {
     await orderRepo.addProof(orderId, photoUrl, lat, lng)
   }
 
-  return orderRepo.updateStatus(orderId, 'DELIVERED', { deliveredAt: new Date() })
+  return orderRepo.updateStatus(orderId, 'DELIVERED', {
+    deliveredAt:  new Date(),
+    deliveryNote: note || undefined,
+  })
 }

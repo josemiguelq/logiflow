@@ -67,6 +67,30 @@ export async function orderRoutes(app: FastifyInstance) {
     return { ...order, delivererLat, delivererLng }
   })
 
+  // ── Public rating submission ──────────────────────────────────────────────
+  app.post('/tracking/:orderId/rating', async (req, reply) => {
+    const { orderId } = req.params as { orderId: string }
+    const { rating, comment } = z.object({
+      rating:  z.number().int().min(1).max(5),
+      comment: z.string().max(500).optional(),
+    }).parse(req.body)
+
+    const { rows: [order] } = await db.query(
+      'SELECT status, rating FROM orders WHERE id = $1',
+      [orderId]
+    )
+    if (!order) return reply.code(404).send({ error: 'Not found' })
+    if ((order as Record<string, unknown>).status !== 'DELIVERED') {
+      return reply.code(409).send({ error: 'Pedido ainda não entregue' })
+    }
+    if ((order as Record<string, unknown>).rating !== null) {
+      return reply.code(409).send({ error: 'Avaliação já registrada' })
+    }
+
+    await orderRepo.submitRating(orderId, rating, comment)
+    return { ok: true }
+  })
+
   // ── Store user routes ────────────────────────────────────────────────────
   app.get(
     '/orders',
@@ -300,6 +324,7 @@ export async function orderRoutes(app: FastifyInstance) {
     photoUrl: z.string().optional(),
     lat:      z.number().optional(),
     lng:      z.number().optional(),
+    note:     z.string().max(500).optional(),
   })
 
   app.post(
