@@ -84,6 +84,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   )
   const features = useStoreFeatures()
 
+  const [storeName,             setStoreName]             = useState('')
   const [maxOrders,             setMaxOrders]             = useState(5)
   const [requirePhoto,          setRequirePhoto]          = useState(false)
   const [requirePickupCode,     setRequirePickupCode]     = useState(true)
@@ -94,6 +95,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
 
   useEffect(() => {
     if (data) {
+      setStoreName(data.storeName ?? '')
       setMaxOrders(data.maxOrdersPerRoute)
       setRequirePhoto(data.requireDeliveryPhoto)
       setRequirePickupCode(data.requirePickupCode)
@@ -107,6 +109,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
     setError('')
     try {
       await api.patch('/store/settings', {
+        storeName:            storeName.trim() || undefined,
         maxOrdersPerRoute:    maxOrders,
         requireDeliveryPhoto: requirePhoto,
         requirePickupCode,
@@ -125,6 +128,18 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   return (
     <SectionCard icon={SlidersHorizontal} title="Operações">
       <div className="space-y-5">
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            Nome da loja
+          </label>
+          <Input
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+            placeholder="Nome da loja"
+            maxLength={80}
+          />
+        </div>
+
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700">
             Máximo de pedidos por rota

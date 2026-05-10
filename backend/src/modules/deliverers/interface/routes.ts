@@ -232,8 +232,9 @@ export async function delivererRoutes(app: FastifyInstance) {
         [req.actor.storeId]
       ),
       db.query(
-        `SELECT 1 FROM store_features_enabled sfe
+        `SELECT st.primary_color FROM store_features_enabled sfe
          JOIN features f ON f.id = sfe.feature_id
+         LEFT JOIN store_theme st ON st.store_id = sfe.store_id
          WHERE sfe.store_id = $1 AND f.name = 'custom_theme'`,
         [req.actor.storeId]
       ),
@@ -242,10 +243,14 @@ export async function delivererRoutes(app: FastifyInstance) {
       settingRows.map((r: Record<string, unknown>) => [r.name as string, r.value as string])
     )
     const customThemeEnabled = themeRows.length > 0
+    const primaryColor = customThemeEnabled
+      ? ((themeRows[0] as Record<string, unknown> | undefined)?.primary_color as string | null ?? null)
+      : null
     const storeRow = store as Record<string, unknown> | undefined
     return {
       name:                 storeRow?.name ?? '',
       storeName:            customThemeEnabled ? (storeRow?.name as string ?? null) : null,
+      primaryColor,
       lat:                  storeRow?.lat  ?? null,
       lng:                  storeRow?.lng  ?? null,
       requirePickupCode:    sv.require_pickup_code    !== 'false',

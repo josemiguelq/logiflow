@@ -168,6 +168,20 @@ export async function superAdminRoutes(app: FastifyInstance) {
     }))
   })
 
+  // Rename a store
+  app.patch(
+    '/super-admin/stores/:storeId',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+      const { name } = z.object({ name: z.string().min(1) }).parse(req.body)
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+      await db.query('UPDATE stores SET name = $1 WHERE id = $2', [name, storeId])
+      return { ok: true }
+    }
+  )
+
   // Enable a feature for a store
   app.post(
     '/super-admin/stores/:storeId/features-enabled',

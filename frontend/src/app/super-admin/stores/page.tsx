@@ -113,6 +113,9 @@ export default function SuperAdminStoresPage() {
   const [billingStore,    setBillingStore]    = useState<StoreRow | null>(null)
   const [billingInfo,     setBillingInfo]     = useState<BillingInfo | null>(null)
   const [billingLoading,  setBillingLoading]  = useState(false)
+  const [renamingId,      setRenamingId]      = useState<string | null>(null)
+  const [renameValue,     setRenameValue]     = useState('')
+  const [renameSaving,    setRenameSaving]    = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -133,6 +136,27 @@ export default function SuperAdminStoresPage() {
     if (!localStorage.getItem(SA_TOKEN_KEY)) { router.replace('/super-admin'); return }
     load()
   }, [load, router])
+
+  function startRename(store: StoreRow) {
+    setRenamingId(store.id)
+    setRenameValue(store.name)
+  }
+
+  async function saveRename(storeId: string) {
+    const name = renameValue.trim()
+    if (!name) return
+    setRenameSaving(true)
+    try {
+      await saFetch(`/super-admin/stores/${storeId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      })
+      setStores(prev => prev.map(s => s.id === storeId ? { ...s, name } : s))
+      setRenamingId(null)
+    } finally {
+      setRenameSaving(false)
+    }
+  }
 
   async function openBilling(store: StoreRow) {
     setBillingStore(store)
@@ -207,7 +231,45 @@ export default function SuperAdminStoresPage() {
                     <Store className="h-4 w-4 text-gray-600" />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-900">{s.name}</p>
+                    {renamingId === s.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveRename(s.id)
+                            if (e.key === 'Escape') setRenamingId(null)
+                          }}
+                          className="rounded-md border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-900 focus:border-gray-500 focus:outline-none"
+                          maxLength={80}
+                        />
+                        <button
+                          onClick={() => saveRename(s.id)}
+                          disabled={renameSaving}
+                          className="flex items-center justify-center rounded-md bg-gray-900 p-1.5 text-white hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setRenamingId(null)}
+                          className="flex items-center justify-center rounded-md border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-gray-900">{s.name}</p>
+                        <button
+                          onClick={() => startRename(s)}
+                          className="rounded p-0.5 text-gray-400 hover:text-gray-700"
+                          title="Renomear loja"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                     <div className="mt-0.5 flex items-center gap-2">
                       <p className="text-xs text-gray-400">
                         {new Date(s.createdAt).toLocaleDateString('pt-BR')} · {s.id.slice(0, 8)}

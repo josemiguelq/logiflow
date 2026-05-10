@@ -183,6 +183,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
   // PATCH /store/settings
   const storeSettingsSchema = z.object({
+    storeName:            z.string().min(1).optional(),
     maxOrdersPerRoute:    z.number().int().min(1).max(20).optional(),
     requireDeliveryPhoto: z.boolean().optional(),
     requirePickupCode:    z.boolean().optional(),
@@ -226,11 +227,24 @@ export async function settingsRoutes(app: FastifyInstance) {
       if (rows.length > 0) await upsertSetting('allow_customer_ratings', String(body.allowCustomerRatings))
     }
 
-    if (body.storeLat !== undefined || body.storeLng !== undefined) {
-      await db.query(
-        'UPDATE stores SET lat = COALESCE($2, lat), lng = COALESCE($3, lng) WHERE id = $1',
-        [storeId, body.storeLat ?? null, body.storeLng ?? null]
-      )
+    const storeUpdates: string[] = []
+    const storeParams: unknown[] = [storeId]
+    let storeIdx = 2
+
+    if (body.storeName) {
+      storeUpdates.push(`name = $${storeIdx++}`)
+      storeParams.push(body.storeName)
+    }
+    if (body.storeLat !== undefined) {
+      storeUpdates.push(`lat = $${storeIdx++}`)
+      storeParams.push(body.storeLat ?? null)
+    }
+    if (body.storeLng !== undefined) {
+      storeUpdates.push(`lng = $${storeIdx++}`)
+      storeParams.push(body.storeLng ?? null)
+    }
+    if (storeUpdates.length > 0) {
+      await db.query(`UPDATE stores SET ${storeUpdates.join(', ')} WHERE id = $1`, storeParams)
     }
 
     return { ok: true }
