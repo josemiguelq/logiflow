@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp,
   CheckCircle, Download, Info, MapPin, Calendar, Package, Truck, Star,
+  CreditCard, AlertTriangle, Clock, ShieldCheck, Pencil, Check,
 } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
@@ -31,6 +32,24 @@ interface StoreUser {
   username:  string
   role:      'OWNER' | 'MANAGER' | 'ASSISTANT'
   createdAt: string
+}
+
+interface Payment {
+  id:             string
+  referenceMonth: string
+  paidAt:         string
+  notes:          string | null
+}
+
+interface BillingInfo {
+  status:          'trial' | 'ok' | 'grace' | 'blocked'
+  trialEndsAt:     string | null
+  billingDay:      number
+  lastBillingDate: string | null
+  gracePeriodEnd:  string | null
+  requiredMonth:   string | null
+  paid:            boolean
+  payments:        Payment[]
 }
 
 interface StoreDetail {
@@ -91,6 +110,9 @@ export default function SuperAdminStoresPage() {
   const [createUserFor,   setCreateUserFor]   = useState<StoreRow | null>(null)
   const [detailStore,     setDetailStore]     = useState<StoreDetail | null>(null)
   const [detailLoading,   setDetailLoading]   = useState(false)
+  const [billingStore,    setBillingStore]    = useState<StoreRow | null>(null)
+  const [billingInfo,     setBillingInfo]     = useState<BillingInfo | null>(null)
+  const [billingLoading,  setBillingLoading]  = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +133,18 @@ export default function SuperAdminStoresPage() {
     if (!localStorage.getItem(SA_TOKEN_KEY)) { router.replace('/super-admin'); return }
     load()
   }, [load, router])
+
+  async function openBilling(store: StoreRow) {
+    setBillingStore(store)
+    setBillingInfo(null)
+    setBillingLoading(true)
+    try {
+      const data = await saFetch<BillingInfo>(`/super-admin/stores/${store.id}/billing`)
+      setBillingInfo(data)
+    } finally {
+      setBillingLoading(false)
+    }
+  }
 
   async function openDetail(storeId: string) {
     setDetailLoading(true)
@@ -204,6 +238,13 @@ export default function SuperAdminStoresPage() {
                     Detalhes
                   </button>
                   <button
+                    onClick={() => openBilling(s)}
+                    className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
+                  >
+                    <CreditCard className="h-3.5 w-3.5" />
+                    Cobrança
+                  </button>
+                  <button
                     onClick={() => toggleExpand(s.id)}
                     className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
                   >
@@ -250,7 +291,304 @@ export default function SuperAdminStoresPage() {
           onClose={() => { setDetailStore(null); setDetailLoading(false) }}
         />
       )}
+
+      {/* Billing drawer */}
+      {billingStore && (
+        <StoreBillingDrawer
+          store={billingStore}
+          info={billingInfo}
+          loading={billingLoading}
+          onClose={() => { setBillingStore(null); setBillingInfo(null) }}
+          onRefresh={() => openBilling(billingStore)}
+        />
+      )}
     </div>
+  )
+}
+
+// ── Billing Drawer ─────────────────────────────────────────────────────────────
+
+const BILLING_STATUS_META = {
+  trial:   { label: 'Trial',              color: 'bg-blue-100 text-blue-700',   icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+  ok:      { label: 'Em dia',             color: 'bg-green-100 text-green-700', icon: <CheckCircle className="h-3.5 w-3.5" /> },
+  grace:   { label: 'Período de graça',   color: 'bg-yellow-100 text-yellow-700', icon: <Clock className="h-3.5 w-3.5" /> },
+  blocked: { label: 'Bloqueada',          color: 'bg-red-100 text-red-700',     icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+}
+
+function fmtMonth(iso: string) {
+  // "2025-06-01" → "jun/2025"
+  const d = new Date(iso + 'T12:00:00')
+  return d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function StoreBillingDrawer({
+  store, info, loading, onClose, onRefresh,
+}: {
+  store:     StoreRow
+  info:      BillingInfo | null
+  loading:   boolean
+  onClose:   () => void
+  onRefresh: () => void
+}) {
+  const [editingTrial,   setEditingTrial]   = useState(false)
+  const [trialValue,     setTrialValue]     = useState('')
+  const [editingDay,     setEditingDay]     = useState(false)
+  const [dayValue,       setDayValue]       = useState('')
+  const [newMonth,       setNewMonth]       = useState('')
+  const [newNotes,       setNewNotes]       = useState('')
+  const [saving,         setSaving]         = useState(false)
+  const [addingPayment,  setAddingPayment]  = useState(false)
+
+  async function saveTrial() {
+    setSaving(true)
+    try {
+      await saFetch(`/super-admin/stores/${store.id}/billing`, {
+        method: 'PATCH',
+        body: JSON.stringify({ trialEndsAt: trialValue }),
+      })
+      setEditingTrial(false)
+      onRefresh()
+    } finally { setSaving(false) }
+  }
+
+  async function saveDay() {
+    const d = parseInt(dayValue)
+    if (isNaN(d) || d < 1 || d > 28) return
+    setSaving(true)
+    try {
+      await saFetch(`/super-admin/stores/${store.id}/billing`, {
+        method: 'PATCH',
+        body: JSON.stringify({ billingDay: d }),
+      })
+      setEditingDay(false)
+      onRefresh()
+    } finally { setSaving(false) }
+  }
+
+  async function addPayment(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newMonth) return
+    setAddingPayment(true)
+    try {
+      await saFetch(`/super-admin/stores/${store.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ referenceMonth: newMonth, notes: newNotes || undefined }),
+      })
+      setNewMonth(''); setNewNotes('')
+      onRefresh()
+    } finally { setAddingPayment(false) }
+  }
+
+  async function deletePayment(paymentId: string) {
+    if (!confirm('Remover este registro de pagamento?')) return
+    await saFetch(`/super-admin/stores/${store.id}/payments/${paymentId}`, { method: 'DELETE' })
+    onRefresh()
+  }
+
+  const statusMeta = info ? BILLING_STATUS_META[info.status] : null
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-5">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-gray-500" />
+            <span className="font-semibold text-gray-900">Cobrança — {store.name}</span>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1 text-gray-400 hover:bg-gray-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+          {loading ? (
+            <div className="flex h-40 items-center justify-center">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+            </div>
+          ) : info ? (
+            <>
+              {/* Status */}
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold ${statusMeta!.color}`}>
+                  {statusMeta!.icon}
+                  {statusMeta!.label}
+                </span>
+                {info.status === 'blocked' && (
+                  <p className="text-xs text-red-600">Criação de pedidos bloqueada</p>
+                )}
+                {info.status === 'grace' && info.gracePeriodEnd && (
+                  <p className="text-xs text-yellow-700">Vence em {fmtDate(info.gracePeriodEnd)}</p>
+                )}
+              </div>
+
+              {/* Info chips */}
+              {info.requiredMonth && !info.paid && (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  Pagamento pendente: <span className="font-semibold">{fmtMonth(info.requiredMonth)}</span>
+                </div>
+              )}
+
+              {/* Trial configuration */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Fim do trial
+                </p>
+                {editingTrial ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={trialValue}
+                      onChange={e => setTrialValue(e.target.value)}
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <button
+                      onClick={saveTrial}
+                      disabled={saving}
+                      className="flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Salvar
+                    </button>
+                    <button onClick={() => setEditingTrial(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                    <span className="text-sm font-medium text-gray-800">
+                      {info.trialEndsAt ? fmtDate(info.trialEndsAt) : 'Não configurado'}
+                    </span>
+                    <button
+                      onClick={() => { setTrialValue(info.trialEndsAt ?? ''); setEditingTrial(true) }}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+                    >
+                      <Pencil className="h-3 w-3" /> Editar
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {/* Billing day configuration */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Dia de vencimento (mensal)
+                </p>
+                {editingDay ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={1} max={28}
+                      value={dayValue}
+                      onChange={e => setDayValue(e.target.value)}
+                      className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <span className="text-sm text-gray-500">de cada mês</span>
+                    <button
+                      onClick={saveDay}
+                      disabled={saving}
+                      className="flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Salvar
+                    </button>
+                    <button onClick={() => setEditingDay(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                    <span className="text-sm font-medium text-gray-800">
+                      Todo dia <strong>{info.billingDay}</strong>
+                    </span>
+                    <button
+                      onClick={() => { setDayValue(String(info.billingDay)); setEditingDay(true) }}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+                    >
+                      <Pencil className="h-3 w-3" /> Editar
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {/* Add payment */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Registrar pagamento
+                </p>
+                <form onSubmit={addPayment} className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="month"
+                      value={newMonth}
+                      onChange={e => setNewMonth(e.target.value)}
+                      required
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={addingPayment || !newMonth}
+                      className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {addingPayment ? 'Salvando...' : 'Registrar'}
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={newNotes}
+                    onChange={e => setNewNotes(e.target.value)}
+                    placeholder="Observação (opcional)"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </form>
+              </section>
+
+              {/* Payment history */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Histórico de pagamentos
+                </p>
+                {info.payments.length === 0 ? (
+                  <p className="text-sm text-gray-400">Nenhum pagamento registrado</p>
+                ) : (
+                  <div className="space-y-2">
+                    {info.payments.map(p => (
+                      <div
+                        key={p.id}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2.5"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800 capitalize">
+                            {fmtMonth(p.referenceMonth)}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            Registrado em {fmtDate(p.paidAt)}
+                          </p>
+                          {p.notes && (
+                            <p className="mt-0.5 text-xs text-gray-500">{p.notes}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => deletePayment(p.id)}
+                          className="shrink-0 rounded-md p-1 text-gray-300 hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </>
   )
 }
 

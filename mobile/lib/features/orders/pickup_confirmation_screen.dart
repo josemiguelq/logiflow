@@ -24,6 +24,10 @@ class _PickupConfirmationScreenState extends ConsumerState<PickupConfirmationScr
   void initState() {
     super.initState();
     _saveRouteOrder();
+    // Schedule after first frame — ref is not usable during initState itself.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(storeSettingsProvider);
+    });
   }
 
   Future<void> _saveRouteOrder() async {
