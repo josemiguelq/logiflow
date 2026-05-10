@@ -110,7 +110,12 @@ export async function settingsRoutes(app: FastifyInstance) {
     // Upload logo to storage if sent as base64 data URI
     let logoUrl = body.logoUrl ?? null
     if (logoUrl?.startsWith('data:')) {
-      logoUrl = await uploadBase64(`logos/${storeId}`, logoUrl)
+      try {
+        logoUrl = await uploadBase64(`logos/${storeId}`, logoUrl)
+      } catch (uploadErr) {
+        req.log.error({ err: uploadErr }, 'logo upload failed')
+        return reply.code(502).send({ error: 'Falha ao salvar logo. Verifique se o bucket de storage está configurado.' })
+      }
     }
 
     await db.query(

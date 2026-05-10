@@ -32,6 +32,7 @@ export function getPublicUrl(path: string | null | undefined): string | null {
 /**
  * Uploads a base64 data-URI to Supabase Storage via S3 protocol.
  * Returns the stored path (without bucket or base URL).
+ * Throws a plain Error with a human-readable message on failure.
  */
 export async function uploadBase64(pathWithoutExt: string, dataUri: string): Promise<string> {
   const commaIdx = dataUri.indexOf(',')
@@ -44,12 +45,20 @@ export async function uploadBase64(pathWithoutExt: string, dataUri: string): Pro
   const ext  = mimeToExt(mime)
   const path = `${pathWithoutExt}.${ext}`
 
-  await s3.send(new PutObjectCommand({
-    Bucket:      BUCKET,
-    Key:         path,
-    Body:        Buffer.from(base64, 'base64'),
-    ContentType: mime,
-  }))
+  try {
+    await s3.send(new PutObjectCommand({
+      Bucket:      BUCKET,
+      Key:         path,
+      Body:        Buffer.from(base64, 'base64'),
+      ContentType: mime,
+    }))
+  } catch (err: unknown) {
+    // Supabase returns JSON errors but the S3 SDK expects XML, so the real
+    // HTTP status is buried in $metadata. Expose a readable message instead.
+    const meta = (err as { $metadata?: { httpStatusCode?: number } }).$metadata
+    const status = meta?.httpStatusCode ?? 'unknown'
+    throw new Error(`Storage upload failed (HTTP ${status}): bucket "${BUCKET}" may not exist or credentials are invalid`)
+  }
 
   return path
 }

@@ -474,7 +474,12 @@ export async function orderRoutes(app: FastifyInstance) {
       // Upload proof photo to storage if provided as base64 data URI
       let photoUrl = body.photoUrl
       if (photoUrl?.startsWith('data:')) {
-        photoUrl = await uploadBase64(`proof/${id}`, photoUrl)
+        try {
+          photoUrl = await uploadBase64(`proof/${id}`, photoUrl)
+        } catch (uploadErr) {
+          req.log.error({ err: uploadErr }, 'proof photo upload failed — delivery will proceed without photo')
+          photoUrl = undefined
+        }
       }
 
       try {
