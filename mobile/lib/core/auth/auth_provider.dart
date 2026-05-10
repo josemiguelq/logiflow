@@ -41,10 +41,10 @@ class DelivererSession {
         'needsOnboarding': needsOnboarding,
       };
 
-  DelivererSession copyWith({bool? needsOnboarding, String? profileImageUrl, String? status}) =>
+  DelivererSession copyWith({String? name, bool? needsOnboarding, String? profileImageUrl, String? status}) =>
       DelivererSession(
         id:              id,
-        name:            name,
+        name:            name ?? this.name,
         username:        username,
         storeId:         storeId,
         status:          status ?? this.status,
@@ -137,6 +137,34 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
     if (updated != null) {
       state = updated;
       _api.saveSession(updated.toJson());
+    }
+  }
+
+  Future<String?> updateProfile({
+    String? name,
+    String? profileImageUrl,
+    String? currentPassword,
+    String? newPassword,
+  }) async {
+    try {
+      await _api.dio.patch('/deliverer/profile', data: {
+        if (name != null && name.isNotEmpty) 'name': name,
+        if (profileImageUrl != null) 'profileImageUrl': profileImageUrl,
+        if (currentPassword != null) 'currentPassword': currentPassword,
+        if (newPassword != null) 'newPassword': newPassword,
+      });
+      final updated = state?.copyWith(
+        name: name,
+        profileImageUrl: profileImageUrl,
+      );
+      if (updated != null) {
+        state = updated;
+        await _api.saveSession(updated.toJson());
+      }
+      return null;
+    } catch (e) {
+      final msg = (e as dynamic).response?.data?['error'] as String?;
+      return msg ?? 'Erro ao salvar perfil';
     }
   }
 

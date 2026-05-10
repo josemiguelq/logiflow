@@ -5,7 +5,7 @@ import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
-import { uploadBase64, getPublicUrl } from '../../../shared/storage/client'
+import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
 
 const DEFAULT_THEME = {
   primary:   '#2563EB',
@@ -41,54 +41,70 @@ export async function settingsRoutes(app: FastifyInstance) {
     const storeId = req.actor.storeId
 
     // Redis cache
+    // Cache stores raw logoPath (not a signed URL) so it never expires before the signed URL does.
+    let cached: { theme: Record<string, unknown> | null; features: Record<string, unknown>; storeName: string | null } | null = null
     try {
-      const cached = await redis.get(themeCacheKey(storeId))
-      if (cached) return JSON.parse(cached)
+      const raw = await redis.get(themeCacheKey(storeId))
+      if (raw) cached = JSON.parse(raw)
     } catch { /* redis unavailable — fall through to DB */ }
 
-    const { rows: featureRows } = await db.query(`
-      SELECT f.name FROM store_features_enabled sfe
-      JOIN features f ON f.id = sfe.feature_id
-      WHERE sfe.store_id = $1
-    `, [storeId])
-    const featureNames      = featureRows.map((r: Record<string, unknown>) => r.name as string)
-    const customThemeEnabled = featureNames.includes('custom_theme')
-    const whatsappEnabled    = featureNames.includes('whatsapp')
-    const csvExportEnabled   = featureNames.includes('csv_export')
+    if (!cached) {
+      const { rows: featureRows } = await db.query(`
+        SELECT f.name FROM store_features_enabled sfe
+        JOIN features f ON f.id = sfe.feature_id
+        WHERE sfe.store_id = $1
+      `, [storeId])
+      const featureNames      = featureRows.map((r: Record<string, unknown>) => r.name as string)
+      const customThemeEnabled = featureNames.includes('custom_theme')
+      const whatsappEnabled    = featureNames.includes('whatsapp')
+      const csvExportEnabled   = featureNames.includes('csv_export')
 
-    const { rows: [store] } = await db.query(
-      'SELECT name FROM stores WHERE id = $1',
-      [storeId]
-    )
-    const storeName = (store?.name as string | null) ?? null
-
-    let themeRow: Record<string, unknown> | null = null
-    if (customThemeEnabled) {
-      const { rows: [t] } = await db.query(
-        'SELECT primary_color, secondary_color, accent_color, logo_url FROM store_theme WHERE store_id = $1',
+      const { rows: [store] } = await db.query(
+        'SELECT name FROM stores WHERE id = $1',
         [storeId]
       )
-      themeRow = t ?? null
+      const storeName = (store?.name as string | null) ?? null
+
+      let themeRow: Record<string, unknown> | null = null
+      if (customThemeEnabled) {
+        const { rows: [t] } = await db.query(
+          'SELECT primary_color, secondary_color, accent_color, logo_url FROM store_theme WHERE store_id = $1',
+          [storeId]
+        )
+        themeRow = t ?? null
+      }
+
+      cached = {
+        theme: themeRow
+          ? {
+              primary:   themeRow.primary_color,
+              secondary: themeRow.secondary_color,
+              accent:    themeRow.accent_color,
+              logoPath:  themeRow.logo_url ?? null,   // raw path — signed at serve time
+            }
+          : null,
+        features: { customThemeEnabled, whatsappEnabled, csvExportEnabled },
+        storeName,
+      }
+
+      try {
+        await redis.setex(themeCacheKey(storeId), 3600, JSON.stringify(cached))
+      } catch { /* ignore */ }
     }
 
-    const result = {
-      theme: themeRow
+    const t = cached.theme
+    return {
+      theme: t
         ? {
-            primary:   themeRow.primary_color,
-            secondary: themeRow.secondary_color,
-            accent:    themeRow.accent_color,
-            logoUrl:   getPublicUrl(themeRow.logo_url as string | null),
-            storeName,
+            primary:   t.primary,
+            secondary: t.secondary,
+            accent:    t.accent,
+            logoUrl:   await resolveImageUrl(t.logoPath as string | null),
+            storeName: cached.storeName,
           }
-        : { ...DEFAULT_THEME, storeName },
-      features: { customThemeEnabled, whatsappEnabled, csvExportEnabled },
+        : { ...DEFAULT_THEME, storeName: cached.storeName },
+      features: cached.features,
     }
-
-    try {
-      await redis.setex(themeCacheKey(storeId), 3600, JSON.stringify(result))
-    } catch { /* ignore */ }
-
-    return result
   })
 
   // PATCH /store/theme

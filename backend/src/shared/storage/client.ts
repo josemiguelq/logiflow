@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
 const BUCKET       = process.env.STORAGE_BUCKET ?? 'logiflow'
@@ -20,7 +21,25 @@ function mimeToExt(mime: string): string {
   return 'jpg'
 }
 
-/** Returns a public URL for a stored path, or the value as-is if it's already a URL/data-URI. */
+/**
+ * Resolves a stored path to a URL ready to be sent to clients.
+ * - null/undefined → null
+ * - data: or http(s): URIs → returned as-is (legacy values)
+ * - storage path (e.g. "proof/abc.jpg") → S3 presigned URL valid for 1 hour
+ */
+export async function resolveImageUrl(
+  path: string | null | undefined,
+  expiresIn = 3600,
+): Promise<string | null> {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path
+  }
+  const command = new GetObjectCommand({ Bucket: BUCKET, Key: path })
+  return getSignedUrl(s3, command, { expiresIn })
+}
+
+/** @deprecated Use resolveImageUrl for proper signed URLs. */
 export function getPublicUrl(path: string | null | undefined): string | null {
   if (!path) return null
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {

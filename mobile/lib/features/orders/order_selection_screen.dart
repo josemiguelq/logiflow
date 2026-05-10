@@ -9,6 +9,7 @@ import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/app_drawer.dart';
 
 // ── providers ────────────────────────────────────────────────────────────────
 
@@ -173,6 +174,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     final firstName     = session?.name.split(' ').first ?? '';
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         centerTitle: true,
         title: Column(
@@ -212,13 +214,6 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
             ],
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/login');
-            },
-          ),
         ],
       ),
       body: isLoading

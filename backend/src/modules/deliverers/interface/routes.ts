@@ -126,9 +126,11 @@ export async function delivererRoutes(app: FastifyInstance) {
     }
   )
 
-  // Deliverer updates own profile (photo + password) and clears onboarding flag
+  // Deliverer updates own profile (name, photo, password) and clears onboarding flag
   const profileSchema = z.object({
+    name:            z.string().min(1).optional(),
     profileImageUrl: z.string().optional(),
+    currentPassword: z.string().optional(),
     newPassword:     z.string().min(6).optional(),
   })
 
@@ -138,11 +140,22 @@ export async function delivererRoutes(app: FastifyInstance) {
     const params: unknown[] = []
     let idx = 1
 
+    if (body.name) {
+      sets.push(`name = $${idx++}`)
+      params.push(body.name)
+    }
     if (body.profileImageUrl) {
       sets.push(`profile_image_url = $${idx++}`)
       params.push(body.profileImageUrl)
     }
     if (body.newPassword) {
+      if (body.currentPassword) {
+        const { rows: [d] } = await db.query(
+          'SELECT password_hash FROM deliverers WHERE id = $1', [req.actor.sub]
+        )
+        const valid = await bcrypt.compare(body.currentPassword, (d as Record<string, unknown>)?.password_hash as string ?? '')
+        if (!valid) return reply.code(400).send({ error: 'Senha atual incorreta' })
+      }
       const hash = await bcrypt.hash(body.newPassword, 10)
       sets.push(`password_hash = $${idx++}`)
       params.push(hash)

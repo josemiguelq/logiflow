@@ -13,12 +13,26 @@ import { confirmDelivery } from '../application/use-cases/confirm-delivery'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
-import { uploadBase64, getPublicUrl } from '../../../shared/storage/client'
+import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
 import { assertCanCreateOrder } from '../../../shared/billing'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
     .catch(() => { /* non-fatal */ })
+
+async function signOrderProof<T extends { proof?: { photoUrl: string; lat?: number; lng?: number } | undefined }>(
+  order: T
+): Promise<T> {
+  if (!order.proof) return order
+  const signedUrl = await resolveImageUrl(order.proof.photoUrl)
+  return { ...order, proof: { ...order.proof, photoUrl: signedUrl ?? order.proof.photoUrl } }
+}
+
+async function signOrdersProof<T extends { proof?: { photoUrl: string; lat?: number; lng?: number } | undefined }>(
+  orders: T[]
+): Promise<T[]> {
+  return Promise.all(orders.map(signOrderProof))
+}
 
 export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
@@ -111,8 +125,8 @@ export async function orderRoutes(app: FastifyInstance) {
               primary:   t.primary   ?? '#2563EB',
               secondary: t.secondary ?? '#F9FAFB',
               accent:    t.accent    ?? '#F97316',
-              logoUrl:   getPublicUrl(t.logoUrl) ?? null,
-              storeName: t.storeName ?? null,
+              logoUrl:   await resolveImageUrl((t.logoPath ?? t.logoUrl) as string | null) ?? null,
+              storeName: (parsed.storeName ?? t.storeName) as string | null ?? null,
             }
           }
         }
@@ -136,7 +150,7 @@ export async function orderRoutes(app: FastifyInstance) {
             primary:   (themeRow as Record<string, unknown> | undefined)?.primary_color   as string ?? '#2563EB',
             secondary: (themeRow as Record<string, unknown> | undefined)?.secondary_color as string ?? '#F9FAFB',
             accent:    (themeRow as Record<string, unknown> | undefined)?.accent_color    as string ?? '#F97316',
-            logoUrl:   getPublicUrl((themeRow as Record<string, unknown> | undefined)?.logo_url as string | null) ?? null,
+            logoUrl:   await resolveImageUrl((themeRow as Record<string, unknown> | undefined)?.logo_url as string | null) ?? null,
             storeName: (nameRow  as Record<string, unknown> | undefined)?.name            as string | null ?? null,
           }
         }
@@ -208,7 +222,8 @@ export async function orderRoutes(app: FastifyInstance) {
         page:            page ? Number(page) : 1,
         limit:           limit ? Number(limit) : 50,
       }
-      return orderRepo.findByStore(req.actor.storeId, filters)
+      const orders = await orderRepo.findByStore(req.actor.storeId, filters)
+      return signOrdersProof(orders)
     }
   )
 
@@ -376,7 +391,7 @@ export async function orderRoutes(app: FastifyInstance) {
   app.get(
     '/deliverer/orders',
     { preHandler: requireDeliverer },
-    async (req) => orderRepo.findByDeliverer(req.actor.sub)
+    async (req) => signOrdersProof(await orderRepo.findByDeliverer(req.actor.sub))
   )
 
   // PREPARING orders available for any deliverer in this store to claim
