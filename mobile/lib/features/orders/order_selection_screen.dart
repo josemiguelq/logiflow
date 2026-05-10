@@ -7,7 +7,6 @@ import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
-import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
 
@@ -169,50 +168,34 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     final isOffline     = session?.status == 'OFFLINE';
     final isLoading     = routes.isLoading || preparing.isLoading;
 
-    final storeSettings = ref.watch(storeSettingsProvider);
-    final brandName     = storeSettings.value?.brandName ?? 'LogiFlow';
-    final firstName     = session?.name.split(' ').first ?? '';
+    final firstName = session?.name.split(' ').first ?? '';
 
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
-        centerTitle: true,
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(brandName,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            Text('Olá, $firstName',
-                style: const TextStyle(fontSize: 11, color: Colors.white70)),
-          ],
-        ),
+        title: Text('Olá, $firstName',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         actions: [
-          Row(
-            children: [
-              Text(
-                isOffline ? 'OFFLINE' : 'ONLINE',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isOffline ? Colors.grey.shade500 : const Color(0xFF16A34A),
-                ),
-              ),
-              _togglingStatus
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : Switch(
-                      value: !isOffline,
-                      activeColor: const Color(0xFF16A34A),
-                      onChanged: (_) =>
-                          _toggleStatus(session?.status ?? 'AVAILABLE'),
-                    ),
-            ],
+          Text(
+            isOffline ? 'OFFLINE' : 'ONLINE',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isOffline ? Colors.grey.shade400 : const Color(0xFF16A34A),
+            ),
           ),
+          _togglingStatus
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                )
+              : Switch(
+                  value: !isOffline,
+                  activeColor: const Color(0xFF16A34A),
+                  onChanged: (_) => _toggleStatus(session?.status ?? 'AVAILABLE'),
+                ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
       ),

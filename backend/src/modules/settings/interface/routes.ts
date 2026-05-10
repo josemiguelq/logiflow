@@ -245,6 +245,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
     if (storeUpdates.length > 0) {
       await db.query(`UPDATE stores SET ${storeUpdates.join(', ')} WHERE id = $1`, storeParams)
+      // Bust theme cache so the new name is reflected immediately in the app
+      if (body.storeName) {
+        try { await redis.del(themeCacheKey(storeId)) } catch { /* ignore */ }
+      }
     }
 
     return { ok: true }
