@@ -5,6 +5,7 @@ import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
 import { requireSuperAdmin } from '../../../shared/middleware/auth'
 import { DEFAULT_ROLE_SCOPES, SCOPES, SCOPE_LABELS, SCOPE_GROUPS } from '../../../shared/scopes'
+import { billingStatus } from '../../../shared/billing'
 
 const createStoreSchema = z.object({
   storeName:     z.string().min(2),
@@ -225,9 +226,9 @@ export async function superAdminRoutes(app: FastifyInstance) {
       if (existing) return reply.code(409).send({ error: 'Email já está em uso' })
 
       const { rows: [store] } = await db.query(
-        `INSERT INTO stores (name, street, street_number, city, lat, lng)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, name, created_at`,
+        `INSERT INTO stores (name, street, street_number, city, lat, lng, trial_ends_at)
+         VALUES ($1, $2, $3, $4, $5, $6, (now() + INTERVAL '6 months')::DATE)
+         RETURNING id, name, created_at, trial_ends_at`,
         [
           body.storeName,
           body.street       ?? null,
@@ -342,6 +343,126 @@ export async function superAdminRoutes(app: FastifyInstance) {
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado' })
 
       await db.query('DELETE FROM store_users WHERE id = $1', [userId])
+      return { ok: true }
+    }
+  )
+
+  // ── Scope definitions (read-only — consumed by the SA UI) ─────────────────
+
+  // ── Billing management ────────────────────────────────────────────────────
+
+  const billingSchema = z.object({
+    trialEndsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    billingDay:  z.number().int().min(1).max(28).optional(),
+  })
+
+  app.get(
+    '/super-admin/stores/:storeId/billing',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+
+      const { rows: [store] } = await db.query(
+        'SELECT trial_ends_at, billing_day FROM stores WHERE id = $1',
+        [storeId]
+      )
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const { rows: payments } = await db.query(
+        `SELECT id, reference_month, paid_at, notes
+         FROM store_payments WHERE store_id = $1
+         ORDER BY reference_month DESC`,
+        [storeId]
+      )
+
+      const paidMonths = payments.map((p: Record<string, unknown>) =>
+        (p.reference_month as Date).toISOString().slice(0, 10)
+      )
+
+      const status = billingStatus(
+        { trial_ends_at: store.trial_ends_at as Date | null, billing_day: store.billing_day as number | null },
+        paidMonths
+      )
+
+      return {
+        ...status,
+        payments: payments.map((p: Record<string, unknown>) => ({
+          id:             p.id,
+          referenceMonth: (p.reference_month as Date).toISOString().slice(0, 10),
+          paidAt:         p.paid_at,
+          notes:          p.notes ?? null,
+        })),
+      }
+    }
+  )
+
+  app.patch(
+    '/super-admin/stores/:storeId/billing',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const body = billingSchema.parse(req.body)
+      const sets: string[]    = []
+      const params: unknown[] = [storeId]
+      let idx = 2
+
+      if (body.trialEndsAt !== undefined) { sets.push(`trial_ends_at = $${idx++}`); params.push(body.trialEndsAt) }
+      if (body.billingDay  !== undefined) { sets.push(`billing_day = $${idx++}`);   params.push(body.billingDay)  }
+
+      if (sets.length > 0) {
+        await db.query(`UPDATE stores SET ${sets.join(', ')} WHERE id = $1`, params)
+      }
+
+      return { ok: true }
+    }
+  )
+
+  const paymentSchema = z.object({
+    referenceMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), // "YYYY-MM"
+    notes:          z.string().max(500).optional(),
+  })
+
+  app.post(
+    '/super-admin/stores/:storeId/payments',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId } = req.params as { storeId: string }
+      const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+      if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+      const body = paymentSchema.parse(req.body)
+      const referenceMonth = `${body.referenceMonth}-01` // "YYYY-MM-01"
+
+      const { rows: [payment] } = await db.query(
+        `INSERT INTO store_payments (store_id, reference_month, notes)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (store_id, reference_month) DO UPDATE SET notes = EXCLUDED.notes, paid_at = now()
+         RETURNING id, reference_month, paid_at, notes`,
+        [storeId, referenceMonth, body.notes ?? null]
+      )
+
+      return reply.code(201).send({
+        id:             payment.id,
+        referenceMonth: (payment.reference_month as Date).toISOString().slice(0, 10),
+        paidAt:         payment.paid_at,
+        notes:          payment.notes ?? null,
+      })
+    }
+  )
+
+  app.delete(
+    '/super-admin/stores/:storeId/payments/:paymentId',
+    { preHandler: requireSuperAdmin },
+    async (req, reply) => {
+      const { storeId, paymentId } = req.params as { storeId: string; paymentId: string }
+      const { rowCount } = await db.query(
+        'DELETE FROM store_payments WHERE id = $1 AND store_id = $2',
+        [paymentId, storeId]
+      )
+      if (!rowCount) return reply.code(404).send({ error: 'Payment not found' })
       return { ok: true }
     }
   )

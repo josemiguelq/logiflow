@@ -14,6 +14,7 @@ import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
 import { uploadBase64, getPublicUrl } from '../../../shared/storage/client'
+import { assertCanCreateOrder } from '../../../shared/billing'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
@@ -236,6 +237,12 @@ export async function orderRoutes(app: FastifyInstance) {
     '/orders',
     { preHandler: requireStoreUser },
     async (req, reply) => {
+      try {
+        await assertCanCreateOrder(db, req.actor.storeId)
+      } catch (err: unknown) {
+        return reply.code(402).send({ error: (err as Error).message })
+      }
+
       const body = createSchema.parse(req.body)
       const actor = req.actor
       const storeId = actor.storeId
