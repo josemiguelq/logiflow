@@ -44,6 +44,15 @@ async function start() {
   createNotificationWorker(async (job) => {
     const { storeId, orderId, statusEvent } = job.data
 
+    // Abort if the store no longer has the whatsapp feature enabled
+    const { rows: feat } = await db.query(
+      `SELECT 1 FROM store_features_enabled sfe
+       JOIN features f ON f.id = sfe.feature_id
+       WHERE sfe.store_id = $1 AND f.name = 'whatsapp'`,
+      [storeId]
+    )
+    if (feat.length === 0) return
+
     const order = await orderRepo.findById(orderId, storeId)
     if (!order) return
 
