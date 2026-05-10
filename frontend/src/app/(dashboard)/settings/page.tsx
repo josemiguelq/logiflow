@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
-import { Save, Lock, Palette, SlidersHorizontal, CheckCircle, Upload, X } from 'lucide-react'
+import { Save, Lock, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -21,6 +21,13 @@ interface StoreSettings {
 interface ThemeData {
   theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null }
   features: { customThemeEnabled: boolean }
+}
+
+interface BillingData {
+  status:        'trial' | 'ok' | 'grace' | 'blocked'
+  trialDaysLeft: number | null
+  trialEndsAt:   string | null
+  planLabel:     string
 }
 
 function Toast({ message }: { message: string }) {
@@ -49,6 +56,7 @@ export default function SettingsPage() {
       <p className="mb-8 text-sm text-gray-500">Gerencie as preferências da sua loja e conta</p>
 
       <div className="space-y-6">
+        {isManager && <BillingSection />}
         {isManager && <OperationsSection onSaved={() => showToast('Configurações salvas')} />}
         <ThemeSection isManager={isManager} onSaved={() => showToast('Tema atualizado')} />
         <PasswordSection onSaved={() => showToast('Senha alterada com sucesso')} />
@@ -74,6 +82,63 @@ function SectionCard({ icon: Icon, title, children }: {
       </div>
       <div className="p-5">{children}</div>
     </div>
+  )
+}
+
+function BillingSection() {
+  const { data } = useSWR<BillingData>('/store/billing', (u: string) => api.get<BillingData>(u))
+
+  if (!data) return null
+
+  const statusConfig = {
+    trial:   { color: 'blue',   label: 'Trial' },
+    ok:      { color: 'green',  label: 'Ativo' },
+    grace:   { color: 'amber',  label: 'Pagamento pendente' },
+    blocked: { color: 'red',    label: 'Bloqueado' },
+  }[data.status]
+
+  const colorMap: Record<string, string> = {
+    blue:  'bg-blue-50 text-blue-700 border-blue-200',
+    green: 'bg-green-50 text-green-700 border-green-200',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+    red:   'bg-red-50 text-red-700 border-red-200',
+  }
+
+  return (
+    <SectionCard icon={CreditCard} title="Plano & Cobrança">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-medium text-gray-900">{data.planLabel}</p>
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${colorMap[statusConfig.color]}`}>
+              {statusConfig.label}
+            </span>
+          </div>
+          {data.status === 'trial' && data.trialDaysLeft !== null && (
+            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+              <Clock className="h-3.5 w-3.5" />
+              {data.trialDaysLeft === 0
+                ? 'Último dia de trial'
+                : `${data.trialDaysLeft} ${data.trialDaysLeft === 1 ? 'dia restante' : 'dias restantes'} de trial`}
+              {data.trialEndsAt && (
+                <span className="text-gray-400">
+                  · vence em {new Date(data.trialEndsAt + 'T00:00:00').toLocaleDateString('pt-BR')}
+                </span>
+              )}
+            </div>
+          )}
+          {data.status === 'grace' && (
+            <p className="text-sm text-amber-600">Regularize o pagamento para evitar o bloqueio.</p>
+          )}
+          {data.status === 'blocked' && (
+            <p className="text-sm text-red-600">Entre em contato com o suporte para reativar o acesso.</p>
+          )}
+          {data.status === 'ok' && !data.trialEndsAt && (
+            <p className="text-sm text-gray-500">Conta ativa sem restrições.</p>
+          )}
+        </div>
+      </div>
+    </SectionCard>
   )
 }
 

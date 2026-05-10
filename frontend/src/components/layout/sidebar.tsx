@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog, BarChart2,
+  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog, BarChart2, Clock,
 } from 'lucide-react'
 import useSWR from 'swr'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,12 @@ import { api } from '@/lib/api'
 interface ThemeData {
   theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null; storeName?: string | null }
   features: { customThemeEnabled: boolean }
+}
+
+interface BillingData {
+  status:        'trial' | 'ok' | 'grace' | 'blocked'
+  trialDaysLeft: number | null
+  planLabel:     string
 }
 
 const BASE_NAV: {
@@ -42,7 +48,8 @@ export function Sidebar({ isOpen, onClose }: Props) {
   const pathname      = usePathname()
   const { user, logout } = useAuth()
   const { can }       = useAccess()
-  const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
+  const { data: themeData }   = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
+  const { data: billingData } = useSWR<BillingData>('/store/billing', (u: string) => api.get<BillingData>(u))
   const logoUrl          = themeData?.theme?.logoUrl ?? null
   const customTheme      = themeData?.features?.customThemeEnabled ?? false
   const storeName        = themeData?.theme?.storeName ?? null
@@ -128,6 +135,28 @@ export function Sidebar({ isOpen, onClose }: Props) {
             <p className="mt-0.5 text-xs font-medium" style={{ color: 'var(--color-primary)' }}>
               {user?.role}
             </p>
+            {billingData?.status === 'trial' && billingData.trialDaysLeft !== null && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 px-2 py-1.5">
+                <Clock className="h-3 w-3 text-blue-500 shrink-0" />
+                <span className="text-xs text-blue-700 font-medium">
+                  {billingData.trialDaysLeft === 0
+                    ? 'Último dia de trial'
+                    : `${billingData.trialDaysLeft} dias de trial`}
+                </span>
+              </div>
+            )}
+            {billingData?.status === 'grace' && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5">
+                <Clock className="h-3 w-3 text-amber-500 shrink-0" />
+                <span className="text-xs text-amber-700 font-medium">Pagamento pendente</span>
+              </div>
+            )}
+            {billingData?.status === 'blocked' && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2 py-1.5">
+                <Clock className="h-3 w-3 text-red-500 shrink-0" />
+                <span className="text-xs text-red-700 font-medium">Acesso bloqueado</span>
+              </div>
+            )}
           </div>
           <button
             onClick={logout}

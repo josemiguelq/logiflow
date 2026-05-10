@@ -6,6 +6,7 @@ import { redis } from '../../../shared/infra/redis'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
+import { billingStatus } from '../../../shared/billing'
 
 const DEFAULT_THEME = {
   primary:   '#2563EB',
@@ -323,6 +324,54 @@ export async function settingsRoutes(app: FastifyInstance) {
       [actor.storeId, body.name, body.email, body.username, hash, body.role]
     )
     return reply.code(201).send(user)
+  })
+
+  // GET /store/billing
+  app.get('/store/billing', { preHandler: requireStoreUser }, async (req) => {
+    const storeId = req.actor.storeId
+
+    const [{ rows: [store] }, { rows: paymentRows }, { rows: featureRows }] = await Promise.all([
+      db.query('SELECT trial_ends_at, billing_day FROM stores WHERE id = $1', [storeId]),
+      db.query('SELECT reference_month FROM store_payments WHERE store_id = $1', [storeId]),
+      db.query(`
+        SELECT f.name FROM store_features_enabled sfe
+        JOIN features f ON f.id = sfe.feature_id
+        WHERE sfe.store_id = $1
+      `, [storeId]),
+    ])
+
+    const paidMonths   = paymentRows.map((r: Record<string, unknown>) => r.reference_month as string)
+    const featureNames = featureRows.map((r: Record<string, unknown>) => r.name as string)
+
+    const bs = billingStatus(
+      {
+        trial_ends_at: store?.trial_ends_at ? new Date(store.trial_ends_at as string) : null,
+        billing_day:   (store?.billing_day as number | null) ?? null,
+      },
+      paidMonths
+    )
+
+    let trialDaysLeft: number | null = null
+    if (bs.status === 'trial' && bs.trialEndsAt) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const end = new Date(bs.trialEndsAt)
+      trialDaysLeft = Math.max(0, Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
+    }
+
+    // Derive plan label from enabled features
+    const hasWhatsapp    = featureNames.includes('whatsapp')
+    const hasCustomTheme = featureNames.includes('custom_theme')
+    let planLabel: string
+    if (hasCustomTheme) {
+      planLabel = 'Pro Premium'
+    } else if (hasWhatsapp) {
+      planLabel = 'Pro + WhatsApp'
+    } else {
+      planLabel = 'Starter'
+    }
+
+    return { ...bs, trialDaysLeft, planLabel }
   })
 
   app.delete('/store/users/:id', { preHandler: [requireStoreUser, requireScope('users:delete')] }, async (req, reply) => {

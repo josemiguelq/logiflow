@@ -227,25 +227,6 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
             ),
           ),
 
-          // Phone (masked)
-          if (order.customerPhone.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-              child: Row(
-                children: [
-                  Icon(Icons.phone_outlined,
-                      size: 16, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
-                  Text(order.maskedPhone,
-                      style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 13,
-                          fontFamily: 'monospace',
-                          letterSpacing: 1)),
-                ],
-              ),
-            ),
-
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Divider(height: 1),

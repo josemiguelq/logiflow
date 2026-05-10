@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { MapPin, Truck, CheckCircle, XCircle, Clock, Star, MessageSquare, Package } from 'lucide-react'
+import { MapPin, Truck, CheckCircle, XCircle, Clock, Star, Package } from 'lucide-react'
 
 const TrackingMap = dynamic(() => import('./_map'), { ssr: false })
 
@@ -25,7 +25,6 @@ interface PublicOrder {
   isCurrentStop:  boolean
   delivererLat?:  number | null
   delivererLng?:  number | null
-  deliveryNote?:  string
   rating?:        number
   ratingComment?: string
   ratingEnabled:  boolean
@@ -245,17 +244,6 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
             </div>
           )}
         </div>
-
-        {/* Delivery note */}
-        {order.deliveryNote && (
-          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Observação do entregador</p>
-            </div>
-            <p className="text-sm text-gray-800">{order.deliveryNote}</p>
-          </div>
-        )}
 
         {/* Rating */}
         {isDelivered && order.ratingEnabled && (

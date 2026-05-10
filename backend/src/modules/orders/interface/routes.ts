@@ -391,14 +391,27 @@ export async function orderRoutes(app: FastifyInstance) {
   app.get(
     '/deliverer/orders',
     { preHandler: requireDeliverer },
-    async (req) => signOrdersProof(await orderRepo.findByDeliverer(req.actor.sub))
+    async (req) => {
+      const orders = await orderRepo.findByDeliverer(req.actor.sub)
+      const signed = await signOrdersProof(orders)
+      return signed.map(o => ({
+        ...o,
+        customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
+      }))
+    }
   )
 
   // PREPARING orders available for any deliverer in this store to claim
   app.get(
     '/deliverer/orders/preparing',
     { preHandler: requireDeliverer },
-    async (req) => orderRepo.findPreparing(req.actor.storeId)
+    async (req) => {
+      const orders = await orderRepo.findPreparing(req.actor.storeId)
+      return orders.map(o => ({
+        ...o,
+        customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
+      }))
+    }
   )
 
   // Claim PREPARING orders — assigns them to this deliverer (status → ASSIGNED) and creates a route

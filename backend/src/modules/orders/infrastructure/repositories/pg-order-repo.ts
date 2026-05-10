@@ -249,7 +249,6 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         deliverer:     o.deliverer ? { name: o.deliverer.name } : undefined,
         routePosition: o.routePosition,
         isCurrentStop: o.routePosition === 1,
-        deliveryNote:  o.deliveryNote,
         rating:        o.rating,
         ratingComment: o.ratingComment,
         ratingEnabled: false, // overridden by route handler

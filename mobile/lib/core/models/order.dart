@@ -6,7 +6,6 @@ class Order {
   final String? routeId;
   final int? routePosition;
   final String customerName;
-  final String customerPhone;
   final String customerAddress;
   final double? customerLat;
   final double? customerLng;
@@ -19,20 +18,12 @@ class Order {
     this.routeId,
     this.routePosition,
     required this.customerName,
-    required this.customerPhone,
     required this.customerAddress,
     this.customerLat,
     this.customerLng,
   });
 
   String get shortId => id.substring(id.length - 8).toUpperCase();
-
-  /// Shows only the last 4 digits; everything else is masked with asterisks.
-  String get maskedPhone {
-    final digits = customerPhone.replaceAll(RegExp(r'\D'), '');
-    if (digits.length <= 4) return digits;
-    return '${'*' * (digits.length - 4)}${digits.substring(digits.length - 4)}';
-  }
 
   factory Order.fromJson(Map<String, dynamic> j) {
     final c = j['customer'] as Map<String, dynamic>;
@@ -44,7 +35,6 @@ class Order {
       routeId:         j['routeId'] as String?,
       routePosition:   j['routePosition'] as int?,
       customerName:    c['name'] as String? ?? '',
-      customerPhone:   c['phone'] as String? ?? '',
       customerAddress: c['address'] as String? ?? '',
       customerLat:     (c['lat'] as num?)?.toDouble(),
       customerLng:     (c['lng'] as num?)?.toDouble(),
@@ -59,7 +49,6 @@ class Order {
         routeId:         routeId,
         routePosition:   routePosition ?? this.routePosition,
         customerName:    customerName,
-        customerPhone:   customerPhone,
         customerAddress: customerAddress,
         customerLat:     customerLat,
         customerLng:     customerLng,
