@@ -294,6 +294,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   }
 
   Future<void> _showDeliveryDialog(BuildContext context) async {
+    ref.invalidate(storeSettingsProvider);
     final settings = await ref.read(storeSettingsProvider.future);
     if (!mounted) return;
     await showModalBottomSheet(
