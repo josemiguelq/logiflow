@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Truck } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+import { StoreUser } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -30,7 +31,7 @@ export default function CadastroPage() {
 
     setLoading(true)
     try {
-      const res = await api.post<{ token: string; user: object }>(
+      const res = await api.post<{ token: string; user: StoreUser }>(
         '/auth/register',
         {
           storeName: fd.get('storeName'),
