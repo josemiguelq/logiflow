@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { DEFAULT_ROLE_SCOPES } from '../../../shared/scopes'
 import { createPgStoreUserRepo } from '../infrastructure/repositories/pg-store-user-repo'
@@ -52,5 +53,70 @@ export async function authRoutes(app: FastifyInstance) {
     } catch {
       return reply.code(401).send({ error: 'Invalid credentials' })
     }
+  })
+
+  // ── Self-service store registration ───────────────────────────────────────
+  const registerSchema = z.object({
+    storeName: z.string().min(2),
+    ownerName: z.string().min(2),
+    email:     z.string().email(),
+    password:  z.string().min(6),
+  })
+
+  app.post('/auth/register', async (req, reply) => {
+    const body = registerSchema.parse(req.body)
+
+    const { rows: [existing] } = await db.query(
+      'SELECT id FROM store_users WHERE email = $1',
+      [body.email]
+    )
+    if (existing) return reply.code(409).send({ error: 'E-mail já está em uso' })
+
+    const { rows: [store] } = await db.query(
+      `INSERT INTO stores (name, trial_ends_at)
+       VALUES ($1, (now() + INTERVAL '3 months')::DATE)
+       RETURNING id`,
+      [body.storeName]
+    )
+
+    for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
+      await db.query(
+        `INSERT INTO store_role_scopes (store_id, role, scopes)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (store_id, role) DO NOTHING`,
+        [store.id, role, JSON.stringify(DEFAULT_ROLE_SCOPES[role])]
+      )
+    }
+
+    const hash     = await bcrypt.hash(body.password, 10)
+    const username = body.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
+    const { rows: [user] } = await db.query(
+      `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, 'OWNER')
+       RETURNING id, name, email, role`,
+      [store.id, body.ownerName, body.email, username, hash]
+    )
+
+    const scopes = DEFAULT_ROLE_SCOPES['OWNER'] ?? []
+    const token  = signJwt({
+      type:    'store_user',
+      sub:     user.id,
+      storeId: store.id,
+      role:    'OWNER',
+      name:    user.name,
+      scopes,
+    })
+
+    return reply.code(201).send({
+      token,
+      user: {
+        id:      user.id,
+        name:    user.name,
+        email:   user.email,
+        role:    user.role,
+        storeId: store.id,
+        scopes,
+      },
+    })
   })
 }

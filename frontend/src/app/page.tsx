@@ -164,7 +164,7 @@ export default function LandingPage() {
               Entrar
             </Link>
             <Link
-              href="/login"
+              href="/cadastro"
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Começar grátis
@@ -191,7 +191,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
-              href="/login"
+              href="/cadastro"
               className="rounded-xl bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors"
             >
               Começar 3 meses grátis
@@ -332,7 +332,7 @@ export default function LandingPage() {
                 </ul>
 
                 <Link
-                  href="/login"
+                  href="/cadastro"
                   className={`block rounded-xl py-3 text-center text-sm font-semibold transition-colors ${
                     plan.highlight
                       ? 'bg-white text-blue-600 hover:bg-blue-50'
@@ -361,7 +361,7 @@ export default function LandingPage() {
             3 meses grátis, sem cartão de crédito. Configure em menos de 5 minutos.
           </p>
           <Link
-            href="/login"
+            href="/cadastro"
             className="inline-block rounded-xl bg-white px-8 py-4 text-base font-semibold text-blue-600 shadow-lg hover:bg-blue-50 transition-colors"
           >
             Criar conta gratuita

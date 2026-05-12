@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Truck } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -66,6 +67,13 @@ export default function LoginPage() {
           <Button type="submit" className="mt-6 w-full" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
           </Button>
+
+          <p className="mt-4 text-center text-sm text-gray-500">
+            Não tem conta?{' '}
+            <Link href="/cadastro" className="font-medium hover:underline" style={{ color: 'var(--color-primary)' }}>
+              Criar conta grátis
+            </Link>
+          </p>
         </form>
       </div>
     </div>
