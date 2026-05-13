@@ -203,6 +203,19 @@ export default function LandingPage() {
               Ver planos
             </a>
           </div>
+          <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-400">
+            <svg className="h-4 w-4 text-green-500" viewBox="0 0 24 24" fill="currentColor">
+              <path fillRule="evenodd" d="M10.5 3.75a6.75 6.75 0 100 13.5 6.75 6.75 0 000-13.5zM2.25 10.5a8.25 8.25 0 1114.59 5.28l4.69 4.69a.75.75 0 11-1.06 1.06l-4.69-4.69A8.25 8.25 0 012.25 10.5z" clipRule="evenodd" />
+            </svg>
+            Entregador?{' '}
+            <a
+              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.0.0/app-release.apk"
+              download
+              className="font-medium text-blue-600 underline underline-offset-2 hover:text-blue-800"
+            >
+              Baixe o app gratuito — sem limite de entregas
+            </a>
+          </div>
         </div>
       </section>
 
