@@ -12,21 +12,70 @@ import { maskPhone, stripPhone, formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-// ── Address autocomplete (Nominatim / OpenStreetMap) ──────────────────────────
+// ── Address autocomplete (Google Maps Places API) ─────────────────────────────
 
-interface NominatimResult { display_name: string; lat: string; lon: string }
+const GMAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
+
+interface PlaceSuggestion {
+  placeId: string
+  place: string
+  text: { text: string }
+  structuredFormat: {
+    mainText: { text: string }
+    secondaryText: { text: string }
+  }
+}
 
 interface GeoResult { address: string; lat: number; lng: number }
 
+async function fetchPlaceSuggestions(input: string): Promise<PlaceSuggestion[]> {
+  if (!GMAPS_KEY || input.length < 3) return []
+  try {
+    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GMAPS_KEY,
+      },
+      body: JSON.stringify({
+        input,
+        languageCode: 'pt-BR',
+        regionCode: 'BR',
+        includedPrimaryTypes: ['route', 'street_address'],
+      }),
+    })
+    const data = await res.json()
+    return ((data.suggestions ?? []) as { placePrediction: PlaceSuggestion }[])
+      .map(s => s.placePrediction)
+  } catch { return [] }
+}
+
+async function getPlaceCoords(placeName: string): Promise<{ lat: number; lng: number } | null> {
+  if (!GMAPS_KEY) return null
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/${placeName}`, {
+      headers: {
+        'X-Goog-Api-Key': GMAPS_KEY,
+        'X-Goog-FieldMask': 'location',
+      },
+    })
+    const data = await res.json()
+    if (!data.location) return null
+    return { lat: data.location.latitude, lng: data.location.longitude }
+  } catch { return null }
+}
+
 async function geocodeAddress(street: string, number: string): Promise<{ lat: number; lng: number } | null> {
   const q = [street, number].filter(Boolean).join(', ')
-  if (q.length < 4) return null
+  if (q.length < 4 || !GMAPS_KEY) return null
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(q)}`
-    const res  = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } })
-    const data = (await res.json()) as NominatimResult[]
-    if (!data[0]) return null
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+    const res  = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&region=br&language=pt-BR&key=${GMAPS_KEY}`
+    )
+    const data = await res.json()
+    if (data.status !== 'OK' || !data.results[0]) return null
+    const loc = data.results[0].geometry.location as { lat: number; lng: number }
+    return { lat: loc.lat, lng: loc.lng }
   } catch { return null }
 }
 
@@ -39,7 +88,7 @@ function AddressAutocomplete({
   placeholder?: string
   className?: string
 }) {
-  const [suggestions, setSuggestions] = useState<NominatimResult[]>([])
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [open,        setOpen]        = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ref   = useRef<HTMLDivElement>(null)
@@ -55,30 +104,21 @@ function AddressAutocomplete({
   function handleChange(v: string) {
     onChange(v)
     if (timer.current) clearTimeout(timer.current)
-    if (v.length < 4) { setSuggestions([]); setOpen(false); return }
+    if (v.length < 3) { setSuggestions([]); setOpen(false); return }
     timer.current = setTimeout(async () => {
-      try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=5&q=${encodeURIComponent(v)}`
-        const res  = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } })
-        const data = (await res.json()) as NominatimResult[]
-        setSuggestions(data)
-        setOpen(data.length > 0)
-      } catch { /* ignore */ }
-    }, 400)
+      const results = await fetchPlaceSuggestions(v)
+      setSuggestions(results)
+      setOpen(results.length > 0)
+    }, 350)
   }
 
-  function clean(s: string) {
-    return s.replace(/, Brasil$/, '').replace(/, Brazil$/, '')
-  }
-
-  function pick(r: NominatimResult) {
-    const label = clean(r.display_name)
-    // Extract just the street name (first segment before first comma)
-    const streetOnly = label.split(',')[0]?.trim() ?? label
-    onChange(streetOnly)
-    onPick?.({ address: streetOnly, lat: parseFloat(r.lat), lng: parseFloat(r.lon) })
+  async function pick(s: PlaceSuggestion) {
+    const street = s.structuredFormat.mainText.text
+    onChange(street)
     setSuggestions([])
     setOpen(false)
+    const coords = await getPlaceCoords(s.place)
+    onPick?.({ address: street, lat: coords?.lat ?? 0, lng: coords?.lng ?? 0 })
   }
 
   return (
@@ -93,14 +133,15 @@ function AddressAutocomplete({
       />
       {open && (
         <ul className="absolute z-50 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg text-sm max-h-52 overflow-y-auto">
-          {suggestions.map((r, i) => (
+          {suggestions.map((s, i) => (
             <li
               key={i}
-              className="cursor-pointer px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 leading-snug"
-              onMouseDown={() => pick(r)}
+              className="cursor-pointer px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0 leading-snug"
+              onMouseDown={() => pick(s)}
             >
               <MapPin className="mr-1.5 inline h-3 w-3 shrink-0 text-gray-400" />
-              {clean(r.display_name)}
+              <span className="font-medium text-gray-800">{s.structuredFormat.mainText.text}</span>
+              <span className="ml-1.5 text-gray-400 text-xs">{s.structuredFormat.secondaryText.text}</span>
             </li>
           ))}
         </ul>
