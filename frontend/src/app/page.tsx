@@ -206,10 +206,55 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── App download banner ── */}
+      <section className="bg-gray-900 py-16 px-6">
+        <div className="mx-auto max-w-5xl flex flex-col items-center gap-10 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-center sm:text-left">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-green-500/20 px-3 py-1 text-sm font-medium text-green-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              Disponível agora para Android
+            </div>
+            <h2 className="mb-3 text-3xl font-bold text-white">
+              App do entregador — gratuito
+            </h2>
+            <p className="max-w-md text-gray-400 leading-relaxed">
+              Sem mensalidade para o entregador, sem limite de entregas por rota.
+              Baixe agora e comece a usar em minutos.
+            </p>
+            <ul className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-400">
+              {['Sem limite de entregas', 'Navegação integrada', 'Confirmação com foto', 'Offline parcial'].map(item => (
+                <li key={item} className="flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex flex-col items-center gap-4">
+            <a
+              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.0.0/app-release.apk"
+              download
+              className="flex items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.523 15.341a.75.75 0 01-.06 1.06 9.75 9.75 0 01-11.003 1.63l-1.94 1.94a.75.75 0 01-1.06-1.06l1.94-1.94A9.75 9.75 0 0116.463 5.463a.75.75 0 011.06 1.06 8.25 8.25 0 00-9.31 13.4l.003.003a8.25 8.25 0 009.307-4.585zM12 8.25a.75.75 0 01.75.75v3.44l1.72 1.72a.75.75 0 11-1.06 1.06l-2-2A.75.75 0 0111.25 12V9a.75.75 0 01.75-.75z" />
+              </svg>
+              <div className="text-left">
+                <div className="text-xs text-gray-500 font-normal">Baixar para</div>
+                <div className="text-base">Android (.apk)</div>
+              </div>
+            </a>
+            <p className="text-xs text-gray-500">v1.0.0 · Grátis para entregadores</p>
+          </div>
+        </div>
+      </section>
+
       {/* ── Social proof strip ── */}
       <section className="border-y border-gray-100 bg-gray-50 py-5 px-6">
         <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-sm text-gray-500">
-          {['App nativo para entregadores', 'Painel web completo', 'Rastreamento GPS em tempo real', 'Notificações WhatsApp', 'Sem custo de setup'].map(item => (
+          {['App nativo para entregadores', 'Painel web completo', 'Rastreamento GPS em tempo real', 'Notificações WhatsApp', 'Sem limite de entregas', 'Sem custo de setup'].map(item => (
             <span key={item} className="flex items-center gap-1.5">
               <CheckIcon />
               {item}
