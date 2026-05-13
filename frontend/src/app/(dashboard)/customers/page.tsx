@@ -447,7 +447,7 @@ function CustomerEditModal({
       ...emptyAddress(),
       isEditing: true,
       isRemoved: false,
-      _orig: { label: 'Casa', address: '', number: '', complement: '' },
+      _orig: { label: 'Casa', address: '', complement: '' },
     }
     setAddresses(prev => [...prev, entry])
   }
@@ -552,18 +552,7 @@ function CustomerEditModal({
                       value={addr.address}
                       onChange={v => setAddr(i, { address: v, lat: undefined, lng: undefined })}
                       onPick={r => setAddr(i, { address: r.address, lat: r.lat, lng: r.lng })}
-                      placeholder="Rua / Avenida"
-                    />
-                    <Input
-                      value={addr.number}
-                      onChange={e => setAddr(i, { number: e.target.value })}
-                      onBlur={async () => {
-                        if (!addr.lat && !addr.lng && addr.address.trim() && addr.number.trim()) {
-                          const geo = await geocodeAddress(addr.address.trim(), addr.number.trim())
-                          if (geo) setAddr(i, { lat: geo.lat, lng: geo.lng })
-                        }
-                      }}
-                      placeholder="Número"
+                      placeholder="Rua, número — ex: Rua das Flores, 123"
                     />
                     <Input
                       value={addr.complement}
@@ -602,7 +591,7 @@ function CustomerEditModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-800 leading-snug">
-                        {addr.address}{addr.number ? `, ${addr.number}` : ''}
+                        {addr.address}
                       </p>
                       {addr.complement && (
                         <p className="text-xs text-gray-500">{addr.complement}</p>
@@ -707,7 +696,7 @@ function AddressList({
   addresses, onUpdate, onAdd, onRemove, isCreate,
 }: {
   addresses: AddressEntry[]
-  onUpdate: (i: number, field: keyof AddressEntry, value: string | number | undefined) => void
+  onUpdate: (i: number, field: keyof AddressEntry, value: string | boolean | number | undefined) => void
   onAdd: () => void
   onRemove: (i: number) => void
   isCreate?: boolean
