@@ -65,12 +65,11 @@ async function getPlaceCoords(placeName: string): Promise<{ lat: number; lng: nu
   } catch { return null }
 }
 
-async function geocodeAddress(street: string, number: string): Promise<{ lat: number; lng: number } | null> {
-  const q = [street, number].filter(Boolean).join(', ')
-  if (q.length < 4 || !GMAPS_KEY) return null
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  if (address.length < 4 || !GMAPS_KEY) return null
   try {
     const res  = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&region=br&language=pt-BR&key=${GMAPS_KEY}`
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=br&language=pt-BR&key=${GMAPS_KEY}`
     )
     const data = await res.json()
     if (data.status !== 'OK' || !data.results[0]) return null
@@ -264,7 +263,6 @@ interface AddressEntry {
   id?: string
   label: string
   address: string
-  number: string
   complement: string
   isDefault: boolean
   lat?: number
@@ -272,7 +270,7 @@ interface AddressEntry {
 }
 
 function emptyAddress(label = 'Casa'): AddressEntry {
-  return { label, address: '', number: '', complement: '', isDefault: false }
+  return { label, address: '', complement: '', isDefault: false }
 }
 
 function AddressLabelSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -298,9 +296,9 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [error,     setError]     = useState('')
   const [name,      setName]      = useState('')
   const [phone,     setPhone]     = useState('')
-  const [addresses, setAddresses] = useState<AddressEntry[]>([{ ...emptyAddress('Principal'), isDefault: true, number: '' }])
+  const [addresses, setAddresses] = useState<AddressEntry[]>([{ ...emptyAddress('Principal'), isDefault: true }])
 
-  function updateField(i: number, field: keyof AddressEntry, value: string | number | undefined) {
+  function updateField(i: number, field: keyof AddressEntry, value: string | boolean | number | undefined) {
     setAddresses(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a))
   }
 
@@ -322,13 +320,12 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
         filled.map(async (a, i) => {
           let { lat, lng } = a
           if (!lat || !lng) {
-            const geo = await geocodeAddress(a.address.trim(), a.number.trim())
+            const geo = await geocodeAddress(a.address.trim())
             if (geo) { lat = geo.lat; lng = geo.lng }
           }
           return {
             label:      a.label,
             address:    a.address.trim(),
-            number:     a.number.trim() || undefined,
             complement: a.complement.trim() || undefined,
             isDefault:  i === 0,
             lat,
@@ -383,22 +380,22 @@ function CustomerCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 interface EditAddressEntry extends AddressEntry {
   isEditing: boolean
   isRemoved: boolean
-  _orig: { label: string; address: string; number: string; complement: string; lat?: number; lng?: number }
+  _orig: { label: string; address: string; complement: string; lat?: number; lng?: number }
 }
 
 function toEditEntry(a: CustomerAddress): EditAddressEntry {
+  const address = a.number ? `${a.address}, ${a.number}` : a.address
   return {
     id:         a.id,
     label:      a.label,
-    address:    a.address,
-    number:     a.number ?? '',
+    address,
     complement: a.complement ?? '',
     isDefault:  a.isDefault,
     lat:        a.lat,
     lng:        a.lng,
     isEditing:  false,
     isRemoved:  false,
-    _orig: { label: a.label, address: a.address, number: a.number ?? '', complement: a.complement ?? '', lat: a.lat, lng: a.lng },
+    _orig: { label: a.label, address, complement: a.complement ?? '', lat: a.lat, lng: a.lng },
   }
 }
 
@@ -436,7 +433,7 @@ function CustomerEditModal({
     const a = addresses[i]!
     setAddr(i, {
       isEditing: false,
-      _orig: { label: a.label, address: a.address, number: a.number, complement: a.complement, lat: a.lat, lng: a.lng },
+      _orig: { label: a.label, address: a.address, complement: a.complement, lat: a.lat, lng: a.lng },
     })
   }
 
@@ -464,14 +461,13 @@ function CustomerEditModal({
         active.map(async (a, i) => {
           let { lat, lng } = a
           if (!lat || !lng) {
-            const geo = await geocodeAddress(a.address.trim(), a.number.trim())
+            const geo = await geocodeAddress(a.address.trim())
             if (geo) { lat = geo.lat; lng = geo.lng }
           }
           return {
             id:         a.id,
             label:      a.label,
             address:    a.address.trim(),
-            number:     a.number.trim() || undefined,
             complement: a.complement.trim() || undefined,
             isDefault:  i === 0,
             lat,

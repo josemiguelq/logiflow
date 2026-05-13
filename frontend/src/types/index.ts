@@ -18,8 +18,8 @@ export interface CustomerAddress {
 }
 
 export function fullAddress(addr: Pick<CustomerAddress, 'address' | 'number' | 'complement'>): string {
-  const parts = [addr.address, addr.number].filter(Boolean).join(', ')
-  return addr.complement ? `${parts} - ${addr.complement}` : parts
+  const base = addr.number ? `${addr.address}, ${addr.number}` : addr.address
+  return addr.complement ? `${base} - ${addr.complement}` : base
 }
 
 export interface Customer {
