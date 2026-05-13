@@ -19,6 +19,7 @@ O **LogiFlow Mobile** é o aplicativo para entregadores da plataforma LogiFlow. 
 
 **Para a operação**
 
+
 - Rastreamento de localização do entregador durante a rota
 - Status de pedido atualizado automaticamente (Em rota → Saiu p/ entrega → Entregue)
 - Comprovante fotográfico armazenado por pedido
