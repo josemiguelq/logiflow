@@ -743,19 +743,7 @@ function AddressList({
               value={addr.address}
               onChange={v => { onUpdate(i, 'address', v); onUpdate(i, 'lat', undefined); onUpdate(i, 'lng', undefined) }}
               onPick={r => { onUpdate(i, 'address', r.address); onUpdate(i, 'lat', r.lat); onUpdate(i, 'lng', r.lng) }}
-              placeholder="Rua / Avenida"
-              className="mb-2 bg-white"
-            />
-            <Input
-              value={addr.number}
-              onChange={e => onUpdate(i, 'number', e.target.value)}
-              onBlur={async () => {
-                if (!addr.lat && !addr.lng && addr.address.trim() && addr.number.trim()) {
-                  const geo = await geocodeAddress(addr.address.trim(), addr.number.trim())
-                  if (geo) { onUpdate(i, 'lat', geo.lat); onUpdate(i, 'lng', geo.lng) }
-                }
-              }}
-              placeholder="Número"
+              placeholder="Rua, número — ex: Rua das Flores, 123"
               className="mb-2 bg-white"
             />
             <Input
