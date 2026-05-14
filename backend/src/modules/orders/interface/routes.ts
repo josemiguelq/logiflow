@@ -234,7 +234,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const order = await orderRepo.findById(id, req.actor.storeId)
       if (!order) return reply.code(404).send({ error: 'Not found' })
-      return order
+      return signOrderProof(order)
     }
   )
 
