@@ -26,11 +26,6 @@ export interface Customer {
   id: string
   name: string
   phone: string
-  address: string
-  number?: string
-  complement?: string
-  lat?: number
-  lng?: number
   addresses: CustomerAddress[]
   createdAt: string
 }

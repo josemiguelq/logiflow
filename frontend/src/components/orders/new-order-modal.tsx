@@ -149,12 +149,10 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-800">
-                    {selectedAddress
-                      ? fullAddress(selectedAddress)
-                      : `${selected.address}${selected.number ? `, ${selected.number}` : ''}`}
-                  </p>
-                    {(selectedAddress?.complement ?? selected.complement) && (
-                      <p className="text-xs text-gray-500">{selectedAddress?.complement ?? selected.complement}</p>
+                      {selectedAddress ? fullAddress(selectedAddress) : ''}
+                    </p>
+                    {selectedAddress?.complement && (
+                      <p className="text-xs text-gray-500">{selectedAddress.complement}</p>
                     )}
                   </div>
                 </div>

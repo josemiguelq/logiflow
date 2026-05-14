@@ -17,16 +17,12 @@ function mapAddressRow(r: Record<string, unknown>): CustomerAddress {
 function mapRow(r: Record<string, unknown>): Customer {
   const raw = r.addresses as CustomerAddress[] | null
   return {
-    id:         r.id as string,
-    storeId:    r.store_id as string,
-    name:       r.name as string,
-    phone:      r.phone as string,
-    address:    r.address as string,
-    complement: r.complement as string | undefined,
-    lat:        r.lat as number | undefined,
-    lng:        r.lng as number | undefined,
-    addresses:  raw ?? [],
-    createdAt:  r.created_at as Date,
+    id:        r.id as string,
+    storeId:   r.store_id as string,
+    name:      r.name as string,
+    phone:     r.phone as string,
+    addresses: raw ?? [],
+    createdAt: r.created_at as Date,
   }
 }
 
@@ -91,23 +87,18 @@ export function createPgCustomerRepo(db: DB) {
     },
 
     async create(
-      data: Omit<Customer, 'id' | 'createdAt' | 'addresses'>,
-      addresses?: Array<{ label: string; address: string; number?: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }>
+      data: { storeId: string; name: string; phone: string },
+      addresses: Array<{ label: string; address: string; number?: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }>
     ): Promise<Customer> {
       const { rows } = await db.query(
-        `INSERT INTO customers (store_id, name, phone, address, number, complement, lat, lng)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [data.storeId, data.name, data.phone, data.address, (data as Record<string, unknown>).number ?? null, data.complement ?? null, data.lat ?? null, data.lng ?? null]
+        `INSERT INTO customers (store_id, name, phone) VALUES ($1,$2,$3) RETURNING *`,
+        [data.storeId, data.name, data.phone]
       )
       const customer = rows[0] as Record<string, unknown>
 
-      const addrs = addresses?.length
-        ? addresses
-        : [{ label: 'Principal', address: data.address, complement: data.complement, lat: data.lat, lng: data.lng, isDefault: true }]
-
       const insertedAddrs: CustomerAddress[] = []
-      for (let i = 0; i < addrs.length; i++) {
-        const a = addrs[i]!
+      for (let i = 0; i < addresses.length; i++) {
+        const a = addresses[i]!
         const { rows: ar } = await db.query(
           `INSERT INTO customer_addresses (customer_id, store_id, label, address, number, complement, lat, lng, is_default)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -119,24 +110,14 @@ export function createPgCustomerRepo(db: DB) {
       return mapRow({ ...customer, addresses: insertedAddrs })
     },
 
-    async update(id: string, storeId: string, data: Partial<Omit<Customer, 'addresses'>>): Promise<Customer | null> {
+    async update(id: string, storeId: string, data: { name?: string; phone?: string }): Promise<Customer | null> {
       const { rows } = await db.query(
         `UPDATE customers
-         SET name       = COALESCE($3, name),
-             phone      = COALESCE($4, phone),
-             address    = COALESCE($5, address),
-             complement = COALESCE($6, complement),
-             lat        = COALESCE($7, lat),
-             lng        = COALESCE($8, lng)
+         SET name  = COALESCE($3, name),
+             phone = COALESCE($4, phone)
          WHERE id = $1 AND store_id = $2
          RETURNING id`,
-        [id, storeId,
-         data.name      ?? null,
-         data.phone     ?? null,
-         data.address   ?? null,
-         data.complement ?? null,
-         data.lat       ?? null,
-         data.lng       ?? null]
+        [id, storeId, data.name ?? null, data.phone ?? null]
       )
       if (!rows[0]) return null
       return this.findById(rows[0].id as string, storeId)

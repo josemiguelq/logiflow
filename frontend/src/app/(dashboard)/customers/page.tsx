@@ -73,7 +73,7 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-gray-600">
                       <div className="flex items-center gap-2">
                         <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                        <span className="max-w-xs truncate">{primary?.address ?? c.address}</span>
+                        <span className="max-w-xs truncate">{primary?.address ?? ''}</span>
                         {c.addresses.length > 1 && (
                           <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
                             +{c.addresses.length - 1}

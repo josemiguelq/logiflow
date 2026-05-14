@@ -58,18 +58,8 @@ export async function customerRoutes(app: FastifyInstance) {
       const existing = await repo.findByPhone(req.actor.storeId, body.phone)
       if (existing) return existing
 
-      const defaultAddr = body.addresses.find(a => a.isDefault) ?? body.addresses[0]!
       const customer = await repo.create(
-        {
-          storeId:    req.actor.storeId,
-          name:       body.name,
-          phone:      body.phone,
-          address:    defaultAddr.address,
-          number:     defaultAddr.number,
-          complement: defaultAddr.complement,
-          lat:        defaultAddr.lat,
-          lng:        defaultAddr.lng,
-        } as Parameters<typeof repo.create>[0],
+        { storeId: req.actor.storeId, name: body.name, phone: body.phone },
         body.addresses.map((a, i) => ({ ...a, isDefault: i === 0 || !!a.isDefault }))
       )
       return reply.code(201).send(customer)
@@ -86,17 +76,7 @@ export async function customerRoutes(app: FastifyInstance) {
       const existing = await repo.findById(id, req.actor.storeId)
       if (!existing) return reply.code(404).send({ error: 'Not found' })
 
-      // Derive default address for the customers table main columns
-      const defaultAddr = body.addresses?.find(a => a.isDefault) ?? body.addresses?.[0]
-
-      await repo.update(id, req.actor.storeId, {
-        name:       body.name,
-        phone:      body.phone,
-        address:    defaultAddr?.address,
-        complement: defaultAddr?.complement,
-        lat:        defaultAddr?.lat,
-        lng:        defaultAddr?.lng,
-      })
+      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone })
 
       // Sync address sub-table when addresses are provided
       if (body.addresses) {
