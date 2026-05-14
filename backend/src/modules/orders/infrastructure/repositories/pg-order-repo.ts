@@ -83,10 +83,10 @@ const WITH_JOINS = `
     o.*,
     c.name                                          AS customer_name,
     c.phone                                         AS customer_phone,
-    COALESCE(o.delivery_address, c.address || COALESCE(', ' || NULLIF(c.number, ''), '')) AS customer_address,
-    c.complement                                    AS customer_complement,
-    COALESCE(o.delivery_lat,  c.lat)                AS customer_lat,
-    COALESCE(o.delivery_lng,  c.lng)                AS customer_lng,
+    COALESCE(o.delivery_address, ca.address)        AS customer_address,
+    ca.complement                                   AS customer_complement,
+    COALESCE(o.delivery_lat,  ca.lat)               AS customer_lat,
+    COALESCE(o.delivery_lng,  ca.lng)               AS customer_lng,
     d.name       AS deliverer_name,
     d.status     AS deliverer_status,
     p.photo_url  AS proof_photo_url,
@@ -94,6 +94,7 @@ const WITH_JOINS = `
     p.lng        AS proof_lng
   FROM orders o
   JOIN customers c   ON c.id = o.customer_id
+  LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
   LEFT JOIN deliverers d ON d.id = o.deliverer_id
   LEFT JOIN proof_of_delivery p ON p.order_id = o.id
 `

@@ -99,10 +99,11 @@ export async function routeRoutes(app: FastifyInstance) {
     const { rows: orderRows } = await db.query(
       `SELECT o.id, o.status, o.route_position,
               c.name    AS customer_name,
-              COALESCE(c.lat, NULL) AS lat,
-              COALESCE(c.lng, NULL) AS lng
+              COALESCE(o.delivery_lat, ca.lat) AS lat,
+              COALESCE(o.delivery_lng, ca.lng) AS lng
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
        WHERE o.route_id = $1
        ORDER BY o.route_position ASC NULLS LAST, o.created_at ASC`,
       [id]

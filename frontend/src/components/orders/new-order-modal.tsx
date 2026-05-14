@@ -21,10 +21,11 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
 
-  const { data: customers = [] } = useSWR<Customer[]>(
+  const { data: customersData } = useSWR<{ items: Customer[] }>(
     search.length >= 2 ? `/customers?search=${encodeURIComponent(search)}` : null,
-    (url: string) => api.get<Customer[]>(url)
+    (url: string) => api.get<{ items: Customer[] }>(url)
   )
+  const customers = customersData?.items ?? []
 
   function selectCustomer(c: Customer) {
     setSelected(c)
