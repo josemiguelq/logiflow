@@ -21,7 +21,7 @@ export async function routeRoutes(app: FastifyInstance) {
     return routeRepo.findByStore(req.actor.storeId)
   })
 
-  // CSV export — all routes + orders for this store
+  // CSV export — routes + orders for this store, optionally filtered by date range
   app.get('/routes/export', { preHandler: requireStoreUser }, async (req, reply) => {
     const { rows: feat } = await db.query(`
       SELECT 1 FROM store_features_enabled sfe
@@ -30,12 +30,20 @@ export async function routeRoutes(app: FastifyInstance) {
     `, [req.actor.storeId])
     if (!feat.length) return reply.code(403).send({ error: 'Feature csv_export não habilitada' })
 
+    const { from, to } = req.query as { from?: string; to?: string }
+
+    const params: unknown[] = [req.actor.storeId]
+    const dateFilters: string[] = []
+    if (from) { params.push(from); dateFilters.push(`r.created_at >= $${params.length}::date`) }
+    if (to)   { params.push(to);   dateFilters.push(`r.created_at <  ($${params.length}::date + interval '1 day')`) }
+    const where = dateFilters.length ? `AND ${dateFilters.join(' AND ')}` : ''
+
     const { rows } = await db.query(`
       SELECT
-        o.id                                              AS order_id,
-        r.id                                              AS route_id,
-        d.name                                            AS deliverer_name,
-        COALESCE(o.delivery_address, c.address)          AS delivery_address,
+        o.id                    AS order_id,
+        r.id                    AS route_id,
+        d.name                  AS deliverer_name,
+        o.delivery_address      AS delivery_address,
         o.status,
         o.created_at,
         o.picked_up_at,
@@ -43,10 +51,9 @@ export async function routeRoutes(app: FastifyInstance) {
       FROM routes r
       JOIN deliverers d ON d.id = r.deliverer_id
       JOIN orders     o ON o.route_id = r.id
-      JOIN customers  c ON c.id = o.customer_id
-      WHERE r.store_id = $1
+      WHERE r.store_id = $1 ${where}
       ORDER BY r.created_at DESC, o.route_position ASC NULLS LAST
-    `, [req.actor.storeId])
+    `, params)
 
     return (rows as Record<string, unknown>[]).map(o => ({
       orderId:         o.order_id,

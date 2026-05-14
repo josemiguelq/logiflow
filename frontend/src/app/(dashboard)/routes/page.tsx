@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Download, Eye, Loader2 } from 'lucide-react'
+import { Download, Eye, Loader2, X, Calendar } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -92,25 +92,110 @@ function downloadCsv(content: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function thirtyDaysAgoStr() {
+  const d = new Date()
+  d.setDate(d.getDate() - 30)
+  return d.toISOString().slice(0, 10)
+}
+
+interface ExportModalProps {
+  onClose: () => void
+}
+
+function ExportModal({ onClose }: ExportModalProps) {
+  const [from, setFrom] = useState(thirtyDaysAgoStr())
+  const [to,   setTo]   = useState(todayStr())
+  const [loading, setLoading] = useState(false)
+
+  async function handleExport() {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ from, to })
+      const rows = await api.get<ExportRow[]>(`/routes/export?${params}`)
+      const csv  = buildCsv(rows)
+      downloadCsv(csv, `rotas-${from}-${to}.csv`)
+      onClose()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-gray-500" />
+            <h2 className="text-base font-semibold text-gray-900">Exportar CSV</h2>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="mb-4 text-sm text-gray-500">
+          Selecione o período das rotas que deseja exportar.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">De</label>
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={e => setFrom(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Até</label>
+            <input
+              type="date"
+              value={to}
+              min={from}
+              max={todayStr()}
+              onChange={e => setTo(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={loading || !from || !to}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40 transition-colors"
+          >
+            {loading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Download className="h-4 w-4" />
+            }
+            {loading ? 'Exportando…' : 'Baixar CSV'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function RoutesPage() {
   const { data: routes = [], isLoading } = useSWR<DeliveryRoute[]>(
     '/routes',
     (url: string) => api.get<DeliveryRoute[]>(url)
   )
-  const features     = useStoreFeatures()
-  const [exporting, setExporting] = useState(false)
-
-  async function handleExport() {
-    setExporting(true)
-    try {
-      const rows = await api.get<ExportRow[]>('/routes/export')
-      const csv  = buildCsv(rows)
-      const date = new Date().toISOString().slice(0, 10)
-      downloadCsv(csv, `rotas-${date}.csv`)
-    } finally {
-      setExporting(false)
-    }
-  }
+  const features = useStoreFeatures()
+  const [showExportModal, setShowExportModal] = useState(false)
 
   return (
     <div className="p-6">
@@ -121,14 +206,10 @@ export default function RoutesPage() {
         </div>
         {features.csvExportEnabled && (
           <button
-            onClick={handleExport}
-            disabled={exporting || routes.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            onClick={() => setShowExportModal(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            {exporting
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Download className="h-4 w-4" />
-            }
+            <Download className="h-4 w-4" />
             Baixar CSV
           </button>
         )}
@@ -196,6 +277,10 @@ export default function RoutesPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {showExportModal && (
+        <ExportModal onClose={() => setShowExportModal(false)} />
       )}
     </div>
   )
