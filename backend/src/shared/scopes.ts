@@ -7,6 +7,7 @@ export const SCOPES = [
   // Routes
   'routes:view',
   'routes:force_finish',
+  'routes:export',
 
   // Customers
   'customers:view',
@@ -42,6 +43,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'orders:cancel':        'Pedidos — cancelar',
   'routes:view':          'Rotas — visualizar',
   'routes:force_finish':  'Rotas — forçar finalização',
+  'routes:export':        'Rotas — exportar CSV',
   'customers:view':       'Clientes — visualizar',
   'customers:create':     'Clientes — criar',
   'customers:edit':       'Clientes — editar',
@@ -59,7 +61,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Pedidos',        scopes: ['orders:view', 'orders:create', 'orders:cancel'] },
-  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish'] },
+  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit'] },
   { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage'] },
   { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete'] },
