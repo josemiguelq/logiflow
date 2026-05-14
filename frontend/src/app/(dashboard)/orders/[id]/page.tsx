@@ -117,6 +117,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
+          {order.deliveryNote && (
+            <section className="border-t border-gray-100 pt-4">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Nota do entregador
+              </h2>
+              <p className="rounded-lg bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
+                {order.deliveryNote}
+              </p>
+            </section>
+          )}
+
           {order.proof?.photoUrl && (
             <section className="border-t border-gray-100 pt-4">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">

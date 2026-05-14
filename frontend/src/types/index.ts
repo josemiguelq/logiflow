@@ -49,6 +49,7 @@ export interface Order {
   pickupCode: string
   deliveryCode: string
   notes?: string
+  deliveryNote?: string
   createdAt: string
   pickedUpAt?: string
   deliveredAt?: string
