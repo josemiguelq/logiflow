@@ -22,7 +22,7 @@ export async function routeRoutes(app: FastifyInstance) {
   })
 
   // CSV export — routes + orders for this store, optionally filtered by date range
-  app.get('/routes/export', { preHandler: requireStoreUser }, async (req, reply) => {
+  app.get('/routes/export', { preHandler: [requireStoreUser, requireScope('routes:export')] }, async (req, reply) => {
     const { rows: feat } = await db.query(`
       SELECT 1 FROM store_features_enabled sfe
       JOIN features f ON f.id = sfe.feature_id

@@ -7,6 +7,7 @@ import { Download, Eye, Loader2, X, Calendar } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
+import { useAccess } from '@/hooks/useAccess'
 
 const STATUS_LABEL: Record<RouteStatus, string> = {
   CREATED:  'Criada',
@@ -194,7 +195,8 @@ export default function RoutesPage() {
     '/routes',
     (url: string) => api.get<DeliveryRoute[]>(url)
   )
-  const features = useStoreFeatures()
+  const features  = useStoreFeatures()
+  const { can }   = useAccess()
   const [showExportModal, setShowExportModal] = useState(false)
 
   return (
