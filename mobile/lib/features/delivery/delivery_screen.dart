@@ -113,6 +113,7 @@ class _DeliveryCard extends ConsumerStatefulWidget {
 
 class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   bool _navigating = false;
+  bool _returning = false;
 
   Future<void> _navigateTo() async {
     setState(() => _navigating = true);
@@ -269,9 +270,58 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: (_navigating || _returning) ? null : () => _returnToQueue(context),
+                icon: _returning
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.undo_rounded, size: 16, color: Colors.grey.shade500),
+                label: Text('Devolver à fila', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _returnToQueue(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Devolver pedido?'),
+        content: Text(
+          'O pedido de ${widget.order.customerName} voltará para a fila e poderá ser pego por outro entregador.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            child: const Text('Devolver'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    setState(() => _returning = true);
+    try {
+      await ApiClient().dio.patch('/deliverer/orders/${widget.order.id}/return-to-queue', data: {});
+      widget.onDelivered();
+    } catch (e) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Não foi possível devolver o pedido. Tente novamente.')),
+      );
+    } finally {
+      if (mounted) setState(() => _returning = false);
+    }
   }
 
   Future<void> _showDeliveryDialog(BuildContext context) async {

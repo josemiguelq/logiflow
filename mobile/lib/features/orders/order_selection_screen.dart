@@ -1,8 +1,10 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/models/order.dart';
@@ -78,6 +80,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   bool _claiming       = false;
   bool _togglingStatus = false;
   bool _openingRoute   = false;
+  bool _mapView        = false;
 
   void _refresh() {
     ref.invalidate(_routesProvider);
@@ -170,6 +173,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
     final firstName = session?.name.split(' ').first ?? '';
 
+    final showClaim = _selected.isNotEmpty && routeList.isEmpty;
+
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
@@ -201,172 +206,394 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async => _refresh(),
-              child: CustomScrollView(
-                slivers: [
-                  // ── Offline banner ───────────────────────────────────
-                  if (isOffline)
-                    SliverToBoxAdapter(
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        color: Colors.grey.shade200,
-                        child: Row(children: [
-                          Icon(Icons.do_not_disturb_on_outlined,
-                              size: 16, color: Colors.grey.shade600),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Você está OFFLINE — não receberá novos pedidos',
-                            style: TextStyle(
-                                color: Colors.grey.shade700,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500),
-                          ),
-                        ]),
-                      ),
-                    ),
+          : Stack(
+              children: [
+                // ── Main content ─────────────────────────────────────
+                _mapView
+                    ? _buildMapView(preparingList)
+                    : RefreshIndicator(
+                        onRefresh: () async => _refresh(),
+                        child: CustomScrollView(
+                          slivers: [
+                            // ── Offline banner ──────────────────────
+                            if (isOffline)
+                              SliverToBoxAdapter(
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 10),
+                                  color: Colors.grey.shade200,
+                                  child: Row(children: [
+                                    Icon(Icons.do_not_disturb_on_outlined,
+                                        size: 16, color: Colors.grey.shade600),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Você está OFFLINE — não receberá novos pedidos',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade700,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500),
+                                    ),
+                                  ]),
+                                ),
+                              ),
 
-                  // ── Active delivery banner ───────────────────────────
-                  SliverToBoxAdapter(
-                    child: activeOrders.when(
-                      data: (active) => active.isEmpty
-                          ? const SizedBox.shrink()
-                          : _ActiveRouteBanner(
-                              count: active.length,
-                              onTap: () => context.push('/delivery')),
-                      loading: () => const SizedBox.shrink(),
-                      error:   (_, __) => const SizedBox.shrink(),
+                            // ── Active delivery banner ───────────────
+                            SliverToBoxAdapter(
+                              child: activeOrders.when(
+                                data: (active) => active.isEmpty
+                                    ? const SizedBox.shrink()
+                                    : _ActiveRouteBanner(
+                                        count: active.length,
+                                        onTap: () => context.push('/delivery')),
+                                loading: () => const SizedBox.shrink(),
+                                error:   (_, __) => const SizedBox.shrink(),
+                              ),
+                            ),
+
+                            // ── Routes assigned by the store ─────────
+                            if (routeList.isNotEmpty) ...[
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                  child: Text(
+                                    'Rotas atribuídas (${routeList.length})',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600, fontSize: 14),
+                                  ),
+                                ),
+                              ),
+                              SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (_, i) => Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                                    child: _RouteSummaryCard(
+                                      route:   routeList[i],
+                                      loading: _openingRoute,
+                                      onTap:   () => _openRoute(routeList[i]),
+                                    ),
+                                  ),
+                                  childCount: routeList.length,
+                                ),
+                              ),
+                            ],
+
+                            // ── Preparing orders ─────────────────────
+                            if (routeList.isEmpty && preparingList.isNotEmpty) ...[
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Selecione os pedidos que vai buscar',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w600, fontSize: 14),
+                                      ),
+                                      if (_selected.isNotEmpty)
+                                        TextButton(
+                                          onPressed: () => setState(() => _selected.clear()),
+                                          child: const Text('Limpar'),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 160),
+                                sliver: SliverList(
+                                  delegate: SliverChildBuilderDelegate(
+                                    (_, i) {
+                                      final store = storeLoc.value ?? const _StoreLocation(null, null);
+                                      final o   = preparingList[i];
+                                      final dist = _distanceKm(store, o);
+                                      final sel  = _selected.contains(o.id);
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 10),
+                                        child: _OrderSelectionTile(
+                                          order:    o,
+                                          distance: dist,
+                                          selected: sel,
+                                          onTap: () => setState(() {
+                                            if (sel) _selected.remove(o.id);
+                                            else     _selected.add(o.id);
+                                          }),
+                                        ),
+                                      );
+                                    },
+                                    childCount: preparingList.length,
+                                  ),
+                                ),
+                              ),
+                            ],
+
+                            // ── Empty state ──────────────────────────
+                            if (routeList.isEmpty && preparingList.isEmpty)
+                              SliverFillRemaining(
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.inbox_outlined,
+                                          size: 56, color: Colors.grey.shade400),
+                                      const SizedBox(height: 12),
+                                      const Text('Nenhum pedido disponível',
+                                          style: TextStyle(
+                                              color: Colors.grey,
+                                              fontWeight: FontWeight.w500)),
+                                      const SizedBox(height: 4),
+                                      const Text('Aguarde a loja preparar pedidos',
+                                          style: TextStyle(
+                                              color: Colors.grey, fontSize: 13)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                // ── Botão "Iniciar rota" ──────────────────────────────
+                if (showClaim)
+                  Positioned(
+                    bottom: 88 + MediaQuery.of(context).padding.bottom,
+                    left: 16,
+                    right: 16,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _claiming ? null : _claimPreparing,
+                        icon: _claiming
+                            ? const SizedBox(
+                                width: 18, height: 18,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2))
+                            : const Icon(Icons.route, size: 20),
+                        label: Text(
+                          _claiming
+                              ? 'Iniciando...'
+                              : 'Iniciar rota (${_selected.length})',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          elevation: 4,
+                        ),
+                      ),
                     ),
                   ),
 
-                  // ── Routes assigned by the store ─────────────────────
-                  if (routeList.isNotEmpty) ...[
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Text(
-                          'Rotas atribuídas (${routeList.length})',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 14),
-                        ),
-                      ),
+                // ── Toggle mapa / lista ───────────────────────────────
+                Positioned(
+                  bottom: 24 + MediaQuery.of(context).padding.bottom,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: _MapToggle(
+                      value: _mapView,
+                      onChanged: (v) => setState(() => _mapView = v),
                     ),
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (_, i) => Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                          child: _RouteSummaryCard(
-                            route:   routeList[i],
-                            loading: _openingRoute,
-                            onTap:   () => _openRoute(routeList[i]),
-                          ),
-                        ),
-                        childCount: routeList.length,
-                      ),
-                    ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
 
-                  // ── Preparing orders (self-claim, only when no routes) ──
-                  if (routeList.isEmpty && preparingList.isNotEmpty) ...[
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Selecione os pedidos que vai buscar',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 14),
-                            ),
-                            if (_selected.isNotEmpty)
-                              TextButton(
-                                onPressed: () =>
-                                    setState(() => _selected.clear()),
-                                child: const Text('Limpar'),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (_, i) {
-                            final store =
-                                storeLoc.value ?? const _StoreLocation(null, null);
-                            final o    = preparingList[i];
-                            final dist = _distanceKm(store, o);
-                            final sel  = _selected.contains(o.id);
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _OrderSelectionTile(
-                                order:    o,
-                                distance: dist,
-                                selected: sel,
-                                onTap: () => setState(() {
-                                  if (sel)
-                                    _selected.remove(o.id);
-                                  else
-                                    _selected.add(o.id);
-                                }),
-                              ),
-                            );
-                          },
-                          childCount: preparingList.length,
-                        ),
-                      ),
-                    ),
-                  ],
+  Widget _buildMapView(List<Order> orders) {
+    final withCoords = orders
+        .where((o) => o.customerLat != null && o.customerLng != null)
+        .toList();
 
-                  // ── Empty state ──────────────────────────────────────
-                  if (routeList.isEmpty && preparingList.isEmpty)
-                    SliverFillRemaining(
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.inbox_outlined,
-                                size: 56, color: Colors.grey.shade400),
-                            const SizedBox(height: 12),
-                            const Text('Nenhum pedido disponível',
-                                style: TextStyle(
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w500)),
-                            const SizedBox(height: 4),
-                            const Text('Aguarde a loja preparar pedidos',
-                                style: TextStyle(
-                                    color: Colors.grey, fontSize: 13)),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
+    if (withCoords.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, size: 56, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text('Nenhum pedido com localização disponível',
+                style: TextStyle(color: Colors.grey.shade600)),
+          ],
+        ),
+      );
+    }
+
+    final centerLat = withCoords.map((o) => o.customerLat!).reduce((a, b) => a + b) / withCoords.length;
+    final centerLng = withCoords.map((o) => o.customerLng!).reduce((a, b) => a + b) / withCoords.length;
+
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: LatLng(centerLat, centerLng),
+        initialZoom: 13.5,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.logiflow.mobile',
+        ),
+        MarkerLayer(
+          markers: withCoords.map((o) {
+            final sel = _selected.contains(o.id);
+            return Marker(
+              point: LatLng(o.customerLat!, o.customerLng!),
+              width: 80,
+              height: 72,
+              alignment: Alignment.topCenter,
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  if (sel) _selected.remove(o.id);
+                  else     _selected.add(o.id);
+                }),
+                child: _OrderPin(
+                  name:     o.customerName,
+                  selected: sel,
+                ),
               ),
-            ),
-      floatingActionButton: (_selected.isEmpty || routeList.isNotEmpty)
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _claiming ? null : _claimPreparing,
-              icon: _claiming
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.route),
-              label: Text('Iniciar rota (${_selected.length})'),
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-            ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 }
 
 // ── widgets ──────────────────────────────────────────────────────────────────
+
+// ── widgets ──────────────────────────────────────────────────────────────────
+
+class _MapToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _MapToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.map_outlined,
+            size: 20,
+            color: value ? AppTheme.primary : Colors.grey.shade500,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Mapa',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: value ? AppTheme.primary : Colors.grey.shade600,
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: AppTheme.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderPin extends StatelessWidget {
+  final String name;
+  final bool selected;
+  const _OrderPin({required this.name, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    final firstName = name.split(' ').first;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Label com o primeiro nome
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Text(
+            firstName,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        // Círculo do pin
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? AppTheme.primary : Colors.grey.shade400,
+              width: 2.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: (selected ? AppTheme.primary : Colors.black)
+                    .withValues(alpha: 0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Icon(
+              Icons.location_on,
+              size: 16,
+              color: selected ? Colors.white : AppTheme.primary,
+            ),
+          ),
+        ),
+        // Ponteiro
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 3,
+          height: 8,
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : Colors.grey.shade400,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _ActiveRouteBanner extends StatelessWidget {
   final int count;

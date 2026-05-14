@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
@@ -18,6 +20,7 @@ class RoutePlanningScreen extends ConsumerStatefulWidget {
 class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
   late List<Order> _orders;
   bool _cancelling = false;
+  bool _mapView = false;
 
   @override
   void initState() {
@@ -103,20 +106,37 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
           ),
 
           Expanded(
-            child: ReorderableListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              itemCount: _orders.length,
-              onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  if (newIndex > oldIndex) newIndex--;
-                  final item = _orders.removeAt(oldIndex);
-                  _orders.insert(newIndex, item);
-                });
-              },
-              itemBuilder: (_, i) {
-                final o = _orders[i];
-                return _RouteOrderTile(key: ValueKey(o.id), position: i + 1, order: o);
-              },
+            child: Stack(
+              children: [
+                _mapView
+                    ? _buildMap()
+                    : ReorderableListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+                        itemCount: _orders.length,
+                        onReorder: (oldIndex, newIndex) {
+                          setState(() {
+                            if (newIndex > oldIndex) newIndex--;
+                            final item = _orders.removeAt(oldIndex);
+                            _orders.insert(newIndex, item);
+                          });
+                        },
+                        itemBuilder: (_, i) {
+                          final o = _orders[i];
+                          return _RouteOrderTile(key: ValueKey(o.id), position: i + 1, order: o);
+                        },
+                      ),
+                Positioned(
+                  bottom: 16,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: _MapToggle(
+                      value: _mapView,
+                      onChanged: (v) => setState(() => _mapView = v),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -157,6 +177,69 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMap() {
+    final withCoords = _orders
+        .where((o) => o.customerLat != null && o.customerLng != null)
+        .toList();
+
+    if (withCoords.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, size: 56, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text(
+              'Nenhum ponto com localização disponível',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final centerLat = withCoords
+        .map((o) => o.customerLat!)
+        .reduce((a, b) => a + b) / withCoords.length;
+    final centerLng = withCoords
+        .map((o) => o.customerLng!)
+        .reduce((a, b) => a + b) / withCoords.length;
+
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: LatLng(centerLat, centerLng),
+        initialZoom: 13.0,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.logiflow.mobile',
+        ),
+        MarkerLayer(
+          markers: _orders
+              .where((o) => o.customerLat != null && o.customerLng != null)
+              .toList()
+              .asMap()
+              .entries
+              .map((entry) {
+            final position = entry.key + 1;
+            final o = entry.value;
+            return Marker(
+              point: LatLng(o.customerLat!, o.customerLng!),
+              width: 80,
+              height: 72,
+              alignment: Alignment.topCenter,
+              child: _RouteMapPin(
+                position: position,
+                name: o.customerName,
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -213,6 +296,130 @@ class _RouteOrderTile extends StatelessWidget {
           ),
         ),
         trailing: Icon(Icons.drag_handle, color: Colors.grey.shade400),
+      ),
+    );
+  }
+}
+
+class _RouteMapPin extends StatelessWidget {
+  final int position;
+  final String name;
+  const _RouteMapPin({required this.position, required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Label com nome do cliente
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Text(
+            name.split(' ').first, // primeiro nome apenas para não sobrepor
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        // Pin numerado
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: AppTheme.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primary.withValues(alpha: 0.4),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              '$position',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+        // ponteiro
+        Container(
+          width: 3,
+          height: 8,
+          decoration: BoxDecoration(
+            color: AppTheme.primary,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MapToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _MapToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.map_outlined,
+            size: 20,
+            color: value ? AppTheme.primary : Colors.grey.shade500,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Mapa',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: value ? AppTheme.primary : Colors.grey.shade600,
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: AppTheme.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ],
       ),
     );
   }

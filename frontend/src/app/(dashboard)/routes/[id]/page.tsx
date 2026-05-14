@@ -178,9 +178,10 @@ export default function RouteDetailPage({ params }: Props) {
       ) : (
         <div className="space-y-3">
           {route.orders.map((order, i) => (
-            <div
+            <Link
               key={order.id}
-              className="flex items-start gap-4 rounded-xl border border-gray-200 bg-white p-4"
+              href={`/orders/${order.id}`}
+              className="flex items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 hover:border-gray-300 hover:shadow-sm transition-all"
             >
               {/* Position */}
               <div
@@ -220,7 +221,7 @@ export default function RouteDetailPage({ params }: Props) {
                   <Clock className="h-5 w-5 text-gray-300" />
                 )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
