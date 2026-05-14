@@ -111,7 +111,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Observações
               </h2>
-              <p className="text-sm text-gray-700">{order.notes}</p>
+              <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+                {order.notes}
+              </p>
             </section>
           )}
 

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Order } from '@/types'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
-import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check } from 'lucide-react'
+import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText } from 'lucide-react'
 
 interface Props {
   order: Order
@@ -65,6 +65,12 @@ export function OrderCard({ order, onAssign, onCancel }: Props) {
           <Clock className="h-3.5 w-3.5 shrink-0 text-gray-400" />
           <span>{formatDate(order.createdAt)}</span>
         </div>
+        {order.notes && (
+          <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5">
+            <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <span className="text-xs text-amber-800 line-clamp-2">{order.notes}</span>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
