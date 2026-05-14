@@ -25,11 +25,11 @@ function mimeToExt(mime: string): string {
  * Resolves a stored path to a URL ready to be sent to clients.
  * - null/undefined → null
  * - data: or http(s): URIs → returned as-is (legacy values)
- * - storage path (e.g. "proof/abc.jpg") → S3 presigned URL valid for 1 hour
+ * - storage path (e.g. "proof/abc.jpg") → S3 presigned URL valid for 4 hours
  */
 export async function resolveImageUrl(
   path: string | null | undefined,
-  expiresIn = 3600,
+  expiresIn = 14400,
 ): Promise<string | null> {
   if (!path) return null
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
