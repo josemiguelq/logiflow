@@ -18,7 +18,11 @@ export async function routeRoutes(app: FastifyInstance) {
 
   // ── Store routes ──────────────────────────────────────────────────────────
   app.get('/routes', { preHandler: requireStoreUser }, async (req) => {
-    return routeRepo.findByStore(req.actor.storeId)
+    const { page } = req.query as { page?: string }
+    const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
+    const { items, total } = await routeRepo.findByStore(req.actor.storeId, pageNum)
+    const pages = Math.max(1, Math.ceil(total / 15))
+    return { items, total, page: pageNum, pages }
   })
 
   // CSV export — routes + orders for this store, optionally filtered by date range

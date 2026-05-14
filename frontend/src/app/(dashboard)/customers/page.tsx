@@ -1,29 +1,40 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil } from 'lucide-react'
+import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Customer } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-const fetcher = (url: string) => api.get<Customer[]>(url)
+interface PagedCustomers { items: Customer[]; total: number; page: number; pages: number }
+
+const fetcher = (url: string) => api.get<PagedCustomers>(url)
 
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
+  const [page,   setPage]   = useState(1)
 
-  const url = `/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`
-  const { data: customers = [] } = useSWR(url, fetcher)
+  // Reset to page 1 whenever search changes
+  useEffect(() => { setPage(1) }, [search])
+
+  const params = new URLSearchParams({ page: String(page) })
+  if (search) params.set('search', search)
+  const { data } = useSWR(`/customers?${params}`, fetcher)
+
+  const customers = data?.items ?? []
+  const total     = data?.total ?? 0
+  const pages     = data?.pages ?? 1
 
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-          <p className="text-sm text-gray-500">{customers.length} cliente(s)</p>
+          <p className="text-sm text-gray-500">{total} cliente{total !== 1 ? 's' : ''}</p>
         </div>
         <Link href="/customers/new">
           <Button>
@@ -96,6 +107,30 @@ export default function CustomersPage() {
           </table>
         )}
       </div>
+
+      {pages > 1 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+          <span>Página {page} de {pages}</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(pages, p + 1))}
+              disabled={page === pages}
+              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              Próximo
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

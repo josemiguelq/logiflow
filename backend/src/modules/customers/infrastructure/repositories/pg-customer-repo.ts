@@ -49,21 +49,31 @@ const WITH_ADDRESSES = `
 
 export function createPgCustomerRepo(db: DB) {
   return {
-    async findByStore(storeId: string, search?: string): Promise<Customer[]> {
+    async findByStore(
+      storeId: string,
+      search?: string,
+      page = 1,
+      limit = 15,
+    ): Promise<{ items: Customer[]; total: number }> {
       const baseWhere = search
         ? 'c.store_id = $1 AND (c.name ILIKE $2 OR c.phone ILIKE $2)'
         : 'c.store_id = $1'
-      const params = search ? [storeId, `%${search}%`] : [storeId]
+      const offset  = (page - 1) * limit
+      const params  = search ? [storeId, `%${search}%`] : [storeId]
 
       const { rows } = await db.query(
-        `${WITH_ADDRESSES}
-         WHERE ${baseWhere}
-         GROUP BY c.id
-         ORDER BY c.name ASC
-         LIMIT ${search ? 100 : 200}`,
+        `SELECT sub.*, COUNT(*) OVER() AS total_count
+         FROM (
+           ${WITH_ADDRESSES}
+           WHERE ${baseWhere}
+           GROUP BY c.id
+           ORDER BY c.created_at DESC
+         ) sub
+         LIMIT ${limit} OFFSET ${offset}`,
         params
       )
-      return rows.map(mapRow)
+      const total = rows.length > 0 ? Number((rows[0] as Record<string, unknown>).total_count) : 0
+      return { items: rows.map(mapRow), total }
     },
 
     async findById(id: string, storeId: string): Promise<Customer | null> {

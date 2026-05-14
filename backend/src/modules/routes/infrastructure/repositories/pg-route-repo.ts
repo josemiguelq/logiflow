@@ -26,25 +26,33 @@ const LIST_JOIN = `
 
 export function createPgRouteRepo(db: DB) {
   return {
-    async findByStore(storeId: string): Promise<RouteWithDetails[]> {
+    async findByStore(storeId: string, page = 1, limit = 15): Promise<{ items: RouteWithDetails[]; total: number }> {
+      const offset = (page - 1) * limit
       const { rows } = await db.query(
-        `${LIST_JOIN}
-         WHERE r.store_id = $1
-         GROUP BY r.id, d.name, d.username
-         ORDER BY r.created_at DESC
-         LIMIT 200`,
-        [storeId]
+        `SELECT sub.*, COUNT(*) OVER() AS total_count
+         FROM (
+           ${LIST_JOIN}
+           WHERE r.store_id = $1
+           GROUP BY r.id, d.name, d.username
+           ORDER BY r.created_at DESC
+         ) sub
+         LIMIT $2 OFFSET $3`,
+        [storeId, limit, offset]
       )
-      return rows.map(r => ({
-        ...mapRoute(r as Record<string, unknown>),
-        orderCount: Number((r as Record<string, unknown>).order_count ?? 0),
-        deliverer: {
-          id:       (r as Record<string, unknown>).deliverer_id as string,
-          name:     (r as Record<string, unknown>).deliverer_name as string,
-          username: (r as Record<string, unknown>).deliverer_username as string,
-        },
-        orders: [],
-      }))
+      const total = rows.length > 0 ? Number((rows[0] as Record<string, unknown>).total_count) : 0
+      return {
+        items: rows.map(r => ({
+          ...mapRoute(r as Record<string, unknown>),
+          orderCount: Number((r as Record<string, unknown>).order_count ?? 0),
+          deliverer: {
+            id:       (r as Record<string, unknown>).deliverer_id as string,
+            name:     (r as Record<string, unknown>).deliverer_name as string,
+            username: (r as Record<string, unknown>).deliverer_username as string,
+          },
+          orders: [],
+        })),
+        total,
+      }
     },
 
     async findById(id: string, storeId: string): Promise<RouteWithDetails | null> {
@@ -60,7 +68,7 @@ export function createPgRouteRepo(db: DB) {
       const { rows: orows } = await db.query(
         `SELECT o.id,
                 c.name                                        AS customer_name,
-                COALESCE(o.delivery_address, c.address)      AS customer_address,
+                o.delivery_address                           AS customer_address,
                 o.delivery_code,
                 o.status,
                 o.route_position,

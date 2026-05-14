@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Download, Eye, Loader2, X, Calendar } from 'lucide-react'
+import { Download, Eye, Loader2, X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -190,13 +190,19 @@ function ExportModal({ onClose }: ExportModalProps) {
   )
 }
 
+interface PagedRoutes { items: DeliveryRoute[]; total: number; page: number; pages: number }
+
 export default function RoutesPage() {
-  const { data: routes = [], isLoading } = useSWR<DeliveryRoute[]>(
-    '/routes',
-    (url: string) => api.get<DeliveryRoute[]>(url)
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useSWR<PagedRoutes>(
+    `/routes?page=${page}`,
+    (url: string) => api.get<PagedRoutes>(url)
   )
-  const features  = useStoreFeatures()
-  const { can }   = useAccess()
+  const routes   = data?.items ?? []
+  const total    = data?.total ?? 0
+  const pages    = data?.pages ?? 1
+  const features = useStoreFeatures()
+  const { can }  = useAccess()
   const [showExportModal, setShowExportModal] = useState(false)
 
   return (
@@ -204,9 +210,9 @@ export default function RoutesPage() {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rotas</h1>
-          <p className="text-sm text-gray-500 mt-1">Rotas de entrega criadas pelos entregadores</p>
+          <p className="text-sm text-gray-500 mt-1">{total} rota{total !== 1 ? 's' : ''} no total</p>
         </div>
-        {features.csvExportEnabled && (
+        {features.csvExportEnabled && can({ scope: 'routes:export' }) && (
           <button
             onClick={() => setShowExportModal(true)}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -222,12 +228,13 @@ export default function RoutesPage() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200"
             style={{ borderTopColor: 'var(--color-primary)' }} />
         </div>
-      ) : routes.length === 0 ? (
+      ) : total === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <p className="text-lg font-medium">Nenhuma rota ainda</p>
           <p className="text-sm mt-1">Rotas aparecem quando pedidos são atribuídos em lote</p>
         </div>
       ) : (
+        <>
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           <table className="w-full text-sm">
             <thead>
@@ -279,6 +286,31 @@ export default function RoutesPage() {
             </tbody>
           </table>
         </div>
+
+        {pages > 1 && (
+          <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+            <span>Página {page} de {pages}</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Anterior
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(pages, p + 1))}
+                disabled={page === pages}
+                className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                Próximo
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {showExportModal && (
