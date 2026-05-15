@@ -53,7 +53,8 @@ function shortId(uuid: string): string {
   return `#${uuid.slice(-8).toUpperCase()}`
 }
 
-function escapeCsv(val: string): string {
+function escapeCsv(val: string | null | undefined): string {
+  if (val == null) return ''
   if (val.includes('"') || val.includes(',') || val.includes('\n')) {
     return `"${val.replace(/"/g, '""')}"`
   }
