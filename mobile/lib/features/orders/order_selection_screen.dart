@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -623,7 +624,7 @@ class _ActiveRouteBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.local_shipping,
+            const Icon(LucideIcons.truck,
                 color: Color(0xFFEA580C), size: 20),
             const SizedBox(width: 10),
             Expanded(
@@ -685,7 +686,7 @@ class _RouteSummaryCard extends StatelessWidget {
                 ),
                 child: Icon(
                   isStarted
-                      ? Icons.local_shipping_outlined
+                      ? LucideIcons.truck
                       : Icons.inventory_2_outlined,
                   color: isStarted
                       ? const Color(0xFFEA580C)

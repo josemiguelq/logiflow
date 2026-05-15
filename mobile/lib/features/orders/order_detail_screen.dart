@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
@@ -124,7 +125,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               if (order.status == 'ON_ROUTE')
                 _ActionButton(
                   label: 'Iniciar Entrega',
-                  icon: Icons.delivery_dining,
+                  icon: LucideIcons.truck,
                   color: const Color(0xFFD97706),
                   loading: _loading,
                   onPressed: _startRoute,

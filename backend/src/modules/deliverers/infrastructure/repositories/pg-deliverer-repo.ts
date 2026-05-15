@@ -13,6 +13,7 @@ function mapRow(r: Record<string, unknown>): Deliverer {
     profileImageUrl: r.profile_image_url as string | undefined,
     status:          r.status as DelivererStatus,
     isActive:        r.is_active as boolean,
+    needsOnboarding: r.needs_onboarding as boolean,
     createdAt:       r.created_at as Date,
   }
 }
@@ -21,7 +22,7 @@ export function createPgDelivererRepo(db: DB) {
   return {
     async findByStore(storeId: string): Promise<Omit<Deliverer, 'passwordHash'>[]> {
       const { rows } = await db.query(
-        `SELECT id, store_id, name, email, username, profile_image_url, status, is_active, created_at
+        `SELECT id, store_id, name, email, username, profile_image_url, status, is_active, needs_onboarding, created_at
          FROM deliverers WHERE store_id = $1 ORDER BY is_active DESC, name ASC`,
         [storeId]
       )

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/auth/auth_provider.dart';
@@ -114,7 +115,7 @@ class AppDrawer extends ConsumerWidget {
               children: [
                 const SizedBox(height: 8),
                 _DrawerTile(
-                  icon: Icons.local_shipping_outlined,
+                  icon: LucideIcons.truck,
                   label: 'Pedidos',
                   onTap: () {
                     Navigator.of(context).pop();

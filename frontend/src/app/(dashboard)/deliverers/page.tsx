@@ -59,7 +59,7 @@ export default function DeliverersPage() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Nome</th>
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Username</th>
-                <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">E-mail</th>
+                <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Primeiro acesso</th>
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
                 <th className="px-5 py-3" />
               </tr>
@@ -90,7 +90,19 @@ export default function DeliverersPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-gray-500">@{d.username}</td>
-                    <td className="px-5 py-3.5 text-gray-500">{d.email ?? '—'}</td>
+                    <td className="px-5 py-3.5">
+                      {d.needsOnboarding ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          Pendente
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          Concluído
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3.5">
                       {inactive ? (
                         <span className="text-gray-400">—</span>

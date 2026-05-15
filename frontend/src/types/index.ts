@@ -37,6 +37,7 @@ export interface Deliverer {
   email?: string
   status: 'AVAILABLE' | 'ON_ROUTE' | 'OFFLINE'
   isActive: boolean
+  needsOnboarding: boolean
   profileImageUrl?: string
   createdAt: string
 }

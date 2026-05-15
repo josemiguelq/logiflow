@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/auth/auth_provider.dart';
@@ -58,7 +59,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     color: AppTheme.primary,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(Icons.local_shipping, color: Colors.white, size: 36),
+                  child: const Icon(LucideIcons.truck, color: Colors.white, size: 36),
                 ),
                 const SizedBox(height: 16),
                 const Text('LogiFlow',

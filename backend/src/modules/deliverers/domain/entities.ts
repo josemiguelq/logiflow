@@ -10,5 +10,6 @@ export interface Deliverer {
   profileImageUrl?: string
   status: DelivererStatus
   isActive: boolean
+  needsOnboarding: boolean
   createdAt: Date
 }
