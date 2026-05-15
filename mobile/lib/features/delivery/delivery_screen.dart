@@ -364,7 +364,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   XFile? _photo;
-  bool _loading = false;
+  bool _loading    = false;
+  bool _cancelling = false; // true = cancel mode
   String? _error;
 
   @override
@@ -393,14 +394,11 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     setState(() { _loading = true; _error = null; });
 
     try {
-      // Get location
       Position? pos;
       try {
-        pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high);
+        pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       } catch (_) {}
 
-      // Encode photo if taken
       String? photoUrl;
       if (_photo != null) {
         final bytes = await _photo!.readAsBytes();
@@ -427,6 +425,37 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     }
   }
 
+  Future<void> _cancelDelivery() async {
+    final note = _noteCtrl.text.trim();
+    if (note.isEmpty) {
+      setState(() => _error = 'Descreva o motivo do cancelamento');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      } catch (_) {}
+
+      await ApiClient().dio.post(
+        '/deliverer/orders/${widget.order.id}/cancel',
+        data: {
+          'note': note,
+          if (pos != null) 'lat': pos.latitude,
+          if (pos != null) 'lng': pos.longitude,
+        },
+      );
+
+      widget.onDelivered();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      final msg = (e as dynamic).response?.data?['error'] as String? ?? 'Erro ao cancelar. Tente novamente.';
+      setState(() { _error = msg; _loading = false; });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -445,99 +474,175 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
             ),
           ),
           const SizedBox(height: 16),
-          Text('Confirmar entrega — ${widget.order.customerName}',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+
+          // Header muda conforme o modo
+          if (_cancelling)
+            Row(children: [
+              const Icon(Icons.cancel_outlined, color: Color(0xFFDC2626), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Cancelar entrega — ${widget.order.customerName}',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
+                        color: Color(0xFFDC2626))),
+              ),
+            ])
+          else
+            Text('Confirmar entrega — ${widget.order.customerName}',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+
           const SizedBox(height: 4),
           Text('#${widget.order.shortId} · ${widget.order.customerAddress}',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 20),
 
-          // Code field (last 4 digits of customer phone)
-          if (widget.requireDeliveryCode) ...[
-            TextField(
-              controller: _codeCtrl,
-              maxLength: 4,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Últimos 4 dígitos do telefone',
-                hintText: '0000',
-                counterText: '',
-                prefixIcon: Icon(Icons.phone_outlined),
+          // Campos de confirmação (só no modo normal)
+          if (!_cancelling) ...[
+            if (widget.requireDeliveryCode) ...[
+              TextField(
+                controller: _codeCtrl,
+                maxLength: 4,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Últimos 4 dígitos do telefone',
+                  hintText: '0000',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                style: const TextStyle(
+                    fontFamily: 'monospace', letterSpacing: 6,
+                    fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              style: const TextStyle(
-                  fontFamily: 'monospace', letterSpacing: 6,
-                  fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
+            if (widget.requireDeliveryPhoto) ...[
+              GestureDetector(
+                onTap: _takePhoto,
+                child: Container(
+                  height: 80,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _photo == null && _error != null
+                          ? const Color(0xFFDC2626)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  child: _photo != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(File(_photo!.path), fit: BoxFit.cover))
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.camera_alt_outlined, color: Colors.grey.shade400),
+                            const SizedBox(width: 8),
+                            Text('Foto de comprovante (obrigatória)',
+                                style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
           ],
 
-          // Photo field — only shown when required or store wants it
-          if (widget.requireDeliveryPhoto) ...[
-            GestureDetector(
-              onTap: _takePhoto,
-              child: Container(
-                height: 80,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _photo == null && _error != null
-                        ? const Color(0xFFDC2626)
-                        : Colors.grey.shade200,
-                  ),
-                ),
-                child: _photo != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(File(_photo!.path), fit: BoxFit.cover))
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.camera_alt_outlined, color: Colors.grey.shade400),
-                          const SizedBox(width: 8),
-                          Text('Foto de comprovante (obrigatória)',
-                              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-                        ],
-                      ),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
+          // Campo de observação — opcional na entrega, obrigatório no cancelamento
           TextField(
             controller: _noteCtrl,
             maxLines: 2,
             maxLength: 500,
+            autofocus: _cancelling,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              labelText: 'Observação (opcional)',
-              hintText: 'Ex: deixado com porteiro, cliente ausente...',
+              labelText: _cancelling
+                  ? 'Motivo do cancelamento (obrigatório)'
+                  : 'Observação (opcional)',
+              hintText: _cancelling
+                  ? 'Ex: cliente recusou, endereço errado...'
+                  : 'Ex: deixado com porteiro, cliente ausente...',
               alignLabelWithHint: true,
               counterText: '',
-              prefixIcon: const Icon(Icons.notes_outlined),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              prefixIcon: Icon(
+                Icons.notes_outlined,
+                color: _cancelling ? const Color(0xFFDC2626) : null,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _cancelling ? const Color(0xFFDC2626) : Colors.grey.shade300,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _cancelling ? const Color(0xFFDC2626) : AppTheme.primary,
+                  width: 2,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _cancelling ? const Color(0xFFFFCDD2) : Colors.grey.shade300,
+                ),
+              ),
             ),
           ),
 
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!,
-                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+            Text(_error!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
           ],
 
           const SizedBox(height: 20),
+
+          // Botão principal
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _loading ? null : _confirm,
+              onPressed: _loading ? null : (_cancelling ? _cancelDelivery : _confirm),
               style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF16A34A)),
+                backgroundColor: _cancelling
+                    ? const Color(0xFFDC2626)
+                    : const Color(0xFF16A34A),
+              ),
               child: _loading
                   ? const SizedBox(
                       width: 22, height: 22,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Text('Confirmar entrega', style: TextStyle(fontSize: 16)),
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Text(
+                      _cancelling ? 'Confirmar cancelamento' : 'Confirmar entrega',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // Botão secundário: alterna entre cancelar / voltar
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: _loading
+                  ? null
+                  : () => setState(() {
+                        _cancelling = !_cancelling;
+                        _error = null;
+                        _noteCtrl.clear();
+                      }),
+              icon: Icon(
+                _cancelling ? Icons.arrow_back : Icons.cancel_outlined,
+                size: 16,
+                color: _cancelling ? Colors.grey.shade600 : const Color(0xFFDC2626),
+              ),
+              label: Text(
+                _cancelling ? 'Voltar' : 'Cancelar entrega',
+                style: TextStyle(
+                  color: _cancelling ? Colors.grey.shade600 : const Color(0xFFDC2626),
+                  fontSize: 14,
+                ),
+              ),
             ),
           ),
         ],

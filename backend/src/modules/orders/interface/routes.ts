@@ -361,12 +361,7 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
       if (d.status === 'OFFLINE') return reply.code(409).send({ error: 'Entregador está OFFLINE e não pode receber pedidos.' })
 
-      const route = await routeRepo.create({
-        storeId:     req.actor.storeId,
-        delivererId,
-        pickupCode:  generateCode(),
-      })
-
+      // Assign orders first — only create route if at least one succeeds
       const assigned = []
       for (let i = 0; i < orderIds.length; i++) {
         try {
@@ -374,14 +369,27 @@ export async function orderRoutes(app: FastifyInstance) {
             { orderId: orderIds[i]!, storeId: req.actor.storeId, delivererId, routePosition: i + 1 },
             { orderRepo }
           )
-          wsHub.broadcastOrderUpdate(req.actor.storeId, order)
-          queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
           assigned.push(order)
         } catch { /* skip orders that can't transition */ }
       }
 
+      if (assigned.length === 0) {
+        return reply.code(409).send({ error: 'Nenhum pedido pôde ser atribuído.' })
+      }
+
+      const route = await routeRepo.create({
+        storeId:     req.actor.storeId,
+        delivererId,
+        pickupCode:  generateCode(),
+      })
+
       const assignedIds = assigned.map(o => o.id)
       await routeRepo.linkOrders(route.id, assignedIds)
+
+      for (const order of assigned) {
+        wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+        queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
+      }
 
       return { route, orders: assigned }
     }
@@ -536,6 +544,91 @@ export async function orderRoutes(app: FastifyInstance) {
       } catch (err: unknown) {
         return reply.code(400).send({ error: (err as Error).message })
       }
+    }
+  )
+
+  // Deliverer returns an order to the PREPARING queue (unassigns themselves)
+  app.patch(
+    '/deliverer/orders/:id/return-to-queue',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+
+      const { rows: [order] } = await db.query(
+        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
+      if ((order as Record<string, unknown>).deliverer_id !== req.actor.sub) {
+        return reply.code(403).send({ error: 'Você não é o entregador deste pedido' })
+      }
+      const status = (order as Record<string, unknown>).status as string
+      if (!['ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY'].includes(status)) {
+        return reply.code(409).send({ error: 'Pedido não pode ser devolvido neste status' })
+      }
+
+      await db.query(
+        `UPDATE orders
+         SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
+         WHERE id = $1`,
+        [id]
+      )
+
+      const updated = await orderRepo.findById(id, req.actor.storeId)
+      if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+
+      const routeId = (order as Record<string, unknown>).route_id as string | undefined
+      if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+
+      return { ok: true }
+    }
+  )
+
+  // Deliverer cancels an order in transit (client refused, problem, etc.)
+  app.post(
+    '/deliverer/orders/:id/cancel',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { note, lat, lng } = z.object({
+        note: z.string().min(1),
+        lat:  z.number().optional(),
+        lng:  z.number().optional(),
+      }).parse(req.body)
+
+      const { rows: [order] } = await db.query(
+        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
+      if ((order as Record<string, unknown>).deliverer_id !== req.actor.sub) {
+        return reply.code(403).send({ error: 'Você não é o entregador deste pedido' })
+      }
+      const status = (order as Record<string, unknown>).status as string
+      if (!['ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY'].includes(status)) {
+        return reply.code(409).send({ error: 'Pedido não pode ser cancelado neste status' })
+      }
+
+      await db.query(
+        `UPDATE orders
+         SET status                     = 'CANCELLED',
+             delivery_note              = $2,
+             cancel_lat                 = $3,
+             cancel_lng                 = $4,
+             cancelled_by_deliverer_id  = $5,
+             cancelled_at               = now()
+         WHERE id = $1`,
+        [id, note, lat ?? null, lng ?? null, req.actor.sub]
+      )
+
+      const updated = await orderRepo.findById(id, req.actor.storeId)
+      if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      queueNotif(req.actor.storeId, id, 'CANCELLED')
+
+      const routeId = (order as Record<string, unknown>).route_id as string | undefined
+      if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+
+      return { ok: true }
     }
   )
 
