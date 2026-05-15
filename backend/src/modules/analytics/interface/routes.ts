@@ -82,6 +82,40 @@ export async function analyticsRoutes(app: FastifyInstance) {
     return base
   })
 
+  // GET /analytics/orders/averages?period=today|7d|30d
+  app.get('/analytics/orders/averages', { preHandler: guard }, async (req) => {
+    const { period } = z.object({
+      period: z.enum(['today', '7d', '30d']).default('30d'),
+    }).parse(req.query)
+
+    const interval = period === 'today' ? '0 days' : period === '7d' ? '6 days' : '29 days'
+
+    const { rows: [row] } = await db.query(
+      `SELECT
+         ROUND(AVG(per_deliverer.cnt)::numeric, 1) AS avg_per_deliverer,
+         ROUND(AVG(per_route.cnt)::numeric,     1) AS avg_per_route
+       FROM
+         (SELECT deliverer_id, COUNT(*) AS cnt
+          FROM orders
+          WHERE store_id = $1 AND status = 'DELIVERED'
+            AND deliverer_id IS NOT NULL
+            AND created_at >= DATE_TRUNC('day', now()) - $2::interval
+          GROUP BY deliverer_id) AS per_deliverer
+         FULL OUTER JOIN
+         (SELECT route_id, COUNT(*) AS cnt
+          FROM orders
+          WHERE store_id = $1 AND route_id IS NOT NULL
+            AND created_at >= DATE_TRUNC('day', now()) - $2::interval
+          GROUP BY route_id) AS per_route
+         ON false`,
+      [req.actor.storeId, interval]
+    )
+    return {
+      avgOrdersPerDeliverer: row ? Number(row.avg_per_deliverer) || 0 : 0,
+      avgOrdersPerRoute:     row ? Number(row.avg_per_route)     || 0 : 0,
+    }
+  })
+
   // GET /analytics/deliverers/summary
   app.get('/analytics/deliverers/summary', { preHandler: guard }, async (req) => {
     const { rows } = await db.query(

@@ -35,6 +35,11 @@ interface DelivererSummary {
   total:     number
 }
 
+interface OrderAverages {
+  avgOrdersPerDeliverer: number
+  avgOrdersPerRoute:     number
+}
+
 // ── Fetchers ──────────────────────────────────────────────────────────────────
 
 const fetcher = <T,>(url: string) => api.get<T>(url)
@@ -101,7 +106,8 @@ export default function AnalyticsPage() {
     if (!can(ACCESS)) router.replace('/orders')
   }, [isLoading, can, router])
 
-  const [scale, setScale] = useState<'day' | 'month'>('day')
+  const [scale,  setScale]  = useState<'day' | 'month'>('day')
+  const [period, setPeriod] = useState<'today' | '7d' | '30d'>('30d')
 
   const { data: timeseries, isLoading: tsLoading } = useSWR<TimePoint[]>(
     `/analytics/orders/timeseries?scale=${scale}`,
@@ -116,6 +122,11 @@ export default function AnalyticsPage() {
 
   const { data: deliverers } = useSWR<DelivererSummary>(
     '/analytics/deliverers/summary',
+    fetcher
+  )
+
+  const { data: averages } = useSWR<OrderAverages>(
+    `/analytics/orders/averages?period=${period}`,
     fetcher
   )
 
@@ -251,6 +262,53 @@ export default function AnalyticsPage() {
             {/* Total pill */}
             <div className="ml-auto self-start rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
               {deliverers ? `${deliverers.total} total` : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Avg cards — span full width to include the period selector header */}
+        <div className="col-span-2 sm:col-span-3 lg:col-span-4 rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          {/* Period selector header */}
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Médias</span>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+              {(['today', '7d', '30d'] as const).map((p, i) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={`px-3 py-1.5 transition-colors ${i > 0 ? 'border-l border-gray-200' : ''} ${
+                    period === p ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {p === 'today' ? 'Hoje' : p === '7d' ? '7 dias' : '30 dias'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
+            {/* Avg per deliverer */}
+            <div className="px-5 py-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Truck className="h-4 w-4 shrink-0 text-violet-500" />
+                <span className="text-xs font-medium text-violet-700">Média por entregador</span>
+              </div>
+              <p className="text-3xl font-bold text-gray-900">
+                {averages ? averages.avgOrdersPerDeliverer.toFixed(1) : '—'}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-400">entregas concluídas</p>
+            </div>
+
+            {/* Avg per route */}
+            <div className="px-5 py-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Navigation className="h-4 w-4 shrink-0 text-sky-500" />
+                <span className="text-xs font-medium text-sky-700">Média por rota</span>
+              </div>
+              <p className="text-3xl font-bold text-gray-900">
+                {averages ? averages.avgOrdersPerRoute.toFixed(1) : '—'}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-400">pedidos por rota</p>
             </div>
           </div>
         </div>
