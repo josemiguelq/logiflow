@@ -8,7 +8,7 @@ import {
 } from 'recharts'
 import {
   Package, Clock, Truck, CheckCircle, XCircle, Navigation,
-  Users, TrendingUp,
+  Users, TrendingUp, Calendar,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -38,6 +38,26 @@ interface DelivererSummary {
 interface OrderAverages {
   avgOrdersPerDeliverer: number
   avgOrdersPerRoute:     number
+}
+
+interface DelivererCount { name: string; delivered: number }
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+function toDateStr(d: Date) { return d.toISOString().slice(0, 10) }
+
+function thisMonthRange() {
+  const now = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth(), 1)
+  const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return { from: toDateStr(from), to: toDateStr(to) }
+}
+
+function lastMonthRange() {
+  const now  = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const to   = new Date(now.getFullYear(), now.getMonth(), 0)
+  return { from: toDateStr(from), to: toDateStr(to) }
 }
 
 // ── Fetchers ──────────────────────────────────────────────────────────────────
@@ -109,6 +129,9 @@ export default function AnalyticsPage() {
   const [scale,  setScale]  = useState<'day' | 'month'>('day')
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('30d')
 
+  const [dcRange, setDcRange] = useState(thisMonthRange)
+  const dcParams = new URLSearchParams({ from: dcRange.from, to: dcRange.to })
+
   const { data: timeseries, isLoading: tsLoading } = useSWR<TimePoint[]>(
     `/analytics/orders/timeseries?scale=${scale}`,
     fetcher,
@@ -127,6 +150,11 @@ export default function AnalyticsPage() {
 
   const { data: averages } = useSWR<OrderAverages>(
     `/analytics/orders/averages?period=${period}`,
+    fetcher
+  )
+
+  const { data: delivererCounts = [], isLoading: dcLoading } = useSWR<DelivererCount[]>(
+    `/analytics/deliverers/delivered-counts?${dcParams}`,
     fetcher
   )
 
@@ -312,6 +340,92 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Delivered orders per deliverer */}
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center gap-2 mr-auto">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            <span className="text-sm font-semibold text-gray-800">Entregas por entregador</span>
+          </div>
+
+          {/* Quick filters */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            {([
+              { label: 'Este mês',    range: thisMonthRange() },
+              { label: 'Mês passado', range: lastMonthRange() },
+            ] as const).map(({ label, range }, i) => {
+              const active = dcRange.from === range.from && dcRange.to === range.to
+              return (
+                <button
+                  key={label}
+                  onClick={() => setDcRange(range)}
+                  className={`px-3 py-1.5 transition-colors ${i > 0 ? 'border-l border-gray-200' : ''} ${
+                    active ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Calendar range */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600">
+            <Calendar className="h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="date"
+              value={dcRange.from}
+              max={dcRange.to}
+              onChange={e => setDcRange(r => ({ ...r, from: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="date"
+              value={dcRange.to}
+              min={dcRange.from}
+              max={toDateStr(new Date())}
+              onChange={e => setDcRange(r => ({ ...r, to: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Body */}
+        {dcLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+          </div>
+        ) : delivererCounts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <Truck className="mb-2 h-8 w-8" />
+            <p className="text-sm">Nenhuma entrega no período</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {(() => {
+              const max = delivererCounts[0]?.delivered ?? 1
+              return delivererCounts.map((d, i) => (
+                <div key={d.name} className="flex items-center gap-4 px-5 py-3">
+                  <span className="w-5 text-right text-xs font-medium text-gray-400">{i + 1}</span>
+                  <span className="w-40 shrink-0 truncate text-sm font-medium text-gray-800">{d.name}</span>
+                  <div className="flex flex-1 items-center gap-3">
+                    <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-green-500 transition-all"
+                        style={{ width: `${(d.delivered / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-8 text-right text-sm font-bold text-gray-900">{d.delivered}</span>
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
+        )}
       </div>
     </div>
   )

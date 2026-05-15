@@ -116,6 +116,31 @@ export async function analyticsRoutes(app: FastifyInstance) {
     }
   })
 
+  // GET /analytics/deliverers/delivered-counts?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get('/analytics/deliverers/delivered-counts', { preHandler: guard }, async (req) => {
+    const { from, to } = z.object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).parse(req.query)
+
+    const { rows } = await db.query(
+      `SELECT d.name, COUNT(o.id)::int AS delivered
+       FROM deliverers d
+       JOIN orders o ON o.deliverer_id = d.id
+       WHERE o.store_id      = $1
+         AND o.status        = 'DELIVERED'
+         AND o.delivered_at >= $2::date
+         AND o.delivered_at <  $3::date + INTERVAL '1 day'
+       GROUP BY d.id, d.name
+       ORDER BY delivered DESC`,
+      [req.actor.storeId, from, to]
+    )
+    return rows.map((r: Record<string, unknown>) => ({
+      name:      r.name as string,
+      delivered: r.delivered as number,
+    }))
+  })
+
   // GET /analytics/deliverers/summary
   app.get('/analytics/deliverers/summary', { preHandler: guard }, async (req) => {
     const { rows } = await db.query(
