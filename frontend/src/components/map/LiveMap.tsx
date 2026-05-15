@@ -59,6 +59,7 @@ interface Props {
   delivererLng?: number | null
   delivererName?: string
   destinations?: MapDestination[]
+  trail?: [number, number][]
   height?: string
   autoFitBounds?: boolean
   onDestinationClick?: (id: string) => void
@@ -71,6 +72,7 @@ export function LiveMap({
   delivererLng,
   delivererName = 'Entregador',
   destinations = [],
+  trail = [],
   height = '100%',
   autoFitBounds = false,
   onDestinationClick,
@@ -79,6 +81,7 @@ export function LiveMap({
   const mapRef              = useRef<L.Map | null>(null)
   const delivererMarkerRef  = useRef<L.Marker | null>(null)
   const destMarkersRef      = useRef<L.Marker[]>([])
+  const trailLayersRef      = useRef<L.Layer[]>([])
 
   // Initialize and destroy the Leaflet map.
   // Vanilla Leaflet (no react-leaflet) gives us explicit cleanup control,
@@ -102,6 +105,8 @@ export function LiveMap({
       delivererMarkerRef.current = null
       destMarkersRef.current.forEach((m) => m.remove())
       destMarkersRef.current = []
+      trailLayersRef.current.forEach((l) => l.remove())
+      trailLayersRef.current = []
 
       map.remove()
       mapRef.current = null
@@ -168,6 +173,42 @@ export function LiveMap({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destinations, autoFitBounds, onDestinationClick])
+
+  // Render trail polyline + start/end markers
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    trailLayersRef.current.forEach((l) => l.remove())
+    trailLayersRef.current = []
+
+    if (trail.length < 2) return
+
+    const polyline = L.polyline(trail, {
+      color: '#3B82F6',
+      weight: 3,
+      opacity: 0.75,
+      lineJoin: 'round',
+    }).addTo(map)
+
+    const startIcon = new L.DivIcon({
+      className: '',
+      html: '<div style="width:10px;height:10px;border-radius:50%;background:#22C55E;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+      iconAnchor: [5, 5],
+    })
+    const endIcon = new L.DivIcon({
+      className: '',
+      html: '<div style="width:10px;height:10px;border-radius:50%;background:#EF4444;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+      iconAnchor: [5, 5],
+    })
+
+    const startMarker = L.marker(trail[0]!,              { icon: startIcon }).bindPopup('Início').addTo(map)
+    const endMarker   = L.marker(trail[trail.length - 1]!, { icon: endIcon   }).bindPopup('Fim').addTo(map)
+
+    trailLayersRef.current = [polyline, startMarker, endMarker]
+
+    map.fitBounds(polyline.getBounds(), { padding: [40, 40] })
+  }, [trail])
 
   return (
     <div

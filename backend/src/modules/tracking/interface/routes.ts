@@ -42,8 +42,16 @@ export async function trackingRoutes(app: FastifyInstance) {
     { preHandler: requireStoreUser },
     async (req) => {
       const { delivererId } = req.params as { delivererId: string }
-      const { since } = req.query as { since?: string }
-      return repo.getHistory(delivererId, since ? new Date(since) : undefined)
+      const { from, to } = z.object({
+        from: z.string().optional(),
+        to:   z.string().optional(),
+      }).parse(req.query)
+
+      const now      = new Date()
+      const fromDate = from ? new Date(`${from}T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const toDate   = to   ? new Date(`${to}T23:59:59`)   : now
+
+      return repo.getHistory(delivererId, fromDate, toDate)
     }
   )
 }

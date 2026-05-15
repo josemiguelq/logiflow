@@ -56,14 +56,15 @@ export function createPgTrackingRepo(db: DB) {
       return rows[0] ?? null
     },
 
-    async getHistory(delivererId: string, since?: Date) {
+    async getHistory(delivererId: string, from: Date, to: Date) {
       const { rows } = await db.query(
         `SELECT lat, lng, recorded_at
          FROM location_history
          WHERE deliverer_id = $1
-           AND recorded_at > $2
+           AND recorded_at >= $2
+           AND recorded_at <= $3
          ORDER BY recorded_at ASC`,
-        [delivererId, since ?? new Date(Date.now() - 3_600_000)]
+        [delivererId, from, to]
       )
       return rows
     },
