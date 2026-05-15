@@ -1,9 +1,9 @@
 'use client'
 
-import { use, useEffect } from 'react'
+import { use, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Package, Navigation, Truck } from 'lucide-react'
+import { ArrowLeft, MapPin, Package, Navigation, Truck, Route } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -15,15 +15,33 @@ import { STATUS_LABELS } from '@/lib/utils'
 interface LocationPoint { lat: number; lng: number; recorded_at: string }
 interface DelivererInfo  { id: string; name: string; status: string }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+function yesterdayStr() {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export default function DelivererTrackingPage({ params }: { params: Promise<{ delivererId: string }> }) {
   const { delivererId } = use(params)
   const { user }        = useAuth()
   const { on }          = useWebSocket(user?.storeId)
 
+  const [from, setFrom] = useState(todayStr)
+  const [to,   setTo]   = useState(todayStr)
+
   const { data: location, mutate: mutateLocation } = useSWR<LocationPoint>(
     `/tracking/deliverer/${delivererId}/latest`,
     (u: string) => api.get<LocationPoint>(u),
     { refreshInterval: 10_000 }
+  )
+
+  const { data: history = [] } = useSWR<LocationPoint[]>(
+    `/tracking/deliverer/${delivererId}/history?from=${from}&to=${to}`,
+    (u: string) => api.get<LocationPoint[]>(u),
+    { refreshInterval: 30_000 }
   )
 
   const { data: orders = [], mutate: mutateOrders } = useSWR<Order[]>(
@@ -38,6 +56,8 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
   )
 
   const deliverer = deliverers.find((d) => d.id === delivererId)
+
+  const trail = history.map((p) => [p.lat, p.lng] as [number, number])
 
   // Live updates via WebSocket
   useEffect(() => {
@@ -99,6 +119,48 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         {/* Painel lateral */}
         <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-b border-gray-200 bg-white md:w-80 md:border-b-0 md:border-r">
+
+          {/* Filtro de histórico */}
+          <div className="border-b border-gray-100 p-5">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+              Histórico de rota
+            </p>
+            <div className="mb-2 flex gap-1.5">
+              <button
+                onClick={() => { setFrom(todayStr()); setTo(todayStr()) }}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${from === todayStr() && to === todayStr() ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Hoje
+              </button>
+              <button
+                onClick={() => { setFrom(yesterdayStr()); setTo(yesterdayStr()) }}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${from === yesterdayStr() && to === yesterdayStr() ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Ontem
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-400">–</span>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {history.length > 0 && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                <Route className="h-3.5 w-3.5" />
+                {history.length} pontos registrados
+              </div>
+            )}
+          </div>
 
           {/* Posição atual */}
           <div className="border-b border-gray-100 p-5">
@@ -184,6 +246,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
             destinations={destinations}
+            trail={trail}
             height="100%"
           />
         </div>
