@@ -429,13 +429,20 @@ export async function orderRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: 'Você está OFFLINE. Fique AVAILABLE para aceitar pedidos.' })
       }
 
+      // Claim only orders that are still PREPARING and unclaimed — track which ones succeeded
+      const claimedIds: string[] = []
       for (let i = 0; i < orderIds.length; i++) {
-        await db.query(
+        const { rowCount } = await db.query(
           `UPDATE orders
            SET status = 'ASSIGNED', deliverer_id = $1, route_position = $2
            WHERE id = $3 AND store_id = $4 AND status = 'PREPARING' AND deliverer_id IS NULL`,
           [req.actor.sub, i + 1, orderIds[i], req.actor.storeId]
         )
+        if ((rowCount ?? 0) > 0) claimedIds.push(orderIds[i]!)
+      }
+
+      if (claimedIds.length === 0) {
+        return reply.code(409).send({ error: 'Esses pedidos já foram pegos por outro entregador. Atualize a lista.' })
       }
 
       const route = await routeRepo.create({
@@ -443,7 +450,8 @@ export async function orderRoutes(app: FastifyInstance) {
         delivererId: req.actor.sub,
         pickupCode:  generateCode(),
       })
-      await routeRepo.linkOrders(route.id, orderIds)
+      // Link only the orders actually claimed — not the full original list
+      await routeRepo.linkOrders(route.id, claimedIds)
 
       const claimedOrders = await orderRepo.findByRoute(route.id)
       for (const o of claimedOrders) {

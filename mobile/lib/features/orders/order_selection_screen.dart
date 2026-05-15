@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,6 +148,13 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       ref.invalidate(_routesProvider);
       ref.invalidate(_preparingOrdersProvider);
       if (mounted) context.push('/plan-route', extra: route);
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = (e.response?.data as Map?)?['error'] as String?
+          ?? 'Erro ao iniciar rota. Tente novamente.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      // Refresh the list so stale orders (already taken) disappear
+      if (e.response?.statusCode == 409) _refresh();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
