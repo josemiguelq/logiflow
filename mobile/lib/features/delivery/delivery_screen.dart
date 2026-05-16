@@ -403,7 +403,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
 
   Future<void> _takePhoto() async {
     final f = await ImagePicker().pickImage(
-      source: ImageSource.camera, maxWidth: 1024, imageQuality: 70);
+      source: ImageSource.camera, maxWidth: 1280, imageQuality: 60);
     if (f != null) setState(() => _photo = f);
   }
 
@@ -428,6 +428,14 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       String? photoUrl;
       if (_photo != null) {
         final bytes = await _photo!.readAsBytes();
+        const maxBytes = 10 * 1024 * 1024;
+        if (bytes.length > maxBytes) {
+          setState(() {
+            _error = 'Foto muito grande (máx. 10 MB). Tente novamente.';
+            _loading = false;
+          });
+          return;
+        }
         photoUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       }
 

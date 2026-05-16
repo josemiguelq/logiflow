@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify'
+import rateLimit from '@fastify/rate-limit'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
@@ -15,6 +16,14 @@ const loginSchema = z.object({
 })
 
 export async function authRoutes(app: FastifyInstance) {
+  await app.register(rateLimit, {
+    max:         10,
+    timeWindow:  '1 minute',
+    errorResponseBuilder: () => ({
+      error: 'Muitas tentativas. Aguarde 1 minuto e tente novamente.',
+    }),
+  })
+
   const storeUserRepo   = createPgStoreUserRepo(db)
   const delivererRepo   = createPgDelivererAuthRepo(db)
   const signJwt = (payload: object) => app.jwt.sign(payload as Record<string, unknown>)
