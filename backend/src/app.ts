@@ -80,7 +80,6 @@ export function buildApp() {
           storeId:     payload.storeId,
           delivererId: payload.type === 'deliverer' ? payload.sub : undefined,
           ws:          socket,
-          alive:       true,
         })
 
         // Deliverer app sends location via WebSocket every ~15s
