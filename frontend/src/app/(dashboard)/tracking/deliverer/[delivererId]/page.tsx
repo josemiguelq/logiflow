@@ -1,7 +1,6 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X } from 'lucide-react'
@@ -10,20 +9,8 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { StatusBadge } from '@/components/ui/badge'
-import { MapDestination } from '@/components/map'
+import { LiveMap, MapDestination } from '@/components/map'
 import { STATUS_LABELS } from '@/lib/utils'
-
-const DelivererGoogleMap = dynamic(
-  () => import('@/components/map/DelivererGoogleMap').then(m => m.DelivererGoogleMap),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-gray-100">
-        <p className="text-sm text-gray-400">Carregando mapa...</p>
-      </div>
-    ),
-  }
-)
 
 interface LocationPoint { lat: number; lng: number; recorded_at: string }
 interface DelivererInfo  { id: string; name: string; status: string }
@@ -267,7 +254,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
               Aguardando localização do entregador...
             </div>
           )}
-          <DelivererGoogleMap
+          <LiveMap
             delivererLat={location?.lat}
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
