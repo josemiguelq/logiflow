@@ -19,8 +19,8 @@ export function startHeartbeat() {
 }
 
 export const wsHub = {
-  register(client: WsClient) {
-    client.alive = true
+  register(input: Omit<WsClient, 'alive'>) {
+    const client: WsClient = { ...input, alive: true }
     clients.add(client)
     client.ws.on('pong', () => { client.alive = true })
     client.ws.on('close', () => clients.delete(client))
