@@ -1,16 +1,29 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Package, Navigation, Truck, Route } from 'lucide-react'
+import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { StatusBadge } from '@/components/ui/badge'
-import { LiveMap, MapDestination } from '@/components/map'
+import { MapDestination } from '@/components/map'
 import { STATUS_LABELS } from '@/lib/utils'
+
+const DelivererGoogleMap = dynamic(
+  () => import('@/components/map/DelivererGoogleMap').then(m => m.DelivererGoogleMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-gray-100">
+        <p className="text-sm text-gray-400">Carregando mapa...</p>
+      </div>
+    ),
+  }
+)
 
 interface LocationPoint { lat: number; lng: number; recorded_at: string }
 interface DelivererInfo  { id: string; name: string; status: string }
@@ -29,8 +42,9 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
   const { user }        = useAuth()
   const { on }          = useWebSocket(user?.storeId)
 
-  const [from, setFrom] = useState(todayStr)
-  const [to,   setTo]   = useState(todayStr)
+  const [from, setFrom]           = useState(todayStr)
+  const [to,   setTo]             = useState(todayStr)
+  const [showHistory, setShowHistory] = useState(false)
 
   const { data: location, mutate: mutateLocation } = useSWR<LocationPoint>(
     `/tracking/deliverer/${delivererId}/latest`,
@@ -57,8 +71,6 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
 
   const deliverer = deliverers.find((d) => d.id === delivererId)
 
-
-  // Live updates via WebSocket
   useEffect(() => {
     return on('deliverer_location', (data: unknown) => {
       const d = data as { delivererId: string }
@@ -74,7 +86,6 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
     (o) => !['DELIVERED', 'CANCELLED'].includes(o.status)
   )
 
-  // Destinos: endereços dos clientes dos pedidos ativos
   const destinations: MapDestination[] = activeOrders
     .filter((o) => o.customer.lat != null)
     .map((o, i) => ({
@@ -153,12 +164,25 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
                 className="w-full rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            {history.length > 0 && (
-              <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                <Route className="h-3.5 w-3.5" />
-                {history.length} pontos registrados
-              </div>
-            )}
+            <div className="mt-2 flex items-center justify-between">
+              {history.length > 0 ? (
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Route className="h-3.5 w-3.5" />
+                  {history.length} pontos registrados
+                </div>
+              ) : (
+                <span />
+              )}
+              {history.length > 0 && (
+                <button
+                  onClick={() => setShowHistory(true)}
+                  className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                >
+                  <Table2 className="h-3.5 w-3.5" />
+                  Ver detalhes
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Posição atual */}
@@ -243,7 +267,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
               Aguardando localização do entregador...
             </div>
           )}
-          <LiveMap
+          <DelivererGoogleMap
             delivererLat={location?.lat}
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
@@ -253,6 +277,56 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
           />
         </div>
       </div>
+
+      {/* Modal de histórico */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+            {/* Modal header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Histórico de localização</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{history.length} pontos · {from} → {to}</p>
+              </div>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Tabela */}
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-400">#</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Latitude</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Longitude</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Horário</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {history.map((p, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-6 py-2.5 text-xs text-gray-400">{i + 1}</td>
+                      <td className="px-6 py-2.5 font-mono text-xs text-gray-700">{p.lat.toFixed(6)}</td>
+                      <td className="px-6 py-2.5 font-mono text-xs text-gray-700">{p.lng.toFixed(6)}</td>
+                      <td className="px-6 py-2.5 text-xs text-gray-600">
+                        {new Date(p.recorded_at).toLocaleString('pt-BR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit', second: '2-digit',
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
