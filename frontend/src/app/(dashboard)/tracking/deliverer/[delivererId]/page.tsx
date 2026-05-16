@@ -174,7 +174,10 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
                     {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
                   </p>
                   <p className="mt-0.5 text-xs text-gray-400">
-                    Atualizado {new Date(location.recorded_at).toLocaleTimeString('pt-BR')}
+                    Atualizado {new Date(location.recorded_at).toLocaleString('pt-BR', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    })}
                   </p>
                 </div>
               </div>
