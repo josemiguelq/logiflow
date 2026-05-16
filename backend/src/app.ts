@@ -26,33 +26,29 @@ export function buildApp() {
     },
   })
 
-  // Em desenvolvimento, refletimos sempre a origem (evita CORS ao misturar localhost /
-  // 127.0.0.1 ou porta diferente da lista). Em produção (ou CORS_STRICT=1), usa FRONTEND_URL.
-  const strictCors =
-    process.env.NODE_ENV === 'production' || process.env.CORS_STRICT === '1'
+  const strictCors  = process.env.NODE_ENV === 'production' || process.env.CORS_STRICT === '1'
+  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean) ?? []
 
-  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean)
-
-  let corsOrigin: boolean | string | string[]
-  if (!strictCors) {
-    corsOrigin = true
-  } else if (corsOrigins && corsOrigins.length > 0) {
-    corsOrigin = corsOrigins.length === 1 ? corsOrigins[0]! : corsOrigins
-  } else {
-    corsOrigin = true
-  }
-
-  if (strictCors && corsOrigin === true) {
-    console.warn(
-      '[cors] FRONTEND_URL não definido: aceitando qualquer origem (refletida). Defina FRONTEND_URL em produção.'
-    )
+  if (strictCors && corsOrigins.length === 0) {
+    console.warn('[cors] FRONTEND_URL não definido: refletindo qualquer origem. Defina FRONTEND_URL em produção.')
   }
 
   app.register(cors, {
-    origin:          corsOrigin,
-    credentials:     true,
+    origin(origin, cb) {
+      if (!strictCors) {
+        // Desenvolvimento: reflete a origem ou aceita sem origem (ex: curl)
+        cb(null, origin ?? '*')
+        return
+      }
+      if (!origin || corsOrigins.includes(origin)) {
+        cb(null, origin ?? '*')
+        return
+      }
+      cb(new Error('Not allowed by CORS'), false)
+    },
+    credentials:    true,
     allowedHeaders: ['Content-Type', 'Authorization'],
-    methods:         ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods:        ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
 
   app.register(jwt, {
