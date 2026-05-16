@@ -35,8 +35,8 @@ export function buildApp() {
 
   app.register(cors, {
     origin(origin, cb) {
-      if (!strictCors) {
-        // Desenvolvimento: reflete a origem ou aceita sem origem (ex: curl)
+      // Sem lista configurada ou fora do modo strict: reflete qualquer origem
+      if (!strictCors || corsOrigins.length === 0) {
         cb(null, origin ?? '*')
         return
       }
