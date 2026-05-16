@@ -50,7 +50,7 @@ interface MapPin {
 
 interface MapData {
   orders: MapPin[]
-  trail:  { lat: number; lng: number }[]
+  trail:  { lat: number; lng: number; recorded_at: string }[]
 }
 
 interface Props { params: Promise<{ id: string }> }

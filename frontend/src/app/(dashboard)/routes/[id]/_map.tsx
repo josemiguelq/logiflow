@@ -13,9 +13,15 @@ interface OrderPin {
   lng: number
 }
 
+interface TrailPoint {
+  lat: number
+  lng: number
+  recorded_at?: string
+}
+
 interface Props {
   orders: OrderPin[]
-  trail:  { lat: number; lng: number }[]
+  trail:  TrailPoint[]
 }
 
 function pinColor(status: string): string {
@@ -44,6 +50,12 @@ function makeNumberedIcon(label: string, color: string): L.DivIcon {
   })
 }
 
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+}
+
 export default function RouteMap({ orders, trail }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<L.Map | null>(null)
@@ -57,19 +69,59 @@ export default function RouteMap({ orders, trail }: Props) {
 
     const allPoints: L.LatLngExpression[] = []
 
-    // Draw trail first (under markers)
     if (trail.length >= 2) {
-      const trailCoords = trail.map(p => [p.lat, p.lng] as L.LatLngExpression)
-      L.polyline(trailCoords, {
-        color:  '#6366F1',
-        weight: 3,
-        opacity: 0.75,
+      const coords = trail.map(p => [p.lat, p.lng] as L.LatLngExpression)
+
+      // Polyline
+      L.polyline(coords, {
+        color:     '#6366F1',
+        weight:    3,
+        opacity:   0.7,
         dashArray: '6 4',
       }).addTo(map)
-      allPoints.push(...trailCoords)
+
+      // Start marker
+      const startPoint = trail[0]!
+      L.marker([startPoint.lat, startPoint.lng], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="width:12px;height:12px;border-radius:50%;background:#22C55E;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+          iconAnchor: [6, 6],
+        }),
+      })
+        .bindPopup(`Início${startPoint.recorded_at ? ` — ${fmtTime(startPoint.recorded_at)}` : ''}`)
+        .addTo(map)
+
+      // End marker
+      const endPoint = trail[trail.length - 1]!
+      L.marker([endPoint.lat, endPoint.lng], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="width:12px;height:12px;border-radius:50%;background:#EF4444;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+          iconAnchor: [6, 6],
+        }),
+      })
+        .bindPopup(`Último ponto${endPoint.recorded_at ? ` — ${fmtTime(endPoint.recorded_at)}` : ''}`)
+        .addTo(map)
+
+      // One circle per intermediate GPS point
+      trail.slice(1, -1).forEach(p => {
+        L.circleMarker([p.lat, p.lng], {
+          radius:      4,
+          color:       '#4338CA',
+          weight:      1.5,
+          opacity:     0.9,
+          fillColor:   '#A5B4FC',
+          fillOpacity: 1,
+        })
+          .bindPopup(p.recorded_at ? fmtTime(p.recorded_at) : `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`)
+          .addTo(map)
+      })
+
+      allPoints.push(...coords)
     }
 
-    // Draw order pins
+    // Order pins (rendered on top of trail)
     orders.forEach((o, i) => {
       const color  = pinColor(o.status)
       const label  = String(o.routePosition ?? i + 1)

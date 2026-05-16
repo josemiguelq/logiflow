@@ -84,14 +84,14 @@ export async function routeRoutes(app: FastifyInstance) {
 
     // Verify route belongs to store
     const { rows: [routeRow] } = await db.query(
-      `SELECT r.deliverer_id, r.started_at, r.finished_at
+      `SELECT r.deliverer_id, r.created_at, r.finished_at
        FROM routes r WHERE r.id = $1 AND r.store_id = $2`,
       [id, req.actor.storeId]
     )
     if (!routeRow) return reply.code(404).send({ error: 'Not found' })
-    const { deliverer_id, started_at, finished_at } = routeRow as {
+    const { deliverer_id, created_at, finished_at } = routeRow as {
       deliverer_id: string
-      started_at:   Date | null
+      created_at:   Date
       finished_at:  Date | null
     }
 
@@ -109,18 +109,16 @@ export async function routeRoutes(app: FastifyInstance) {
       [id]
     )
 
-    // Deliverer trail between route started_at and finished_at (or now)
-    const { rows: trailRows } = started_at
-      ? await db.query(
-          `SELECT lat, lng
-           FROM location_history
-           WHERE deliverer_id = $1
-             AND recorded_at >= $2
-             AND recorded_at <= COALESCE($3, now())
-           ORDER BY recorded_at ASC`,
-          [deliverer_id, started_at, finished_at]
-        )
-      : { rows: [] }
+    // Deliverer trail between route created_at and finished_at (or now)
+    const { rows: trailRows } = await db.query(
+      `SELECT lat, lng, recorded_at
+       FROM location_history
+       WHERE deliverer_id = $1
+         AND recorded_at >= $2
+         AND recorded_at <= COALESCE($3, now())
+       ORDER BY recorded_at ASC`,
+      [deliverer_id, created_at, finished_at]
+    )
 
     return {
       orders: (orderRows as Record<string, unknown>[]).map(o => ({
@@ -131,9 +129,10 @@ export async function routeRoutes(app: FastifyInstance) {
         lat:           o.lat,
         lng:           o.lng,
       })),
-      trail: (trailRows as { lat: number; lng: number }[]).map(p => ({
-        lat: p.lat,
-        lng: p.lng,
+      trail: (trailRows as { lat: number; lng: number; recorded_at: Date }[]).map(p => ({
+        lat:         p.lat,
+        lng:         p.lng,
+        recorded_at: p.recorded_at.toISOString(),
       })),
     }
   })
