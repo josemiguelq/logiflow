@@ -1,12 +1,28 @@
 import { WebSocket } from 'ws'
 
-type WsClient = { storeId: string; delivererId?: string; ws: WebSocket }
+type WsClient = { storeId: string; delivererId?: string; ws: WebSocket; alive: boolean }
 
 const clients = new Set<WsClient>()
 
+export function startHeartbeat() {
+  setInterval(() => {
+    for (const c of clients) {
+      if (!c.alive) {
+        c.ws.terminate()
+        clients.delete(c)
+        continue
+      }
+      c.alive = false
+      c.ws.ping()
+    }
+  }, 30_000)
+}
+
 export const wsHub = {
   register(client: WsClient) {
+    client.alive = true
     clients.add(client)
+    client.ws.on('pong', () => { client.alive = true })
     client.ws.on('close', () => clients.delete(client))
   },
 

@@ -90,16 +90,14 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
       return sessionStore.getStatus(storeId)
     },
 
-    async sendMessage(phone, text) {
+    async sendMessage(storeId, phone, text) {
       let normalizedPhone = phone.replace(/\D/g, '')
       if (!normalizedPhone.startsWith('55')) normalizedPhone = `55${normalizedPhone}`
       const jid = `${normalizedPhone}@s.whatsapp.net`
 
-      for (const [, socket] of sockets) {
-        await socket.sendMessage(jid, { text })
-        return
-      }
-      throw new Error('No active WhatsApp session')
+      const socket = sockets.get(storeId)
+      if (!socket) throw new Error(`No active WhatsApp session for store ${storeId}`)
+      await socket.sendMessage(jid, { text })
     },
 
     async reconnectAll() {

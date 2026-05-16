@@ -31,7 +31,7 @@ export async function sendDeliveryNotification(
   const logId = await messageLog.log({ storeId, orderId, phone, message })
 
   try {
-    await whatsapp.sendMessage(phone, message)
+    await whatsapp.sendMessage(storeId, phone, message)
     await messageLog.markSent(logId)
   } catch {
     await messageLog.markFailed(logId)
