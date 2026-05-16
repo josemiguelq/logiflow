@@ -33,6 +33,10 @@ export const SCOPES = [
   // Settings
   'settings:view',
   'settings:edit',
+
+  // Goals
+  'goals:view',
+  'goals:manage',
 ] as const
 
 export type Scope = typeof SCOPES[number]
@@ -57,6 +61,8 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'analytics:view':       'Analítico — visualizar',
   'settings:view':        'Configurações — visualizar',
   'settings:edit':        'Configurações — editar',
+  'goals:view':           'Metas — visualizar',
+  'goals:manage':         'Metas — criar e editar',
 }
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
@@ -68,6 +74,7 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'WhatsApp',       scopes: ['whatsapp:view', 'whatsapp:connect'] },
   { label: 'Analítico',      scopes: ['analytics:view'] },
   { label: 'Configurações',  scopes: ['settings:view', 'settings:edit'] },
+  { label: 'Metas',          scopes: ['goals:view', 'goals:manage'] },
 ]
 
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
@@ -81,5 +88,6 @@ export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
     'customers:view', 'customers:create', 'customers:edit',
     'deliverers:view',
     'settings:view',
+    'goals:view',
   ],
 }

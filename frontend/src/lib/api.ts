@@ -24,6 +24,7 @@ async function request<T>(
     throw new Error(err.error ?? 'Request failed')
   }
 
+  if (res.status === 204) return null as T
   return res.json()
 }
 
