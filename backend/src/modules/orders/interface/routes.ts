@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { OrderStatus } from '../domain/entities'
+import { OrderStatus, canTransition } from '../domain/entities'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { createPgOrderRepo } from '../infrastructure/repositories/pg-order-repo'
@@ -361,30 +361,39 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
       if (d.status === 'OFFLINE') return reply.code(409).send({ error: 'Entregador está OFFLINE e não pode receber pedidos.' })
 
-      // Assign orders first — only create route if at least one succeeds
-      const assigned = []
-      for (let i = 0; i < orderIds.length; i++) {
-        try {
-          const order = await assignDeliverer(
-            { orderId: orderIds[i]!, storeId: req.actor.storeId, delivererId, routePosition: i + 1 },
-            { orderRepo }
+      const { route, assigned } = await db.transaction(async (client) => {
+        const assigned = []
+        for (let i = 0; i < orderIds.length; i++) {
+          const { rows: [order] } = await client.query(
+            `SELECT id, status FROM orders WHERE id = $1 AND store_id = $2`,
+            [orderIds[i], req.actor.storeId]
           )
-          assigned.push(order)
-        } catch { /* skip orders that can't transition */ }
-      }
+          if (!order) throw Object.assign(new Error(`Pedido ${orderIds[i]} não encontrado`), { statusCode: 404 })
+          if (!canTransition(order.status as OrderStatus, 'ASSIGNED')) {
+            throw Object.assign(new Error(`Pedido ${orderIds[i]} não pode ser atribuído (status: ${order.status})`), { statusCode: 409 })
+          }
+          const { rows: [updated] } = await client.query(
+            `UPDATE orders SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED'
+             WHERE id = $1 RETURNING *`,
+            [orderIds[i], delivererId, i + 1]
+          )
+          assigned.push(await orderRepo.findById(updated.id as string, req.actor.storeId))
+        }
 
-      if (assigned.length === 0) {
-        return reply.code(409).send({ error: 'Nenhum pedido pôde ser atribuído.' })
-      }
+        const { rows: [routeRow] } = await client.query(
+          `INSERT INTO routes (store_id, deliverer_id, pickup_code) VALUES ($1,$2,$3) RETURNING *`,
+          [req.actor.storeId, delivererId, generateCode()]
+        )
+        await client.query(
+          `UPDATE orders SET route_id = $1 WHERE id = ANY($2::uuid[])`,
+          [routeRow.id, assigned.map(o => o!.id)]
+        )
 
-      const route = await routeRepo.create({
-        storeId:     req.actor.storeId,
-        delivererId,
-        pickupCode:  generateCode(),
+        return {
+          route: { id: routeRow.id as string, storeId: routeRow.store_id as string, delivererId, pickupCode: routeRow.pickup_code as string, status: routeRow.status as string, createdAt: routeRow.created_at as Date },
+          assigned: assigned as NonNullable<typeof assigned[0]>[],
+        }
       })
-
-      const assignedIds = assigned.map(o => o.id)
-      await routeRepo.linkOrders(route.id, assignedIds)
 
       for (const order of assigned) {
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)

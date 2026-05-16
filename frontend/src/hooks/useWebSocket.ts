@@ -7,9 +7,11 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001'
 type EventHandler = (data: unknown) => void
 
 export function useWebSocket(storeId: string | undefined) {
-  const ws        = useRef<WebSocket | null>(null)
-  const handlers  = useRef<Map<string, EventHandler[]>>(new Map())
-  const reconnect = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const ws                = useRef<WebSocket | null>(null)
+  const handlers          = useRef<Map<string, EventHandler[]>>(new Map())
+  const reconnectHandlers = useRef<Set<() => void>>(new Set())
+  const reconnect         = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const hasConnected      = useRef(false)
 
   const connect = useCallback(() => {
     if (!storeId) return
@@ -21,6 +23,13 @@ export function useWebSocket(storeId: string | undefined) {
     if (!token) return
 
     ws.current = new WebSocket(`${WS_URL}/ws?token=${encodeURIComponent(token)}`)
+
+    ws.current.onopen = () => {
+      if (hasConnected.current) {
+        reconnectHandlers.current.forEach((h) => h())
+      }
+      hasConnected.current = true
+    }
 
     ws.current.onmessage = (evt) => {
       try {
@@ -51,5 +60,10 @@ export function useWebSocket(storeId: string | undefined) {
     }
   }, [])
 
-  return { on }
+  const onReconnect = useCallback((handler: () => void) => {
+    reconnectHandlers.current.add(handler)
+    return () => { reconnectHandlers.current.delete(handler) }
+  }, [])
+
+  return { on, onReconnect }
 }

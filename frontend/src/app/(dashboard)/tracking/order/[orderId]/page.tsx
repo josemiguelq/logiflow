@@ -16,7 +16,7 @@ interface LocationPoint { lat: number; lng: number; recorded_at: string }
 export default function OrderTrackingPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = use(params)
   const { user }    = useAuth()
-  const { on }      = useWebSocket(user?.storeId)
+  const { on, onReconnect } = useWebSocket(user?.storeId)
 
   const { data: order, mutate } = useSWR<Order>(
     `/orders/${orderId}`,
@@ -43,6 +43,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ orderI
   useEffect(() => {
     return on('order_updated', () => mutate())
   }, [on, mutate])
+
+  useEffect(() => onReconnect(() => { mutate(); mutateLocation() }), [onReconnect, mutate, mutateLocation])
 
   const destinations: MapDestination[] = order?.customer.lat
     ? [{ lat: order.customer.lat, lng: order.customer.lng!, label: order.customer.name }]

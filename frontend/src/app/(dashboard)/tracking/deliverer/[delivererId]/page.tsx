@@ -27,7 +27,7 @@ function yesterdayStr() {
 export default function DelivererTrackingPage({ params }: { params: Promise<{ delivererId: string }> }) {
   const { delivererId } = use(params)
   const { user }        = useAuth()
-  const { on }          = useWebSocket(user?.storeId)
+  const { on, onReconnect } = useWebSocket(user?.storeId)
 
   const [from, setFrom]           = useState(todayStr)
   const [to,   setTo]             = useState(todayStr)
@@ -68,6 +68,8 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
   useEffect(() => {
     return on('order_updated', () => mutateOrders())
   }, [on, mutateOrders])
+
+  useEffect(() => onReconnect(() => { mutateLocation(); mutateOrders() }), [onReconnect, mutateLocation, mutateOrders])
 
   const activeOrders = orders.filter(
     (o) => !['DELIVERED', 'CANCELLED'].includes(o.status)

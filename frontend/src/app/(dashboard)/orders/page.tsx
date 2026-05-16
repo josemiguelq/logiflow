@@ -25,7 +25,7 @@ const COMPLETED_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELLED']
 
 export default function OrdersPage() {
   const { user }   = useAuth()
-  const { on }     = useWebSocket(user?.storeId)
+  const { on, onReconnect } = useWebSocket(user?.storeId)
   const router     = useRouter()
 
   const [status,       setStatus]       = useState<OrderStatus | ''>('')
@@ -51,6 +51,7 @@ export default function OrdersPage() {
   const { data: deliverers = [] } = useSWR('/deliverers', (u: string) => api.get<Deliverer[]>(u))
 
   useEffect(() => on('order_updated', () => mutate()), [on, mutate])
+  useEffect(() => onReconnect(() => mutate()), [onReconnect, mutate])
 
   // Split active (cards) vs completed (table)
   const activeOrders    = orders.filter(o => !COMPLETED_STATUSES.includes(o.status))
