@@ -26,22 +26,12 @@ export function buildApp() {
     },
   })
 
-  const strictCors  = process.env.NODE_ENV === 'production' || process.env.CORS_STRICT === '1'
   const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean) ?? []
-
-  if (strictCors && corsOrigins.length === 0) {
-    console.warn('[cors] FRONTEND_URL não definido: refletindo qualquer origem. Defina FRONTEND_URL em produção.')
-  }
 
   app.register(cors, {
     origin(origin, cb) {
-      // Sem lista configurada ou fora do modo strict: reflete qualquer origem
-      if (!strictCors || corsOrigins.length === 0) {
-        cb(null, origin ?? '*')
-        return
-      }
-      if (!origin || corsOrigins.includes(origin)) {
-        cb(null, origin ?? '*')
+      if (corsOrigins.length === 0 || !origin || corsOrigins.includes(origin)) {
+        cb(null, true)   // reflect the Origin header — works with credentials
         return
       }
       cb(new Error('Not allowed by CORS'), false)
