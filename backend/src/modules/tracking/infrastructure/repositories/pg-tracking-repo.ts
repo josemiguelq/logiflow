@@ -22,6 +22,12 @@ export function createPgTrackingRepo(db: DB) {
       lat: number,
       lng: number
     ) {
+      const { rows: statusRows } = await db.query(
+        `SELECT status FROM deliverers WHERE id = $1`,
+        [delivererId]
+      )
+      if (statusRows[0]?.status === 'OFFLINE') return false
+
       const { rows: last } = await db.query(
         `SELECT lat, lng, recorded_at
          FROM location_history

@@ -5,6 +5,12 @@ import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
 import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/pg-order-repo'
+import { startHeartbeat } from './shared/infra/websocket'
+
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  console.error('[FATAL] JWT_SECRET is not set. Refusing to start in production.')
+  process.exit(1)
+}
 
 function buildStatusMessage(
   statusEvent: string,
@@ -74,6 +80,9 @@ async function start() {
 
   // ── Reconnect previously active WhatsApp sessions ────────────────────────
   whatsapp.reconnectAll().catch((err) => app.log.warn({ err }, 'WhatsApp reconnect failed'))
+
+  // ── WebSocket heartbeat ──────────────────────────────────────────────────
+  startHeartbeat()
 
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)
