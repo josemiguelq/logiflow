@@ -4,81 +4,92 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../core/api/api_client.dart';
 
+enum LocationPermissionIssue { serviceDisabled, denied, deniedForever }
+
 class LocationService {
-  Timer?     _timer;
-  WebSocket? _socket;
-  bool       _connecting = false;
-  bool       _started = false;
+  WebSocket?                   _socket;
+  bool                         _connecting  = false;
+  bool                         _started     = false;
+  String?                      _delivererId;
+  StreamSubscription<Position>? _positionSub;
   final _api = ApiClient();
 
-  Future<bool> requestPermission() async {
+  Future<LocationPermissionIssue?> _requestPermission() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
-      debugPrint('[Location] Serviço de localização desativado no aparelho');
-      return false;
+      debugPrint('[Location] GPS desativado no aparelho');
+      return LocationPermissionIssue.serviceDisabled;
     }
 
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
     }
 
-    if (permission == LocationPermission.deniedForever) {
-      debugPrint('[Location] Permissão negada permanentemente (deniedForever)');
-      return false;
+    if (perm == LocationPermission.deniedForever) {
+      debugPrint('[Location] Permissão negada permanentemente');
+      return LocationPermissionIssue.deniedForever;
+    }
+    if (perm == LocationPermission.denied) {
+      debugPrint('[Location] Permissão negada pelo usuário');
+      return LocationPermissionIssue.denied;
     }
 
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
+    // whileInUse é suficiente com foreground service no Android
+    return null;
   }
 
-  Future<void> startTracking() async {
-    if (_started) return;
+  Future<LocationPermissionIssue?> startTracking({String? delivererId}) async {
+    _delivererId = delivererId;
+    if (_started) return null;
 
-    final granted = await requestPermission();
-    if (!granted) {
-      debugPrint('[Location] Rastreamento não iniciado: sem permissão válida');
-      return;
+    final issue = await _requestPermission();
+    if (issue != null) {
+      debugPrint('[Location] Rastreamento não iniciado: $issue');
+      return issue;
     }
 
     _started = true;
-    _timer?.cancel();
-    debugPrint('[Location] Iniciando rastreamento do entregador');
+    debugPrint('[Location] Iniciando rastreamento — delivererId=$_delivererId');
 
     await _connect();
 
-    // Send immediately without waiting for the first timer tick
-    await _tick();
+    // Foreground service mantém o processo vivo com tela bloqueada / app em background
+    final locationSettings = AndroidSettings(
+      accuracy: LocationAccuracy.medium,
+      intervalDuration: Duration(seconds: 15),
+      foregroundNotificationConfig: ForegroundNotificationConfig(
+        notificationTitle: 'LogiFlow — Rastreamento ativo',
+        notificationText: 'Sua localização está sendo enviada durante as entregas',
+        enableWakeLock: true,
+        notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+      ),
+    );
 
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _tick());
-  }
+    _positionSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+      (pos) {
+        debugPrint('[Location] GPS: lat=${pos.latitude.toStringAsFixed(6)}, '
+            'lng=${pos.longitude.toStringAsFixed(6)}, '
+            'acc=${pos.accuracy.toStringAsFixed(1)}m');
+        _sendLocation(pos.latitude, pos.longitude);
+      },
+      onError: (Object e, StackTrace st) {
+        debugPrint('[Location] Erro no stream de localização: $e');
+        Sentry.captureException(
+          e,
+          stackTrace: st,
+          withScope: (scope) {
+            scope.setTag('delivererId', _delivererId ?? 'unknown');
+            scope.setContexts('location', {'source': 'position_stream'});
+          },
+        );
+      },
+    );
 
-  Future<void> _tick() async {
-    debugPrint('[Location] Coletando posição GPS...');
-    try {
-      final granted = await requestPermission();
-      if (!granted) {
-        debugPrint('[Location] Ignorando tick: sem permissão de localização');
-        return;
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
-      );
-      debugPrint('[Location] GPS: lat=${pos.latitude.toStringAsFixed(6)}, '
-          'lng=${pos.longitude.toStringAsFixed(6)}, '
-          'acc=${pos.accuracy.toStringAsFixed(1)}m');
-      _sendLocation(pos.latitude, pos.longitude);
-    } on TimeoutException {
-      debugPrint('[Location] Timeout ao obter GPS — tentativa ignorada');
-    } on PermissionDeniedException catch (e) {
-      debugPrint('[Location] Permissão negada pelo sistema: ${e.message}');
-    } catch (e) {
-      debugPrint('[Location] Erro ao obter GPS: $e');
-    }
+    return null;
   }
 
   Future<void> _connect() async {
@@ -103,12 +114,9 @@ class LocationService {
       }
 
       final url = '$wsBaseUrl/ws?token=$token';
-      debugPrint('[Location] URL WebSocket: $url');
+      _socket = await WebSocket.connect(url).timeout(const Duration(seconds: 10));
 
-      _socket = await WebSocket.connect(url)
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('[Location] WebSocket conectado com sucesso (state=${_socket!.readyState})');
+      debugPrint('[Location] WebSocket conectado (state=${_socket!.readyState})');
 
       _socket!.listen(
         (msg) => debugPrint('[Location] WS mensagem recebida: $msg'),
@@ -136,28 +144,41 @@ class LocationService {
   void _sendLocation(double lat, double lng) {
     final payload = {
       'event': 'location',
-      'data': {
-        'lat': lat,
-        'lng': lng,
-      },
+      'data': {'lat': lat, 'lng': lng},
     };
 
     if (_socket?.readyState == WebSocket.open) {
       debugPrint('[Location] Enviando via WebSocket: lat=$lat, lng=$lng');
-      _socket!.add(jsonEncode(payload));
+      try {
+        _socket!.add(jsonEncode(payload));
+      } catch (e, st) {
+        debugPrint('[Location] Erro ao enviar via WebSocket: $e');
+        Sentry.captureException(
+          e,
+          stackTrace: st,
+          withScope: (scope) {
+            scope.setTag('delivererId', _delivererId ?? 'unknown');
+            scope.setContexts('location', {'lat': lat, 'lng': lng, 'transport': 'websocket'});
+          },
+        );
+      }
     } else {
       debugPrint('[Location] WebSocket indisponível '
           '(state=${_socket?.readyState ?? "null"}) — usando HTTP');
-      _api.dio.post('/tracking/location', data: {
-        'lat': lat,
-        'lng': lng,
-      }).then((_) {
+      _api.dio.post('/tracking/location', data: {'lat': lat, 'lng': lng}).then((_) {
         debugPrint('[Location] HTTP enviado: lat=$lat, lng=$lng');
-      }).catchError((e) {
+      }).catchError((Object e) {
         debugPrint('[Location] Erro no HTTP fallback: $e');
+        Sentry.captureException(
+          e,
+          withScope: (scope) {
+            scope.setTag('delivererId', _delivererId ?? 'unknown');
+            scope.setContexts('location', {'lat': lat, 'lng': lng, 'transport': 'http'});
+          },
+        );
       });
 
-      // Reconnect for next tick
+      // Tenta reconectar para o próximo envio
       _connect();
     }
   }
@@ -165,8 +186,8 @@ class LocationService {
   void stopTracking() {
     debugPrint('[Location] Parando rastreamento');
     _started = false;
-    _timer?.cancel();
-    _timer = null;
+    _positionSub?.cancel();
+    _positionSub = null;
     _socket?.close();
     _socket = null;
   }

@@ -54,12 +54,18 @@ export interface MapDestination {
   markerColor?: 'red' | 'gray' | 'blue'
 }
 
+export interface TrailPoint {
+  lat: number
+  lng: number
+  recorded_at?: string
+}
+
 interface Props {
   delivererLat?: number | null
   delivererLng?: number | null
   delivererName?: string
   destinations?: MapDestination[]
-  trail?: [number, number][]
+  trail?: TrailPoint[]
   height?: string
   autoFitBounds?: boolean
   onDestinationClick?: (id: string) => void
@@ -174,7 +180,7 @@ export function LiveMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destinations, autoFitBounds, onDestinationClick])
 
-  // Render trail polyline + start/end markers
+  // Render trail polyline + individual point markers + start/end markers
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -184,28 +190,60 @@ export function LiveMap({
 
     if (trail.length < 2) return
 
-    const polyline = L.polyline(trail, {
+    const latlngs = trail.map((p) => [p.lat, p.lng] as L.LatLngTuple)
+
+    const polyline = L.polyline(latlngs, {
       color: '#3B82F6',
       weight: 3,
-      opacity: 0.75,
+      opacity: 0.7,
       lineJoin: 'round',
     }).addTo(map)
 
+    // One circle per recorded GPS point (skip first and last — covered by start/end markers)
+    const dotLayers: L.Layer[] = trail.slice(1, -1).map((p) => {
+      const time = p.recorded_at
+        ? new Date(p.recorded_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : null
+      return L.circleMarker([p.lat, p.lng], {
+        radius:      4,
+        color:       '#1D4ED8',
+        weight:      1.5,
+        opacity:     0.9,
+        fillColor:   '#93C5FD',
+        fillOpacity: 1,
+      })
+        .bindPopup(time ?? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`)
+        .addTo(map)
+    })
+
     const startIcon = new L.DivIcon({
       className: '',
-      html: '<div style="width:10px;height:10px;border-radius:50%;background:#22C55E;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
-      iconAnchor: [5, 5],
+      html: '<div style="width:12px;height:12px;border-radius:50%;background:#22C55E;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+      iconAnchor: [6, 6],
     })
     const endIcon = new L.DivIcon({
       className: '',
-      html: '<div style="width:10px;height:10px;border-radius:50%;background:#EF4444;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
-      iconAnchor: [5, 5],
+      html: '<div style="width:12px;height:12px;border-radius:50%;background:#EF4444;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+      iconAnchor: [6, 6],
     })
 
-    const startMarker = L.marker(trail[0]!,              { icon: startIcon }).bindPopup('Início').addTo(map)
-    const endMarker   = L.marker(trail[trail.length - 1]!, { icon: endIcon   }).bindPopup('Fim').addTo(map)
+    const startPoint = trail[0]!
+    const endPoint   = trail[trail.length - 1]!
+    const startTime  = startPoint.recorded_at
+      ? new Date(startPoint.recorded_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : ''
+    const endTime    = endPoint.recorded_at
+      ? new Date(endPoint.recorded_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : ''
 
-    trailLayersRef.current = [polyline, startMarker, endMarker]
+    const startMarker = L.marker([startPoint.lat, startPoint.lng], { icon: startIcon })
+      .bindPopup(`Início${startTime ? ` — ${startTime}` : ''}`)
+      .addTo(map)
+    const endMarker   = L.marker([endPoint.lat, endPoint.lng], { icon: endIcon })
+      .bindPopup(`Último ponto${endTime ? ` — ${endTime}` : ''}`)
+      .addTo(map)
+
+    trailLayersRef.current = [polyline, ...dotLayers, startMarker, endMarker]
 
     map.fitBounds(polyline.getBounds(), { padding: [40, 40] })
   }, [trail])

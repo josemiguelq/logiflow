@@ -57,7 +57,6 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
 
   const deliverer = deliverers.find((d) => d.id === delivererId)
 
-  const trail = history.map((p) => [p.lat, p.lng] as [number, number])
 
   // Live updates via WebSocket
   useEffect(() => {
@@ -246,7 +245,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
             destinations={destinations}
-            trail={trail}
+            trail={history}
             height="100%"
           />
         </div>
