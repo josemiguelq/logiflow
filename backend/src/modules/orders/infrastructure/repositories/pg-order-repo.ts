@@ -162,12 +162,17 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return rows.map(mapRow)
     },
 
-    async findPreparing(storeId) {
+    async findPreparing(storeId, requestingDelivererId) {
       const { rows } = await db.query(
         `${WITH_JOINS}
          WHERE o.store_id = $1 AND o.status = 'PREPARING' AND o.deliverer_id IS NULL
+           AND (
+             o.reserved_by IS NULL
+             OR o.reserved_by = $2
+             OR o.reserved_at < now() - interval '2 minutes'
+           )
          ORDER BY o.created_at ASC`,
-        [storeId]
+        [storeId, requestingDelivererId ?? null]
       )
       return rows.map(mapRow)
     },

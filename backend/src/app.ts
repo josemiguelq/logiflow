@@ -67,6 +67,17 @@ export function buildApp() {
           storeId:     payload.storeId,
           delivererId: payload.type === 'deliverer' ? payload.sub : undefined,
           ws:          socket,
+          onClose:     payload.type === 'deliverer' ? async () => {
+            // Release this deliverer's pending reservations and notify others
+            const { rows } = await db.query(
+              `UPDATE orders SET reserved_by = NULL, reserved_at = NULL
+               WHERE reserved_by = $1 RETURNING id`,
+              [payload.sub]
+            )
+            for (const row of rows) {
+              wsHub.broadcastOrderReservation(payload.storeId, row.id as string, null)
+            }
+          } : undefined,
         })
 
         // Deliverer app sends location via WebSocket every ~15s

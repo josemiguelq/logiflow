@@ -423,11 +423,63 @@ export async function orderRoutes(app: FastifyInstance) {
     '/deliverer/orders/preparing',
     { preHandler: requireDeliverer },
     async (req) => {
-      const orders = await orderRepo.findPreparing(req.actor.storeId)
+      const orders = await orderRepo.findPreparing(req.actor.storeId, req.actor.sub)
       return orders.map(o => ({
         ...o,
         customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
       }))
+    }
+  )
+
+  // Reserve a PREPARING order (soft lock with 2-minute TTL)
+  app.post(
+    '/deliverer/orders/:id/reserve',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+
+      const { rows: [order] } = await db.query(
+        `SELECT reserved_by, reserved_at FROM orders
+         WHERE id = $1 AND store_id = $2 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+        [id, req.actor.storeId]
+      )
+      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado ou não disponível' })
+
+      const reservedBy = (order as Record<string, unknown>).reserved_by as string | null
+      const reservedAt = (order as Record<string, unknown>).reserved_at as Date | null
+
+      if (reservedBy && reservedBy !== req.actor.sub) {
+        const ageMs = Date.now() - (reservedAt ? new Date(reservedAt).getTime() : 0)
+        if (ageMs < 2 * 60 * 1000) {
+          return reply.code(409).send({ error: 'Pedido já reservado por outro entregador' })
+        }
+      }
+
+      await db.query(
+        `UPDATE orders SET reserved_by = $1, reserved_at = now() WHERE id = $2`,
+        [req.actor.sub, id]
+      )
+      wsHub.broadcastOrderReservation(req.actor.storeId, id, req.actor.sub)
+
+      return { ok: true }
+    }
+  )
+
+  // Release a reservation
+  app.delete(
+    '/deliverer/orders/:id/reserve',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+
+      await db.query(
+        `UPDATE orders SET reserved_by = NULL, reserved_at = NULL
+         WHERE id = $1 AND store_id = $2 AND reserved_by = $3`,
+        [id, req.actor.storeId, req.actor.sub]
+      )
+      wsHub.broadcastOrderReservation(req.actor.storeId, id, null)
+
+      return { ok: true }
     }
   )
 
@@ -469,6 +521,14 @@ export async function orderRoutes(app: FastifyInstance) {
       })
       // Link only the orders actually claimed — not the full original list
       await routeRepo.linkOrders(route.id, claimedIds)
+
+      // Clear reservations — orders are now ASSIGNED, no longer need soft locks
+      if (claimedIds.length > 0) {
+        await db.query(
+          `UPDATE orders SET reserved_by = NULL, reserved_at = NULL WHERE id = ANY($1)`,
+          [claimedIds]
+        )
+      }
 
       const claimedOrders = await orderRepo.findByRoute(route.id)
       for (const o of claimedOrders) {

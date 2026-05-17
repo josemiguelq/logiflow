@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../core/api/api_client.dart';
 
+typedef WsMessage = Map<String, dynamic>;
+
 enum LocationPermissionIssue { serviceDisabled, denied, deniedForever }
 
 class LocationService {
@@ -16,6 +18,9 @@ class LocationService {
   String?                      _delivererId;
   StreamSubscription<Position>? _positionSub;
   final _api = ApiClient();
+
+  final _messageController = StreamController<WsMessage>.broadcast();
+  Stream<WsMessage> get messageStream => _messageController.stream;
 
   Future<LocationPermissionIssue?> _requestPermission() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
@@ -119,7 +124,13 @@ class LocationService {
       debugPrint('[Location] WebSocket conectado (state=${_socket!.readyState})');
 
       _socket!.listen(
-        (msg) => debugPrint('[Location] WS mensagem recebida: $msg'),
+        (msg) {
+          debugPrint('[Location] WS mensagem recebida: $msg');
+          try {
+            final decoded = jsonDecode(msg as String) as Map<String, dynamic>;
+            _messageController.add(decoded);
+          } catch (_) {}
+        },
         onDone: () {
           debugPrint('[Location] WebSocket fechado pelo servidor');
           _socket = null;

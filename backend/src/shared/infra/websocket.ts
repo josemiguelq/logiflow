@@ -2,6 +2,10 @@ import { WebSocket } from 'ws'
 
 type WsClient = { storeId: string; delivererId?: string; ws: WebSocket; alive: boolean }
 
+type RegisterInput = Omit<WsClient, 'alive'> & {
+  onClose?: () => void | Promise<void>
+}
+
 const clients = new Set<WsClient>()
 
 export function startHeartbeat() {
@@ -19,11 +23,15 @@ export function startHeartbeat() {
 }
 
 export const wsHub = {
-  register(input: Omit<WsClient, 'alive'>) {
-    const client: WsClient = { ...input, alive: true }
+  register(input: RegisterInput) {
+    const { onClose, ...rest } = input
+    const client: WsClient = { ...rest, alive: true }
     clients.add(client)
     client.ws.on('pong', () => { client.alive = true })
-    client.ws.on('close', () => clients.delete(client))
+    client.ws.on('close', () => {
+      clients.delete(client)
+      if (onClose) Promise.resolve(onClose()).catch(() => {})
+    })
   },
 
   broadcastToStore(storeId: string, event: string, data: unknown) {
@@ -46,5 +54,13 @@ export const wsHub = {
     lng: number
   ) {
     this.broadcastToStore(storeId, 'deliverer_location', { delivererId, lat, lng })
+  },
+
+  broadcastOrderReservation(storeId: string, orderId: string, delivererId: string | null) {
+    if (delivererId) {
+      this.broadcastToStore(storeId, 'order_reserved', { orderId, delivererId })
+    } else {
+      this.broadcastToStore(storeId, 'order_unreserved', { orderId })
+    }
   },
 }

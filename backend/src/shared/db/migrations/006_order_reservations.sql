@@ -1,0 +1,3 @@
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS reserved_by  UUID        REFERENCES deliverers(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS reserved_at  TIMESTAMPTZ;

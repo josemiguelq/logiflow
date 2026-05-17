@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:dio/dio.dart';
@@ -13,6 +14,7 @@ import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
+import '../tracking/location_service.dart';
 
 // ── providers ────────────────────────────────────────────────────────────────
 
@@ -78,16 +80,76 @@ class OrderSelectionScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
-  final List<String> _selected = [];
+  final List<String> _selected    = [];
+  final Set<String>  _hiddenByOthers = {};   // order IDs reserved by other deliverers
   bool _claiming       = false;
   bool _togglingStatus = false;
   bool _openingRoute   = false;
   bool _mapView        = false;
+  bool _reserving      = false;
+
+  StreamSubscription<WsMessage>? _wsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final locationService = ref.read(locationServiceProvider);
+    _wsSub = locationService.messageStream.listen((msg) {
+      final event = msg['event'] as String?;
+      final data  = msg['data']  as Map<String, dynamic>?;
+      if (event == null || data == null) return;
+
+      final orderId = data['orderId'] as String?;
+      if (orderId == null) return;
+
+      setState(() {
+        if (event == 'order_reserved') {
+          _hiddenByOthers.add(orderId);
+        } else if (event == 'order_unreserved') {
+          _hiddenByOthers.remove(orderId);
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _wsSub?.cancel();
+    // Release all reservations held by this screen session
+    for (final id in List<String>.from(_selected)) {
+      ApiClient().dio.delete('/deliverer/orders/$id/reserve').ignore();
+    }
+    super.dispose();
+  }
 
   void _refresh() {
     ref.invalidate(_routesProvider);
     ref.invalidate(_preparingOrdersProvider);
     ref.invalidate(_activeOrdersProvider);
+  }
+
+  Future<void> _toggleSelect(String orderId) async {
+    if (_reserving) return;
+    final sel = _selected.contains(orderId);
+
+    if (sel) {
+      setState(() => _selected.remove(orderId));
+      ApiClient().dio.delete('/deliverer/orders/$orderId/reserve').ignore();
+      return;
+    }
+
+    setState(() => _reserving = true);
+    try {
+      await ApiClient().dio.post('/deliverer/orders/$orderId/reserve');
+      if (mounted) setState(() => _selected.add(orderId));
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = (e.response?.data as Map?)?['error'] as String?
+          ?? 'Não foi possível reservar o pedido';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _reserving = false);
+    }
   }
 
   Future<void> _toggleStatus(String currentStatus) async {
@@ -164,7 +226,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() { _claiming = false; _selected.clear(); });
+      if (mounted) setState(() { _claiming = false; _selected.clear(); _hiddenByOthers.clear(); });
     }
   }
 
@@ -317,6 +379,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                                     (_, i) {
                                       final store = storeLoc.value ?? const _StoreLocation(null, null);
                                       final o   = preparingList[i];
+                                      if (_hiddenByOthers.contains(o.id)) return const SizedBox.shrink();
                                       final dist = _distanceKm(store, o);
                                       final sel  = _selected.contains(o.id);
                                       final selOrder = sel ? _selected.indexOf(o.id) + 1 : null;
@@ -327,10 +390,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                                           distance:       dist,
                                           selected:       sel,
                                           selectionOrder: selOrder,
-                                          onTap: () => setState(() {
-                                            if (sel) _selected.remove(o.id);
-                                            else     _selected.add(o.id);
-                                          }),
+                                          onTap: () => _toggleSelect(o.id),
                                         ),
                                       );
                                     },
@@ -419,7 +479,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
   Widget _buildMapView(List<Order> orders) {
     final withCoords = orders
-        .where((o) => o.customerLat != null && o.customerLng != null)
+        .where((o) => o.customerLat != null && o.customerLng != null && !_hiddenByOthers.contains(o.id))
         .toList();
 
     if (withCoords.isEmpty) {
@@ -459,10 +519,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
               height: 72,
               alignment: Alignment.topCenter,
               child: GestureDetector(
-                onTap: () => setState(() {
-                  if (sel) _selected.remove(o.id);
-                  else     _selected.add(o.id);
-                }),
+                onTap: () => _toggleSelect(o.id),
                 child: _OrderPin(
                   name:           o.customerName,
                   selected:       sel,
