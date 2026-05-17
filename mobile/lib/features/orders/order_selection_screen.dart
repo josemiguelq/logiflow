@@ -78,7 +78,7 @@ class OrderSelectionScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
-  final Set<String> _selected = {};
+  final List<String> _selected = [];
   bool _claiming       = false;
   bool _togglingStatus = false;
   bool _openingRoute   = false;
@@ -138,9 +138,10 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     setState(() => _claiming = true);
     try {
       final prepList = ref.read(_preparingOrdersProvider).value ?? [];
-      final selected = prepList.where((o) => _selected.contains(o.id)).toList();
+      final validIds = prepList.map((o) => o.id).toSet();
+      final orderedIds = _selected.where((id) => validIds.contains(id)).toList();
       final res  = await ApiClient().dio.post('/deliverer/orders/claim', data: {
-        'orderIds': selected.map((o) => o.id).toList(),
+        'orderIds': orderedIds,
       });
       final data     = res.data as Map<String, dynamic>;
       final routeMap = Map<String, dynamic>.from(data['route'] as Map<String, dynamic>);
@@ -318,12 +319,14 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                                       final o   = preparingList[i];
                                       final dist = _distanceKm(store, o);
                                       final sel  = _selected.contains(o.id);
+                                      final selOrder = sel ? _selected.indexOf(o.id) + 1 : null;
                                       return Padding(
                                         padding: const EdgeInsets.only(bottom: 10),
                                         child: _OrderSelectionTile(
-                                          order:    o,
-                                          distance: dist,
-                                          selected: sel,
+                                          order:          o,
+                                          distance:       dist,
+                                          selected:       sel,
+                                          selectionOrder: selOrder,
                                           onTap: () => setState(() {
                                             if (sel) _selected.remove(o.id);
                                             else     _selected.add(o.id);
@@ -448,7 +451,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         ),
         MarkerLayer(
           markers: withCoords.map((o) {
-            final sel = _selected.contains(o.id);
+            final sel      = _selected.contains(o.id);
+            final selOrder = sel ? _selected.indexOf(o.id) + 1 : null;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
               width: 80,
@@ -460,8 +464,9 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                   else     _selected.add(o.id);
                 }),
                 child: _OrderPin(
-                  name:     o.customerName,
-                  selected: sel,
+                  name:           o.customerName,
+                  selected:       sel,
+                  selectionOrder: selOrder,
                 ),
               ),
             );
@@ -528,7 +533,8 @@ class _MapToggle extends StatelessWidget {
 class _OrderPin extends StatelessWidget {
   final String name;
   final bool selected;
-  const _OrderPin({required this.name, required this.selected});
+  final int? selectionOrder;
+  const _OrderPin({required this.name, required this.selected, this.selectionOrder});
 
   @override
   Widget build(BuildContext context) {
@@ -560,7 +566,7 @@ class _OrderPin extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        // Círculo do pin
+        // Círculo do pin — mostra número de seleção quando selecionado
         AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           width: 32,
@@ -582,11 +588,20 @@ class _OrderPin extends StatelessWidget {
             ],
           ),
           child: Center(
-            child: Icon(
-              Icons.location_on,
-              size: 16,
-              color: selected ? Colors.white : AppTheme.primary,
-            ),
+            child: selectionOrder != null
+                ? Text(
+                    '$selectionOrder',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(
+                    Icons.location_on,
+                    size: 16,
+                    color: selected ? Colors.white : AppTheme.primary,
+                  ),
           ),
         ),
         // Ponteiro
@@ -745,6 +760,7 @@ class _OrderSelectionTile extends StatelessWidget {
   final Order order;
   final double? distance;
   final bool selected;
+  final int? selectionOrder;
   final VoidCallback onTap;
 
   const _OrderSelectionTile({
@@ -752,6 +768,7 @@ class _OrderSelectionTile extends StatelessWidget {
     required this.distance,
     required this.selected,
     required this.onTap,
+    this.selectionOrder,
   });
 
   @override
@@ -785,7 +802,18 @@ class _OrderSelectionTile extends StatelessWidget {
                   ),
                 ),
                 child: selected
-                    ? const Icon(Icons.check, color: Colors.white, size: 14)
+                    ? Center(
+                        child: selectionOrder != null
+                            ? Text(
+                                '$selectionOrder',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check, color: Colors.white, size: 14),
+                      )
                     : null,
               ),
               const SizedBox(width: 12),
