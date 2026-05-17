@@ -52,6 +52,7 @@ export interface MapDestination {
   selected?: boolean
   selectable?: boolean
   markerColor?: 'red' | 'gray' | 'blue'
+  selectionOrder?: number   // when set, renders a numbered badge instead of a plain marker
 }
 
 export interface TrailPoint {
@@ -153,8 +154,14 @@ export function LiveMap({
       const popup = d.status
         ? `<strong>${d.label}</strong><br>${d.status}`
         : `<strong>${d.label}</strong>`
-      const icon =
-        d.markerColor === 'blue'
+      const icon = d.selectionOrder != null
+        ? new L.DivIcon({
+            className: '',
+            html: `<div style="width:28px;height:28px;border-radius:50%;background:#2563EB;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);font-family:sans-serif">${d.selectionOrder}</div>`,
+            iconAnchor: [14, 14],
+            popupAnchor: [0, -16],
+          })
+        : d.markerColor === 'blue'
           ? blueDestinationIcon
           : d.markerColor === 'gray'
             ? grayDestinationIcon

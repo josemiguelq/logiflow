@@ -36,7 +36,7 @@ export default function OrdersPage() {
 
   // Batch assign
   const [batchMode,        setBatchMode]        = useState(false)
-  const [batchSelected,    setBatchSelected]    = useState<Set<string>>(new Set())
+  const [batchSelected,    setBatchSelected]    = useState<string[]>([])
   const [batchDelivererId, setBatchDelivererId] = useState('')
   const [batchLoading,     setBatchLoading]     = useState(false)
 
@@ -74,12 +74,10 @@ export default function OrdersPage() {
       lng:    o.customer.lng!,
       label:  `${o.customer.name} · #${o.id.slice(-8).toUpperCase()}`,
       status: `${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''} · ${o.customer.address}`,
-      selectable: batchMode && o.status === 'PREPARING',
-      selected:   batchSelected.has(o.id),
-      markerColor:
-        o.status === 'PREPARING'
-          ? (batchMode && batchSelected.has(o.id) ? 'blue' : 'gray')
-          : 'red',
+      selectable:     batchMode && o.status === 'PREPARING',
+      selected:       batchSelected.includes(o.id),
+      markerColor:    o.status === 'PREPARING' ? (batchMode && batchSelected.includes(o.id) ? 'blue' : 'gray') : 'red',
+      selectionOrder: batchMode && batchSelected.includes(o.id) ? batchSelected.indexOf(o.id) + 1 : undefined,
     }))
 
   async function handleCancel(orderId: string) {
@@ -88,26 +86,24 @@ export default function OrdersPage() {
   }
 
   function toggleBatchSelect(id: string) {
-    setBatchSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
+    setBatchSelected(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
   }
 
   function exitBatchMode() {
     setBatchMode(false)
-    setBatchSelected(new Set())
+    setBatchSelected([])
     setBatchDelivererId('')
   }
 
   async function handleBatchAssign() {
-    if (!batchDelivererId || batchSelected.size === 0) return
+    if (!batchDelivererId || batchSelected.length === 0) return
     setBatchLoading(true)
     try {
       const result = await api.post<{ route: { id: string }; orders: unknown[] }>(
         '/orders/batch-assign',
-        { orderIds: Array.from(batchSelected), delivererId: batchDelivererId }
+        { orderIds: batchSelected, delivererId: batchDelivererId }
       )
       exitBatchMode()
       router.push(`/routes/${result.route.id}`)
@@ -262,7 +258,7 @@ export default function OrdersPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {activeOrders.map(order => {
                     const selectable = batchMode && order.status === 'PREPARING'
-                    const selected   = batchSelected.has(order.id)
+                    const selected   = batchSelected.includes(order.id)
                     return (
                       <div
                         key={order.id}
@@ -371,7 +367,7 @@ export default function OrdersPage() {
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-2xl">
           <div className="mx-auto flex max-w-screen-xl items-center gap-3 px-4 py-3 sm:px-6">
             <span className="shrink-0 text-sm font-medium text-gray-700">
-              {batchSelected.size} selecionado(s)
+              {batchSelected.length} selecionado(s)
             </span>
             <div className="relative flex-1 sm:w-56 sm:flex-none">
               <select
@@ -389,10 +385,10 @@ export default function OrdersPage() {
             </div>
             <Button
               onClick={handleBatchAssign}
-              disabled={!batchDelivererId || batchSelected.size === 0 || batchLoading}
+              disabled={!batchDelivererId || batchSelected.length === 0 || batchLoading}
             >
               <Truck className="h-4 w-4" />
-              {batchLoading ? 'Atribuindo...' : `Atribuir (${batchSelected.size})`}
+              {batchLoading ? 'Atribuindo...' : `Atribuir (${batchSelected.length})`}
             </Button>
             <button
               onClick={exitBatchMode}
