@@ -103,8 +103,13 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
           if (event == null || data == null || !mounted) return;
 
           if (event == 'order_updated') {
-            // Order returned to queue → refresh preparing list so it reappears
-            if (data['status'] == 'PREPARING') {
+            final orderId = data['id'] as String?;
+            final status  = data['status'] as String?;
+            // Always unblock the order — it may have been in _hiddenByOthers
+            // from a reservation that was later claimed or returned.
+            if (orderId != null) setState(() => _hiddenByOthers.remove(orderId));
+            // Invalidate when the order enters or leaves the preparing list
+            if (status == 'PREPARING' || status == 'ASSIGNED') {
               ref.invalidate(_preparingOrdersProvider);
             }
             return;

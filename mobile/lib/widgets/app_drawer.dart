@@ -3,10 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/providers/store_settings_provider.dart';
 import '../core/theme/app_theme.dart';
 import '../features/profile/edit_profile_sheet.dart';
+
+final _packageInfoProvider = FutureProvider<PackageInfo>(
+  (_) => PackageInfo.fromPlatform(),
+);
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
@@ -15,8 +20,12 @@ class AppDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session       = ref.watch(authProvider);
     final storeSettings = ref.watch(storeSettingsProvider);
+    final packageInfo   = ref.watch(_packageInfoProvider);
     final storeName     = storeSettings.value?.storeName; // non-null only when custom theme feature is on
     final headerColor   = storeSettings.value?.primaryColor ?? AppTheme.primary;
+    final versionLabel  = packageInfo.whenOrNull(
+      data: (info) => 'v${info.version} (${info.buildNumber})',
+    );
 
     final photoUrl = session?.profileImageUrl;
 
@@ -136,35 +145,46 @@ class AppDrawer extends ConsumerWidget {
             ),
           ),
 
-          // ── Footer: store name (only if custom theme feature is on) ──
-          if (storeName != null) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 14,
-                bottom: 14 + MediaQuery.of(context).padding.bottom,
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.store_outlined, size: 16, color: Colors.grey.shade500),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      storeName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+          // ── Footer: store name + app version ──────────────────────
+          const Divider(height: 1),
+          Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 12,
+              bottom: 12 + MediaQuery.of(context).padding.bottom,
             ),
-          ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (storeName != null) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.store_outlined, size: 15, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          storeName,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                if (versionLabel != null)
+                  Text(
+                    versionLabel,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
