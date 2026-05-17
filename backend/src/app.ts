@@ -46,6 +46,21 @@ export function buildApp() {
     sign:   { expiresIn: process.env.JWT_EXPIRES_IN ?? '7d' },
   })
 
+  // Fastify 5 rejects Content-Type: application/json with empty body by default.
+  // Clients (Dio, fetch) send that header on DELETE requests with no body, so we
+  // replace the built-in parser with one that treats an empty body as {}.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || (body as string).length === 0) {
+      done(null, {})
+      return
+    }
+    try {
+      done(null, JSON.parse(body as string))
+    } catch (err) {
+      done(err as Error, undefined)
+    }
+  })
+
   app.register(websocket)
 
   // WebSocket hub — autenticado via ?token=<jwt>
