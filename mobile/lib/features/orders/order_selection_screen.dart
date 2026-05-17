@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -93,23 +94,41 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    final locationService = ref.read(locationServiceProvider);
-    _wsSub = locationService.messageStream.listen((msg) {
-      final event = msg['event'] as String?;
-      final data  = msg['data']  as Map<String, dynamic>?;
-      if (event == null || data == null) return;
+    try {
+      final locationService = ref.read(locationServiceProvider);
+      _wsSub = locationService.messageStream.listen(
+        (msg) {
+          final event = msg['event'] as String?;
+          final data  = msg['data']  as Map<String, dynamic>?;
+          if (event == null || data == null || !mounted) return;
 
-      final orderId = data['orderId'] as String?;
-      if (orderId == null) return;
+          if (event == 'order_updated') {
+            // Order returned to queue → refresh preparing list so it reappears
+            if (data['status'] == 'PREPARING') {
+              ref.invalidate(_preparingOrdersProvider);
+            }
+            return;
+          }
 
-      setState(() {
-        if (event == 'order_reserved') {
-          _hiddenByOthers.add(orderId);
-        } else if (event == 'order_unreserved') {
-          _hiddenByOthers.remove(orderId);
-        }
-      });
-    });
+          final orderId = data['orderId'] as String?;
+          if (orderId == null) return;
+          setState(() {
+            if (event == 'order_reserved') {
+              _hiddenByOthers.add(orderId);
+            } else if (event == 'order_unreserved') {
+              _hiddenByOthers.remove(orderId);
+            }
+          });
+        },
+        onError: (Object e, StackTrace st) {
+          Sentry.captureException(e, stackTrace: st,
+              hint: Hint.withMap({'context': 'order_selection_ws_stream'}));
+        },
+      );
+    } catch (e, st) {
+      Sentry.captureException(e, stackTrace: st,
+          hint: Hint.withMap({'context': 'OrderSelectionScreen.initState'}));
+    }
   }
 
   @override
