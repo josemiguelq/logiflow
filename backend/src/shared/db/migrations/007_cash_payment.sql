@@ -7,4 +7,4 @@ ALTER TABLE orders
 ALTER TABLE routes
   ADD COLUMN IF NOT EXISTS handover_token        TEXT UNIQUE,
   ADD COLUMN IF NOT EXISTS handover_confirmed_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS handover_confirmed_by UUID REFERENCES users(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS handover_confirmed_by UUID;
