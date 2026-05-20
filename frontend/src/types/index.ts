@@ -68,6 +68,9 @@ export interface Order {
     name: string
     status: string
   }
+  paymentMethod: 'prepaid' | 'cash' | 'card'
+  cashAmount?: number
+  cashCollected: boolean
   proof?: {
     photoUrl: string
     lat?: number
@@ -85,6 +88,9 @@ export interface RouteOrderItem {
   status: string
   routePosition?: number
   deliveredAt?: string
+  paymentMethod: 'prepaid' | 'cash' | 'card'
+  cashAmount?: number
+  cashCollected: boolean
 }
 
 export interface DeliveryRoute {

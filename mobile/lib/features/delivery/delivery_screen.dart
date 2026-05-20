@@ -165,9 +165,39 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(order.customerName,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 15)),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(order.customerName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 15),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          if (order.notes != null && order.notes!.isNotEmpty) ...[
+                            const SizedBox(width: 5),
+                            GestureDetector(
+                              onTap: () => showDialog<void>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('Observação do pedido'),
+                                  content: Text(order.notes!),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(_),
+                                      child: const Text('Fechar'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: Color(0xFFF59E0B),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                       Text('#${order.shortId}',
                           style: TextStyle(
                               color: Colors.grey.shade500,
@@ -207,6 +237,32 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
               ],
             ),
           ),
+
+          // Payment badge
+          if (order.isCash || order.paymentMethod == 'card')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Row(
+                children: [
+                  Icon(
+                    order.isCash ? Icons.payments_outlined : Icons.credit_card_outlined,
+                    size: 13,
+                    color: order.isCash ? const Color(0xFFD97706) : const Color(0xFF3B82F6),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    order.isCash
+                        ? 'Cobrar R\$ ${order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro'
+                        : 'Pagamento no cartão',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: order.isCash ? const Color(0xFFD97706) : const Color(0xFF3B82F6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -469,7 +525,54 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           const SizedBox(height: 4),
           Text('#${widget.order.shortId} · ${widget.order.customerAddress}',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+
+          // Payment info
+          if (widget.order.paymentMethod != 'prepaid') ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: widget.order.isCash
+                    ? const Color(0xFFFFFBEB)
+                    : const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: widget.order.isCash
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF93C5FD),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    widget.order.isCash
+                        ? Icons.payments_outlined
+                        : Icons.credit_card_outlined,
+                    size: 20,
+                    color: widget.order.isCash
+                        ? const Color(0xFFD97706)
+                        : const Color(0xFF3B82F6),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.order.isCash
+                          ? 'Cobrar R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro'
+                          : 'Pagamento no cartão',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: widget.order.isCash
+                            ? const Color(0xFF92400E)
+                            : const Color(0xFF1E40AF),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           if (widget.requireDeliveryCode) ...[
             TextField(
@@ -745,26 +848,14 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
   }
 }
 
-// ── Empty state — checks for pending cash handover ───────────────────────────
+// ── Empty state ───────────────────────────────────────────────────────────────
 
-final _pendingHandoverProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
-  try {
-    final res = await ApiClient().dio.get('/deliverer/routes/pending-handover');
-    if (res.data == null) return null;
-    return Map<String, dynamic>.from(res.data as Map);
-  } catch (_) {
-    return null;
-  }
-});
-
-class _EmptyDeliveryState extends ConsumerWidget {
+class _EmptyDeliveryState extends StatelessWidget {
   final VoidCallback onGoOrders;
   const _EmptyDeliveryState({required this.onGoOrders});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final handover = ref.watch(_pendingHandoverProvider);
-
+  Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -779,66 +870,7 @@ class _EmptyDeliveryState extends ConsumerWidget {
             const SizedBox(height: 8),
             Text('Volte para receber novos pedidos',
                 style: TextStyle(color: Colors.grey.shade600)),
-
-            handover.when(
-              loading: () => const SizedBox(height: 24),
-              error:   (_, __) => const SizedBox(height: 24),
-              data: (data) {
-                if (data == null) return const SizedBox(height: 24);
-                final total      = (data['totalCash'] as num).toDouble();
-                final routeId    = data['routeId'] as String;
-                final token      = data['token'] as String;
-                return Column(
-                  children: [
-                    const SizedBox(height: 24),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFBEB),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(Icons.payments_outlined,
-                              size: 32, color: Color(0xFFD97706)),
-                          const SizedBox(height: 8),
-                          const Text('Dinheiro a entregar',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF92400E))),
-                          const SizedBox(height: 4),
-                          Text(
-                            'R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}',
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF92400E),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          ElevatedButton.icon(
-                            onPressed: () => context.push(
-                              '/cash-handover',
-                              extra: {'routeId': routeId, 'token': token, 'totalCash': total},
-                            ),
-                            icon: const Icon(Icons.qr_code, size: 18),
-                            label: const Text('Ver QR Code / Código'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFF59E0B),
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: onGoOrders,
               icon: const Icon(Icons.inbox_outlined),

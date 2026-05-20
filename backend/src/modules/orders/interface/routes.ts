@@ -348,6 +348,27 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Store user edits the note on an existing order
+  app.patch(
+    '/orders/:id/note',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { note } = z.object({ note: z.string().max(1000) }).parse(req.body)
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+
+      await db.query(
+        `UPDATE orders SET notes = $1 WHERE id = $2`,
+        [note.trim() || null, id]
+      )
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      return updated
+    }
+  )
+
   app.post(
     '/orders/batch-assign',
     { preHandler: requireStoreUser },

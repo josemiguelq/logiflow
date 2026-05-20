@@ -9,6 +9,7 @@ class Order {
   final String customerAddress;
   final double? customerLat;
   final double? customerLng;
+  final String? notes;           // nota cadastrada pelo usuário web
   final String paymentMethod;   // 'prepaid' | 'cash' | 'card'
   final double? cashAmount;
   final bool cashCollected;
@@ -24,6 +25,7 @@ class Order {
     required this.customerAddress,
     this.customerLat,
     this.customerLng,
+    this.notes,
     this.paymentMethod = 'prepaid',
     this.cashAmount,
     this.cashCollected = false,
@@ -46,6 +48,7 @@ class Order {
       customerAddress: c['address'] as String? ?? '',
       customerLat:     (c['lat'] as num?)?.toDouble(),
       customerLng:     (c['lng'] as num?)?.toDouble(),
+      notes:           j['notes'] as String?,
       paymentMethod:   j['paymentMethod'] as String? ?? 'prepaid',
       cashAmount:      (j['cashAmount'] as num?)?.toDouble(),
       cashCollected:   j['cashCollected'] as bool? ?? false,
@@ -63,6 +66,7 @@ class Order {
         customerAddress: customerAddress,
         customerLat:     customerLat,
         customerLng:     customerLng,
+        notes:           notes,
         paymentMethod:   paymentMethod,
         cashAmount:      cashAmount,
         cashCollected:   cashCollected,

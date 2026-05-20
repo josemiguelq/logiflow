@@ -1,21 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { Order } from '@/types'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
-import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText } from 'lucide-react'
+import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X } from 'lucide-react'
 
 interface Props {
   order: Order
   onAssign?: () => void
   onCancel?: () => void
+  onSaveNote?: (note: string) => Promise<void>
 }
 
-export function OrderCard({ order, onAssign, onCancel }: Props) {
+export function OrderCard({ order, onAssign, onCancel, onSaveNote }: Props) {
   const canTrack = ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
-  const [copied, setCopied] = useState(false)
+  const [copied,      setCopied]      = useState(false)
+  const [editingNote, setEditingNote] = useState(false)
+  const [noteValue,   setNoteValue]   = useState(order.notes ?? '')
+  const [savingNote,  setSavingNote]  = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    setNoteValue(order.notes ?? '')
+  }, [order.notes])
+
+  useEffect(() => {
+    if (editingNote) textareaRef.current?.focus()
+  }, [editingNote])
 
   function handleShare() {
     const url = `${window.location.origin}/rastreio/${order.id}`
@@ -26,6 +39,22 @@ export function OrderCard({ order, onAssign, onCancel }: Props) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
+  }
+
+  async function handleSaveNote() {
+    if (!onSaveNote) return
+    setSavingNote(true)
+    try {
+      await onSaveNote(noteValue)
+      setEditingNote(false)
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  function handleCancelEdit() {
+    setNoteValue(order.notes ?? '')
+    setEditingNote(false)
   }
 
   return (
@@ -65,10 +94,60 @@ export function OrderCard({ order, onAssign, onCancel }: Props) {
           <Clock className="h-3.5 w-3.5 shrink-0 text-gray-400" />
           <span>{formatDate(order.createdAt)}</span>
         </div>
-        {order.notes && (
-          <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5">
-            <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-            <span className="text-xs text-amber-800 line-clamp-2">{order.notes}</span>
+
+        {/* Note — editable when onSaveNote is provided */}
+        {(order.notes || onSaveNote) && (
+          <div className="rounded-lg bg-amber-50 px-2.5 py-1.5">
+            {editingNote ? (
+              <div className="space-y-1.5">
+                <textarea
+                  ref={textareaRef}
+                  value={noteValue}
+                  onChange={e => setNoteValue(e.target.value)}
+                  maxLength={1000}
+                  rows={3}
+                  placeholder="Adicionar observação..."
+                  className="w-full resize-none rounded-md border border-amber-200 bg-white px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveNote()
+                    if (e.key === 'Escape') handleCancelEdit()
+                  }}
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-amber-100"
+                  >
+                    <X className="h-3 w-3" />
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveNote}
+                    disabled={savingNote}
+                    className="flex items-center gap-1 rounded bg-amber-500 px-2 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    <Check className="h-3 w-3" />
+                    {savingNote ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <span className="flex-1 text-xs text-amber-800 line-clamp-2">
+                  {order.notes || <span className="italic text-amber-600">Sem observações</span>}
+                </span>
+                {onSaveNote && (
+                  <button
+                    onClick={() => setEditingNote(true)}
+                    className="ml-1 shrink-0 rounded p-0.5 text-amber-400 hover:bg-amber-100 hover:text-amber-600"
+                    title="Editar observação"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
