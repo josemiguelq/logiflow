@@ -11,6 +11,7 @@ import 'features/orders/order_selection_screen.dart';
 import 'features/orders/route_planning_screen.dart';
 import 'features/orders/pickup_confirmation_screen.dart';
 import 'features/delivery/delivery_screen.dart';
+import 'features/delivery/cash_handover_screen.dart';
 import 'features/tracking/location_service.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
@@ -51,6 +52,17 @@ final _router = GoRouter(
       ),
     ),
     GoRoute(path: '/delivery', builder: (_, __) => const DeliveryScreen()),
+    GoRoute(
+      path: '/cash-handover',
+      builder: (_, state) {
+        final extra = state.extra as Map<String, dynamic>;
+        return CashHandoverScreen(
+          routeId:   extra['routeId'] as String,
+          token:     extra['token']   as String,
+          totalCash: extra['totalCash'] as double,
+        );
+      },
+    ),
   ],
 );
 

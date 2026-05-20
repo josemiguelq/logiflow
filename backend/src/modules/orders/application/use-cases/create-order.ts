@@ -13,6 +13,8 @@ export async function createOrder(
     createdByUserId: string
     deliveryCode?: string
     notes?: string
+    paymentMethod?: 'prepaid' | 'cash' | 'card'
+    cashAmount?: number
     lat?: number
     lng?: number
     deliveryAddress?: string
@@ -29,6 +31,9 @@ export async function createOrder(
     pickupCode:      generateCode(),
     deliveryCode:    input.deliveryCode ?? generateCode(),
     notes:           input.notes,
+    paymentMethod:   input.paymentMethod ?? 'prepaid',
+    cashAmount:      input.cashAmount,
+    cashCollected:   false,
     lat:             input.lat,
     lng:             input.lng,
     deliveryAddress: input.deliveryAddress,

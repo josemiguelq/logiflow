@@ -15,6 +15,9 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     pickupCode:      row.pickup_code as string,
     deliveryCode:    row.delivery_code as string,
     notes:           row.notes as string | undefined,
+    paymentMethod:   (row.payment_method as string ?? 'prepaid') as 'prepaid' | 'cash' | 'card',
+    cashAmount:      row.cash_amount != null ? Number(row.cash_amount) : undefined,
+    cashCollected:   (row.cash_collected as boolean) ?? false,
     lat:             row.lat as number | undefined,
     lng:             row.lng as number | undefined,
     deliveryAddress: row.delivery_address as string | undefined,
@@ -43,6 +46,9 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     pickupCode:      row.pickup_code as string,
     deliveryCode:    row.delivery_code as string,
     notes:           row.notes as string | undefined,
+    paymentMethod:   (row.payment_method as string ?? 'prepaid') as 'prepaid' | 'cash' | 'card',
+    cashAmount:      row.cash_amount != null ? Number(row.cash_amount) : undefined,
+    cashCollected:   (row.cash_collected as boolean) ?? false,
     lat:             row.lat as number | undefined,
     lng:             row.lng as number | undefined,
     createdAt:       row.created_at as Date,
@@ -181,13 +187,17 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `INSERT INTO orders
            (store_id, customer_id, created_by_user_id, status, pickup_code, delivery_code,
-            notes, lat, lng, delivery_address, delivery_lat, delivery_lng)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            notes, payment_method, cash_amount,
+            lat, lng, delivery_address, delivery_lat, delivery_lng)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING *`,
         [
           data.storeId, data.customerId, data.createdByUserId,
           data.status, data.pickupCode, data.deliveryCode,
-          data.notes ?? null, data.lat ?? null, data.lng ?? null,
+          data.notes ?? null,
+          (data as Record<string, unknown>).paymentMethod ?? 'prepaid',
+          (data as Record<string, unknown>).cashAmount ?? null,
+          data.lat ?? null, data.lng ?? null,
           data.deliveryAddress ?? null, data.deliveryLat ?? null, data.deliveryLng ?? null,
         ]
       )

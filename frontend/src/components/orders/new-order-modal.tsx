@@ -18,6 +18,8 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
   const [selected,        setSelected]        = useState<Customer | null>(null)
   const [selectedAddress, setSelectedAddress] = useState<CustomerAddress | null>(null)
   const [notes,           setNotes]           = useState('')
+  const [paymentMethod,   setPaymentMethod]   = useState<'prepaid' | 'cash' | 'card'>('prepaid')
+  const [cashAmount,      setCashAmount]      = useState('')
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
 
@@ -41,8 +43,10 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
     setLoading(true)
     try {
       const body: Record<string, unknown> = {
-        customerId: selected.id,
-        notes: notes || undefined,
+        customerId:    selected.id,
+        notes:         notes || undefined,
+        paymentMethod,
+        cashAmount:    paymentMethod === 'cash' && cashAmount ? parseFloat(cashAmount) : undefined,
       }
       // Pass delivery address only when it's not the default (or when there's a single address)
       if (selectedAddress) {
@@ -160,6 +164,44 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
               )}
             </div>
           )}
+
+          {/* Payment method */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Forma de pagamento
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { value: 'prepaid', label: 'Pré-pago' },
+                { value: 'cash',   label: 'Dinheiro' },
+                { value: 'card',   label: 'Cartão' },
+              ] as const).map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => { setPaymentMethod(value); if (value !== 'cash') setCashAmount('') }}
+                  className="rounded-lg border-2 py-2 text-sm font-medium transition-colors"
+                  style={paymentMethod === value
+                    ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, white)' }
+                    : { borderColor: '#E5E7EB', color: '#6B7280' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {paymentMethod === 'cash' && (
+              <div className="mt-2">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Valor a cobrar (R$)"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Notes */}
           <div>

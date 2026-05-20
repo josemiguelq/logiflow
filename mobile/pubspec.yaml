@@ -46,6 +46,9 @@ dependencies:
   # App version info
   package_info_plus: ^8.0.0
 
+  # QR code generation
+  qr_flutter: ^4.1.0
+
 dev_dependencies:
   sentry_dart_plugin: ^3.3.0
   flutter_test:

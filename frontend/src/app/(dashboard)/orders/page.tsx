@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck } from 'lucide-react'
+import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Banknote } from 'lucide-react'
 import { Order, OrderStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -30,9 +30,10 @@ export default function OrdersPage() {
 
   const [status,       setStatus]       = useState<OrderStatus | ''>('')
   const [delivererId,  setDelivererId]  = useState('')
-  const [showNewOrder, setShowNewOrder] = useState(false)
-  const [assigning,    setAssigning]    = useState<Order | null>(null)
-  const [view,         setView]         = useState<'cards' | 'map'>('cards')
+  const [showNewOrder,    setShowNewOrder]    = useState(false)
+  const [assigning,       setAssigning]       = useState<Order | null>(null)
+  const [view,            setView]            = useState<'cards' | 'map'>('cards')
+  const [handoverRouteId, setHandoverRouteId] = useState<string | null>(null)
 
   // Batch assign
   const [batchMode,        setBatchMode]        = useState(false)
@@ -52,6 +53,13 @@ export default function OrdersPage() {
 
   useEffect(() => on('order_updated', () => mutate()), [on, mutate])
   useEffect(() => onReconnect(() => mutate()), [onReconnect, mutate])
+  useEffect(() => on('handover_confirmed', () => setHandoverRouteId(null)), [on])
+
+  const { data: pendingHandovers = [] } = useSWR<{ id: string; delivererName: string; totalCash: number; token: string }[]>(
+    '/routes/pending-handovers',
+    (u: string) => api.get(u),
+    { refreshInterval: 15_000 }
+  )
 
   // Split active (cards) vs completed (table)
   const activeOrders    = orders.filter(o => !COMPLETED_STATUSES.includes(o.status))
@@ -114,6 +122,31 @@ export default function OrdersPage() {
 
   return (
     <div className={`flex h-full flex-col${batchMode ? ' pb-20' : ''}`}>
+
+      {/* ── Pending cash handover banners ── */}
+      {pendingHandovers.map(h => (
+        <div
+          key={h.id}
+          className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3"
+        >
+          <div className="flex items-center gap-2.5">
+            <Banknote className="h-5 w-5 shrink-0 text-amber-600" />
+            <p className="text-sm font-medium text-amber-900">
+              <span className="font-bold">{h.delivererName}</span> deve entregar{' '}
+              <span className="font-bold">
+                R$ {h.totalCash.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>{' '}
+              em dinheiro
+            </p>
+          </div>
+          <button
+            onClick={() => setHandoverRouteId(h.id)}
+            className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+          >
+            Confirmar recebimento
+          </button>
+        </div>
+      ))}
 
       {/* ── Header ── */}
       <div className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
@@ -413,6 +446,94 @@ export default function OrdersPage() {
           onAssigned={(routeId) => { setAssigning(null); router.push(`/routes/${routeId}`) }}
         />
       )}
+      {handoverRouteId && (
+        <HandoverConfirmModal
+          routeId={handoverRouteId}
+          onClose={() => setHandoverRouteId(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function HandoverConfirmModal({ routeId, onClose }: { routeId: string; onClose: () => void }) {
+  const [code,    setCode]    = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+  const [done,    setDone]    = useState(false)
+
+  async function confirm() {
+    if (!code.trim()) { setError('Informe o código'); return }
+    setLoading(true); setError('')
+    try {
+      await api.post(`/routes/${routeId}/confirm-handover`, { token: code.trim().toUpperCase() })
+      setDone(true)
+    } catch (err: unknown) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        {done ? (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+              <Check className="h-8 w-8 text-green-600" />
+            </div>
+            <p className="text-lg font-semibold text-gray-900">Dinheiro confirmado!</p>
+            <p className="text-sm text-gray-500 text-center">O recebimento foi registrado com sucesso.</p>
+            <button
+              onClick={onClose}
+              className="mt-2 w-full rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Banknote className="h-5 w-5 text-amber-500" />
+                <h2 className="text-lg font-semibold text-gray-900">Confirmar recebimento</h2>
+              </div>
+              <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
+                <Plus className="h-5 w-5 rotate-45" />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-gray-600">
+              Digite o código ou escaneie o QR Code mostrado no app do entregador.
+            </p>
+            <input
+              className="w-full rounded-lg border border-gray-300 px-3 py-3 text-center text-2xl font-bold tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-amber-400"
+              placeholder="XXXXXX"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === 'Enter' && confirm()}
+              autoFocus
+            />
+            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={onClose}
+                className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirm}
+                disabled={loading}
+                className="flex-1 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {loading ? 'Confirmando...' : 'Confirmar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

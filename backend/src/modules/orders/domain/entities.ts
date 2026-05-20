@@ -18,6 +18,9 @@ export interface Order {
   pickupCode: string
   deliveryCode: string
   notes?: string
+  paymentMethod: 'prepaid' | 'cash' | 'card'
+  cashAmount?: number
+  cashCollected: boolean
   lat?: number
   lng?: number
   deliveryAddress?: string

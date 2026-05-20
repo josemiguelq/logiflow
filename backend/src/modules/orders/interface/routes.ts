@@ -241,6 +241,8 @@ export async function orderRoutes(app: FastifyInstance) {
   const createSchema = z.object({
     customerId:      z.string().uuid(),
     notes:           z.string().optional(),
+    paymentMethod:   z.enum(['prepaid', 'cash', 'card']).default('prepaid'),
+    cashAmount:      z.number().positive().optional(),
     lat:             z.number().optional(),
     lng:             z.number().optional(),
     deliveryAddress: z.string().optional(),
@@ -272,6 +274,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
+          paymentMethod: body.paymentMethod, cashAmount: body.cashAmount,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         { orderRepo }
       )
@@ -543,10 +546,11 @@ export async function orderRoutes(app: FastifyInstance) {
   const pickupSchema   = z.object({ code: z.string() })
   const deliverySchema = z.object({
     code:     z.string().default(''),
-    photoUrl: z.string().optional(),
-    lat:      z.number().optional(),
-    lng:      z.number().optional(),
-    note:     z.string().max(500).optional(),
+    photoUrl:      z.string().optional(),
+    lat:           z.number().optional(),
+    lng:           z.number().optional(),
+    note:          z.string().max(500).optional(),
+    cashCollected: z.boolean().optional(),
   })
 
   app.post(
@@ -601,6 +605,14 @@ export async function orderRoutes(app: FastifyInstance) {
             requireDeliveryCode, ...body, photoUrl },
           { orderRepo }
         )
+
+        if (body.cashCollected) {
+          await db.query(
+            `UPDATE orders SET cash_collected = TRUE WHERE id = $1`,
+            [id]
+          )
+        }
+
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         queueNotif(req.actor.storeId, id, 'DELIVERED')
 

@@ -51,28 +51,7 @@ class DeliveryScreen extends ConsumerWidget {
         error:   (e, _) => Center(child: Text('Erro: $e')),
         data: (list) {
           if (list.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle_outline, size: 64, color: Color(0xFF16A34A)),
-                  const SizedBox(height: 16),
-                  const Text('Todas as entregas concluídas!',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Text('Volte para receber novos pedidos',
-                      style: TextStyle(color: Colors.grey.shade600)),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      context.go('/orders');
-                    },
-                    icon: const Icon(Icons.inbox_outlined),
-                    label: const Text('Ver pedidos disponíveis'),
-                  ),
-                ],
-              ),
-            );
+            return _EmptyDeliveryState(onGoOrders: () => context.go('/orders'));
           }
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(_activeDeliveryProvider),
@@ -391,7 +370,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   XFile? _photo;
-  bool _loading = false;
+  bool _loading       = false;
+  bool _cashCollected = false;
   String? _error;
 
   @override
@@ -415,6 +395,10 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     }
     if (widget.requireDeliveryPhoto && _photo == null) {
       setState(() => _error = 'Foto de comprovante é obrigatória');
+      return;
+    }
+    if (widget.order.isCash && !_cashCollected) {
+      setState(() => _error = 'Confirme que recebeu o pagamento em dinheiro');
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -443,11 +427,12 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
         data: {
-          'code':     code,
+          'code':          code,
           if (photoUrl != null) 'photoUrl': photoUrl,
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
           if (note.isNotEmpty) 'note': note,
+          if (widget.order.isCash) 'cashCollected': _cashCollected,
         },
       );
 
@@ -551,6 +536,55 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
+
+          if (widget.order.isCash) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => setState(() => _cashCollected = !_cashCollected),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _cashCollected
+                      ? const Color(0xFFF0FDF4)
+                      : const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _cashCollected
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFFF59E0B),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _cashCollected
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color: _cashCollected
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFFF59E0B),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Recebi R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: _cashCollected
+                              ? const Color(0xFF15803D)
+                              : const Color(0xFF92400E),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
 
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -706,6 +740,112 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Empty state — checks for pending cash handover ───────────────────────────
+
+final _pendingHandoverProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  try {
+    final res = await ApiClient().dio.get('/deliverer/routes/pending-handover');
+    if (res.data == null) return null;
+    return Map<String, dynamic>.from(res.data as Map);
+  } catch (_) {
+    return null;
+  }
+});
+
+class _EmptyDeliveryState extends ConsumerWidget {
+  final VoidCallback onGoOrders;
+  const _EmptyDeliveryState({required this.onGoOrders});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final handover = ref.watch(_pendingHandoverProvider);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle_outline, size: 64, color: Color(0xFF16A34A)),
+            const SizedBox(height: 16),
+            const Text('Todas as entregas concluídas!',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text('Volte para receber novos pedidos',
+                style: TextStyle(color: Colors.grey.shade600)),
+
+            handover.when(
+              loading: () => const SizedBox(height: 24),
+              error:   (_, __) => const SizedBox(height: 24),
+              data: (data) {
+                if (data == null) return const SizedBox(height: 24);
+                final total      = (data['totalCash'] as num).toDouble();
+                final routeId    = data['routeId'] as String;
+                final token      = data['token'] as String;
+                return Column(
+                  children: [
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.payments_outlined,
+                              size: 32, color: Color(0xFFD97706)),
+                          const SizedBox(height: 8),
+                          const Text('Dinheiro a entregar',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF92400E))),
+                          const SizedBox(height: 4),
+                          Text(
+                            'R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () => context.push(
+                              '/cash-handover',
+                              extra: {'routeId': routeId, 'token': token, 'totalCash': total},
+                            ),
+                            icon: const Icon(Icons.qr_code, size: 18),
+                            label: const Text('Ver QR Code / Código'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFF59E0B),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: onGoOrders,
+              icon: const Icon(Icons.inbox_outlined),
+              label: const Text('Ver pedidos disponíveis'),
+            ),
+          ],
+        ),
       ),
     );
   }

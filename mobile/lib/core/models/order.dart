@@ -9,6 +9,9 @@ class Order {
   final String customerAddress;
   final double? customerLat;
   final double? customerLng;
+  final String paymentMethod;   // 'prepaid' | 'cash' | 'card'
+  final double? cashAmount;
+  final bool cashCollected;
 
   const Order({
     required this.id,
@@ -21,7 +24,12 @@ class Order {
     required this.customerAddress,
     this.customerLat,
     this.customerLng,
+    this.paymentMethod = 'prepaid',
+    this.cashAmount,
+    this.cashCollected = false,
   });
+
+  bool get isCash => paymentMethod == 'cash' && cashAmount != null && cashAmount! > 0;
 
   String get shortId => id.substring(id.length - 8).toUpperCase();
 
@@ -38,6 +46,9 @@ class Order {
       customerAddress: c['address'] as String? ?? '',
       customerLat:     (c['lat'] as num?)?.toDouble(),
       customerLng:     (c['lng'] as num?)?.toDouble(),
+      paymentMethod:   j['paymentMethod'] as String? ?? 'prepaid',
+      cashAmount:      (j['cashAmount'] as num?)?.toDouble(),
+      cashCollected:   j['cashCollected'] as bool? ?? false,
     );
   }
 
@@ -52,6 +63,9 @@ class Order {
         customerAddress: customerAddress,
         customerLat:     customerLat,
         customerLng:     customerLng,
+        paymentMethod:   paymentMethod,
+        cashAmount:      cashAmount,
+        cashCollected:   cashCollected,
       );
 }
 
