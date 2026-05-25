@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff } from 'lucide-react'
+import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff, Eye } from 'lucide-react'
 import { Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -94,7 +94,12 @@ export default function DeliverersPage() {
                           {d.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-900">{d.name}</span>
+                          <Link
+                            href={`/deliverers/${d.id}`}
+                            className="font-medium text-gray-900 hover:underline"
+                          >
+                            {d.name}
+                          </Link>
                           {inactive && (
                             <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">
                               Desativado
@@ -127,54 +132,51 @@ export default function DeliverersPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center justify-end gap-1">
                         <Link
                           href={`/deliverers/${d.id}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                          title="Ver detalhes"
                         >
-                          Ver detalhes
+                          <Eye className="h-4 w-4" />
                         </Link>
                         {!inactive && (
                           <Link
                             href={`/tracking/deliverer/${d.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                            title="Rastrear"
                           >
-                            <Map className="h-3.5 w-3.5" />
-                            Rastrear
+                            <Map className="h-4 w-4" />
                           </Link>
                         )}
                         <button
                           onClick={() => setEditing(d)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                          title="Editar"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Editar
+                          <Pencil className="h-4 w-4" />
                         </button>
                         {!inactive && d.status !== 'OFFLINE' && can({ scope: 'deliverers:force_offline' }) && (
                           <button
                             onClick={() => forceOffline(d)}
                             disabled={forcingOffline === d.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 px-3 py-1.5 text-xs font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:opacity-50"
-                            title="Forçar offline imediatamente"
+                            className="rounded-lg p-1.5 text-orange-400 transition-colors hover:bg-orange-50 hover:text-orange-600 disabled:opacity-40"
+                            title="Forçar offline"
                           >
-                            <WifiOff className="h-3.5 w-3.5" />
-                            {forcingOffline === d.id ? '...' : 'Forçar offline'}
+                            <WifiOff className="h-4 w-4" />
                           </button>
                         )}
                         <button
                           onClick={() => toggleActive(d)}
-                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          className={`rounded-lg p-1.5 transition-colors ${
                             inactive
-                              ? 'border-green-200 text-green-700 hover:bg-green-50'
-                              : 'border-red-200 text-red-600 hover:bg-red-50'
+                              ? 'text-green-500 hover:bg-green-50 hover:text-green-700'
+                              : 'text-red-400 hover:bg-red-50 hover:text-red-600'
                           }`}
+                          title={inactive ? 'Ativar' : 'Desativar'}
                         >
-                          {inactive ? (
-                            <><Power className="h-3.5 w-3.5" />Ativar</>
-                          ) : (
-                            <><PowerOff className="h-3.5 w-3.5" />Desativar</>
-                          )}
+                          {inactive ? <Power className="h-4 w-4" /> : <PowerOff className="h-4 w-4" />}
                         </button>
                       </div>
                     </td>
