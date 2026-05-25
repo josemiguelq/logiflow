@@ -138,7 +138,8 @@ export function AddressAutocomplete({
     onChange(street)
     setSuggestions([])
     setOpen(false)
-    const coords = await getPlaceCoords(s.place)
+    // Use full address text (with city/state) for accurate geocoding; fall back to Place Details
+    const coords = await geocodeAddress(s.text.text) ?? await getPlaceCoords(s.place)
     onPick?.({ address: street, lat: coords?.lat ?? 0, lng: coords?.lng ?? 0 })
   }
 

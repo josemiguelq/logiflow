@@ -20,6 +20,25 @@ const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
     .catch(() => { /* non-fatal */ })
 
+const STORE_ORDERS_TTL     = 30  // seconds
+const DELIVERER_ORDERS_TTL = 15  // seconds
+
+function storeOrdersCacheKey(storeId: string, userId: string, q: Record<string, string>) {
+  const { status = '', delivererId = '', page = '1', limit = '50' } = q
+  return `orders:store:${storeId}:${userId}:${status}:${delivererId}:${page}:${limit}`
+}
+
+async function invalidateStoreOrders(storeId: string) {
+  try {
+    const keys = await redis.keys(`orders:store:${storeId}:*`)
+    if (keys.length > 0) await redis.del(...(keys as [string, ...string[]]))
+  } catch { /* non-fatal */ }
+}
+
+async function invalidateDelivererOrders(delivererId: string) {
+  try { await redis.del(`orders:deliverer:${delivererId}`) } catch { /* non-fatal */ }
+}
+
 async function signOrderProof<T extends { proof?: { photoUrl: string; lat?: number; lng?: number } | undefined }>(
   order: T
 ): Promise<T> {
@@ -213,7 +232,8 @@ export async function orderRoutes(app: FastifyInstance) {
     '/orders',
     { preHandler: requireStoreUser },
     async (req) => {
-      const { status, delivererId, page, limit } = req.query as Record<string, string>
+      const query = req.query as Record<string, string>
+      const { status, delivererId, page, limit } = query
       const isAssistant = req.actor.type === 'store_user' && req.actor.role === 'ASSISTANT'
       const filters = {
         status:          status as OrderStatus | undefined,
@@ -222,7 +242,15 @@ export async function orderRoutes(app: FastifyInstance) {
         page:            page ? Number(page) : 1,
         limit:           limit ? Number(limit) : 50,
       }
+
+      const cacheKey = storeOrdersCacheKey(req.actor.storeId, req.actor.sub, query)
+      try {
+        const raw = await redis.get(cacheKey)
+        if (raw) return signOrdersProof(JSON.parse(raw))
+      } catch { /* fall through to DB */ }
+
       const orders = await orderRepo.findByStore(req.actor.storeId, filters)
+      redis.setex(cacheKey, STORE_ORDERS_TTL, JSON.stringify(orders)).catch(() => {})
       return signOrdersProof(orders)
     }
   )
@@ -281,6 +309,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
       wsHub.broadcastOrderUpdate(storeId, order)
       queueNotif(storeId, order.id, 'PREPARING')
+      invalidateStoreOrders(storeId)
       return reply.code(201).send(order)
     }
   )
@@ -325,6 +354,8 @@ export async function orderRoutes(app: FastifyInstance) {
 
       wsHub.broadcastOrderUpdate(req.actor.storeId, order)
       queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
+      invalidateStoreOrders(req.actor.storeId)
+      invalidateDelivererOrders(body.delivererId)
       return { route, order }
     }
   )
@@ -339,6 +370,8 @@ export async function orderRoutes(app: FastifyInstance) {
       const updated = await orderRepo.updateStatus(id, 'CANCELLED')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'CANCELLED')
+      invalidateStoreOrders(req.actor.storeId)
+      if (order.delivererId) invalidateDelivererOrders(order.delivererId as string)
 
       if (order.routeId) {
         await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
@@ -365,6 +398,8 @@ export async function orderRoutes(app: FastifyInstance) {
       )
       const updated = (await orderRepo.findById(id, req.actor.storeId))!
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
       return updated
     }
   )
@@ -423,6 +458,8 @@ export async function orderRoutes(app: FastifyInstance) {
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
       }
+      invalidateStoreOrders(req.actor.storeId)
+      invalidateDelivererOrders(delivererId)
 
       return { route, orders: assigned }
     }
@@ -433,7 +470,21 @@ export async function orderRoutes(app: FastifyInstance) {
     '/deliverer/orders',
     { preHandler: requireDeliverer },
     async (req) => {
+      const cacheKey = `orders:deliverer:${req.actor.sub}`
+      try {
+        const raw = await redis.get(cacheKey)
+        if (raw) {
+          const orders = JSON.parse(raw)
+          const signed = await signOrdersProof(orders)
+          return signed.map((o: typeof orders[0]) => ({
+            ...o,
+            customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
+          }))
+        }
+      } catch { /* fall through to DB */ }
+
       const orders = await orderRepo.findByDeliverer(req.actor.sub)
+      redis.setex(cacheKey, DELIVERER_ORDERS_TTL, JSON.stringify(orders)).catch(() => {})
       const signed = await signOrdersProof(orders)
       return signed.map(o => ({
         ...o,
@@ -559,6 +610,8 @@ export async function orderRoutes(app: FastifyInstance) {
         wsHub.broadcastOrderUpdate(req.actor.storeId, o)
         queueNotif(req.actor.storeId, o.id, 'ASSIGNED')
       }
+      invalidateStoreOrders(req.actor.storeId)
+      invalidateDelivererOrders(req.actor.sub)
 
       return { route, orders: claimedOrders }
     }
@@ -586,6 +639,8 @@ export async function orderRoutes(app: FastifyInstance) {
           { orderRepo }
         )
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+        invalidateDelivererOrders(req.actor.sub)
+        invalidateStoreOrders(req.actor.storeId)
         return order
       } catch (err: unknown) {
         return reply.code(400).send({ error: (err as Error).message })
@@ -636,6 +691,8 @@ export async function orderRoutes(app: FastifyInstance) {
 
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         queueNotif(req.actor.storeId, id, 'DELIVERED')
+        invalidateDelivererOrders(req.actor.sub)
+        invalidateStoreOrders(req.actor.storeId)
 
         // Auto-finish route when all its orders are delivered/cancelled
         if (order.routeId) {
@@ -669,18 +726,30 @@ export async function orderRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: 'Pedido não pode ser devolvido neste status' })
       }
 
-      await db.query(
-        `UPDATE orders
-         SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
-         WHERE id = $1`,
-        [id]
-      )
+      await db.transaction(async (client) => {
+        const { rows: [{ route_id }] } = await client.query(
+          `UPDATE orders
+           SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
+           WHERE id = $1
+           RETURNING route_id`,
+          [id]
+        )
+        if (route_id) {
+          await client.query(
+            `UPDATE routes
+             SET status = 'FINISHED', finished_at = COALESCE(finished_at, now())
+             WHERE id = $1
+               AND status != 'FINISHED'
+               AND NOT EXISTS (SELECT 1 FROM orders WHERE route_id = $1)`,
+            [route_id]
+          )
+        }
+      })
 
       const updated = await orderRepo.findById(id, req.actor.storeId)
       if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
-
-      const routeId = (order as Record<string, unknown>).route_id as string | undefined
-      if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+      invalidateDelivererOrders(req.actor.sub)
+      invalidateStoreOrders(req.actor.storeId)
 
       return { ok: true }
     }
@@ -726,6 +795,8 @@ export async function orderRoutes(app: FastifyInstance) {
       const updated = await orderRepo.findById(id, req.actor.storeId)
       if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'CANCELLED')
+      invalidateDelivererOrders(req.actor.sub)
+      invalidateStoreOrders(req.actor.storeId)
 
       const routeId = (order as Record<string, unknown>).route_id as string | undefined
       if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
@@ -758,6 +829,8 @@ export async function orderRoutes(app: FastifyInstance) {
       const updated = await orderRepo.updateStatus(id, 'OUT_FOR_DELIVERY')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'OUT_FOR_DELIVERY')
+      invalidateDelivererOrders(req.actor.sub)
+      invalidateStoreOrders(req.actor.storeId)
       return updated
     }
   )

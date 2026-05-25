@@ -165,39 +165,10 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(order.customerName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 15),
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                          if (order.notes != null && order.notes!.isNotEmpty) ...[
-                            const SizedBox(width: 5),
-                            GestureDetector(
-                              onTap: () => showDialog<void>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('Observação do pedido'),
-                                  content: Text(order.notes!),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(_),
-                                      child: const Text('Fechar'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: Color(0xFFF59E0B),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                      Text(order.customerName,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 15),
+                          overflow: TextOverflow.ellipsis),
                       Text('#${order.shortId}',
                           style: TextStyle(
                               color: Colors.grey.shade500,
@@ -238,29 +209,37 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
             ),
           ),
 
-          // Payment badge
-          if (order.isCash || order.paymentMethod == 'card')
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-              child: Row(
-                children: [
-                  Icon(
-                    order.isCash ? Icons.payments_outlined : Icons.credit_card_outlined,
-                    size: 13,
-                    color: order.isCash ? const Color(0xFFD97706) : const Color(0xFF3B82F6),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    order.isCash
-                        ? 'Cobrar R\$ ${order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro'
-                        : 'Pagamento no cartão',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: order.isCash ? const Color(0xFFD97706) : const Color(0xFF3B82F6),
+          // Notes row
+          if (order.notes != null && order.notes!.isNotEmpty)
+            GestureDetector(
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('Observações'),
+                  content: Text(order.notes!),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(_),
+                      child: const Text('Fechar'),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, size: 15, color: Color(0xFFD97706)),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Observações',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFFD97706),
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -426,8 +405,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   XFile? _photo;
-  bool _loading       = false;
-  bool _cashCollected = false;
+  bool _loading = false;
   String? _error;
 
   @override
@@ -451,10 +429,6 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     }
     if (widget.requireDeliveryPhoto && _photo == null) {
       setState(() => _error = 'Foto de comprovante é obrigatória');
-      return;
-    }
-    if (widget.order.isCash && !_cashCollected) {
-      setState(() => _error = 'Confirme que recebeu o pagamento em dinheiro');
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -488,7 +462,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
           if (note.isNotEmpty) 'note': note,
-          if (widget.order.isCash) 'cashCollected': _cashCollected,
+          if (widget.order.isCash) 'cashCollected': true,
         },
       );
 
@@ -639,55 +613,6 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
-
-          if (widget.order.isCash) ...[
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () => setState(() => _cashCollected = !_cashCollected),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: _cashCollected
-                      ? const Color(0xFFF0FDF4)
-                      : const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _cashCollected
-                        ? const Color(0xFF16A34A)
-                        : const Color(0xFFF59E0B),
-                    width: 1.5,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _cashCollected
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color: _cashCollected
-                          ? const Color(0xFF16A34A)
-                          : const Color(0xFFF59E0B),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Recebi R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: _cashCollected
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFF92400E),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
 
           if (_error != null) ...[
             const SizedBox(height: 12),

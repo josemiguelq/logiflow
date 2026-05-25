@@ -105,6 +105,7 @@ export function createPgRouteRepo(db: DB) {
         `${LIST_JOIN}
          WHERE r.deliverer_id = $1 AND r.status IN ('CREATED','STARTED')
          GROUP BY r.id, d.name, d.username
+         HAVING COUNT(o.id) > 0
          ORDER BY r.created_at DESC`,
         [delivererId]
       )
