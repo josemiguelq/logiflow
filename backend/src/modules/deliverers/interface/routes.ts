@@ -3,7 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
-import { requireRole } from '../../../shared/middleware/rbac'
+import { requireRole, requireScope } from '../../../shared/middleware/rbac'
 import { createPgDelivererRepo } from '../infrastructure/repositories/pg-deliverer-repo'
 
 const createSchema = z.object({
@@ -64,6 +64,30 @@ export async function delivererRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const { active } = z.object({ active: z.boolean() }).parse(req.body)
       await repo.setActive(id, req.actor.storeId, active)
+      return reply.send({ ok: true })
+    }
+  )
+
+  // Store admin forces a deliverer offline (bypasses active-orders guard)
+  app.patch(
+    '/deliverers/:id/force-offline',
+    { preHandler: [requireStoreUser, requireScope('deliverers:force_offline')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { rows: [d] } = await db.query(
+        `SELECT id, status FROM deliverers WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
+      if ((d as Record<string, unknown>).status === 'OFFLINE') {
+        return reply.send({ ok: true })
+      }
+      await repo.updateStatus(id, req.actor.storeId, 'OFFLINE')
+      await db.query(
+        `INSERT INTO deliverer_status_history (deliverer_id, store_id, status, lat, lng)
+         VALUES ($1, $2, 'OFFLINE', NULL, NULL)`,
+        [id, req.actor.storeId]
+      )
       return reply.send({ ok: true })
     }
   )

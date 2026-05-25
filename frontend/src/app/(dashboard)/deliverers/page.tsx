@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Plus, Truck, Map, Pencil, PowerOff, Power } from 'lucide-react'
+import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff } from 'lucide-react'
 import { Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useAccess } from '@/hooks/useAccess'
 
 const STATUS_MAP = {
   AVAILABLE: { label: 'Disponível', dot: 'bg-green-500' },
@@ -18,10 +19,12 @@ const STATUS_MAP = {
 export default function DeliverersPage() {
   const [showCreate, setShowCreate]           = useState(false)
   const [editing, setEditing]                 = useState<Deliverer | null>(null)
+  const [forcingOffline, setForcingOffline]   = useState<string | null>(null)
   const { data: deliverers = [], mutate } = useSWR<Deliverer[]>(
     '/deliverers',
     (url: string) => api.get<Deliverer[]>(url)
   )
+  const { can } = useAccess()
 
   const available = deliverers.filter((d) => d.isActive && d.status === 'AVAILABLE').length
   const onRoute   = deliverers.filter((d) => d.isActive && d.status === 'ON_ROUTE').length
@@ -29,6 +32,17 @@ export default function DeliverersPage() {
   async function toggleActive(d: Deliverer) {
     await api.patch(`/deliverers/${d.id}/active`, { active: !d.isActive })
     mutate()
+  }
+
+  async function forceOffline(d: Deliverer) {
+    if (!confirm(`Forçar ${d.name} para OFFLINE?`)) return
+    setForcingOffline(d.id)
+    try {
+      await api.patch(`/deliverers/${d.id}/force-offline`, {})
+      mutate()
+    } finally {
+      setForcingOffline(null)
+    }
   }
 
   return (
@@ -137,6 +151,17 @@ export default function DeliverersPage() {
                           <Pencil className="h-3.5 w-3.5" />
                           Editar
                         </button>
+                        {!inactive && d.status !== 'OFFLINE' && can({ scope: 'deliverers:force_offline' }) && (
+                          <button
+                            onClick={() => forceOffline(d)}
+                            disabled={forcingOffline === d.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 px-3 py-1.5 text-xs font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:opacity-50"
+                            title="Forçar offline imediatamente"
+                          >
+                            <WifiOff className="h-3.5 w-3.5" />
+                            {forcingOffline === d.id ? '...' : 'Forçar offline'}
+                          </button>
+                        )}
                         <button
                           onClick={() => toggleActive(d)}
                           className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
