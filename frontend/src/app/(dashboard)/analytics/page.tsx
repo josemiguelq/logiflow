@@ -46,6 +46,11 @@ interface DelivererCount { name: string; delivered: number }
 
 function toDateStr(d: Date) { return d.toISOString().slice(0, 10) }
 
+function todayRange() {
+  const today = toDateStr(new Date())
+  return { from: today, to: today }
+}
+
 function thisMonthRange() {
   const now = new Date()
   const from = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -354,6 +359,7 @@ export default function AnalyticsPage() {
           {/* Quick filters */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
             {([
+              { label: 'Hoje',        range: todayRange()     },
               { label: 'Este mês',    range: thisMonthRange() },
               { label: 'Mês passado', range: lastMonthRange() },
             ] as const).map(({ label, range }, i) => {

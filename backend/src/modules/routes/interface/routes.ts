@@ -152,6 +152,28 @@ export async function routeRoutes(app: FastifyInstance) {
   )
 
   // ── Deliverer routes ──────────────────────────────────────────────────────
+  // Hard-delete a route AND all its orders (store admin, scope-gated)
+  app.delete(
+    '/routes/:id',
+    { preHandler: [requireStoreUser, requireScope('routes:delete')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { rows: [route] } = await db.query(
+        `SELECT id FROM routes WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!route) return reply.code(404).send({ error: 'Rota não encontrada' })
+
+      const { rowCount: deletedOrders } = await db.query(
+        `DELETE FROM orders WHERE route_id = $1`,
+        [id]
+      )
+      await db.query(`DELETE FROM routes WHERE id = $1`, [id])
+
+      return { ok: true, deletedOrders: deletedOrders ?? 0 }
+    }
+  )
+
   app.get('/deliverer/routes', { preHandler: requireDeliverer }, async (req) => {
     return routeRepo.findByDeliverer(req.actor.sub)
   })

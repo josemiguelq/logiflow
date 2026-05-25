@@ -3,11 +3,13 @@ export const SCOPES = [
   'orders:view',
   'orders:create',
   'orders:cancel',
+  'orders:delete',
 
   // Routes
   'routes:view',
   'routes:force_finish',
   'routes:export',
+  'routes:delete',
 
   // Customers
   'customers:view',
@@ -46,9 +48,11 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'orders:view':          'Pedidos — visualizar',
   'orders:create':        'Pedidos — criar',
   'orders:cancel':        'Pedidos — cancelar',
+  'orders:delete':        'Pedidos — excluir permanentemente',
   'routes:view':          'Rotas — visualizar',
   'routes:force_finish':  'Rotas — forçar finalização',
   'routes:export':        'Rotas — exportar CSV',
+  'routes:delete':        'Rotas — excluir rota e todos os pedidos',
   'customers:view':       'Clientes — visualizar',
   'customers:create':     'Clientes — criar',
   'customers:edit':       'Clientes — editar',
@@ -68,8 +72,8 @@ export const SCOPE_LABELS: Record<Scope, string> = {
 }
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
-  { label: 'Pedidos',        scopes: ['orders:view', 'orders:create', 'orders:cancel'] },
-  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export'] },
+  { label: 'Pedidos',        scopes: ['orders:view', 'orders:create', 'orders:cancel', 'orders:delete'] },
+  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit'] },
   { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline'] },
   { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete'] },
@@ -82,7 +86,8 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   OWNER: [...SCOPES],
   MANAGER: SCOPES.filter(s =>
-    !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect'].includes(s)
+    !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect',
+      'routes:delete', 'orders:delete'].includes(s)
   ),
   ASSISTANT: [
     'orders:view', 'orders:create',
