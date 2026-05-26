@@ -8,12 +8,14 @@ class StoreSettings {
   final bool requirePickupCode;
   final bool requireDeliveryCode;
   final bool requireDeliveryPhoto;
+  final int maxProofPhotos;
   const StoreSettings({
     this.storeName,
     this.primaryColor,
     required this.requirePickupCode,
     required this.requireDeliveryCode,
     required this.requireDeliveryPhoto,
+    this.maxProofPhotos = 2,
   });
 
   String get brandName => storeName ?? 'LogiFlow';
@@ -36,5 +38,6 @@ final storeSettingsProvider = FutureProvider<StoreSettings>((ref) async {
     requirePickupCode:    res.data['requirePickupCode']    as bool? ?? true,
     requireDeliveryCode:  res.data['requireDeliveryCode']  as bool? ?? true,
     requireDeliveryPhoto: res.data['requireDeliveryPhoto'] as bool? ?? false,
+    maxProofPhotos:       res.data['maxProofPhotos']       as int?  ?? 2,
   );
 });
