@@ -22,25 +22,60 @@ export default function WhatsAppPage() {
     { refreshInterval: 5_000 }
   )
 
-  const [loading, setLoading] = useState(false)
-  const [qrData,  setQrData]  = useState<string | null>(null)
+  const [loading,    setLoading]    = useState(false)
+  const [qrData,     setQrData]     = useState<string | null>(null)
+  const [qrPolling,  setQrPolling]  = useState(false)
 
   useEffect(() => {
     if (isLoading) return
     if (!allowed) router.replace('/orders')
   }, [isLoading, allowed, router])
 
+  // Clear QR when session connects
+  useEffect(() => {
+    if (statusData?.status === 'CONNECTED') setQrData(null)
+  }, [statusData?.status])
+
   if (isLoading || !allowed) return null
 
   async function handleConnect() {
     setLoading(true)
+    setQrData(null)
     try {
       const res = await api.post<{ status: string; qrCode?: string }>('/whatsapp/connect', {})
-      if (res.qrCode) setQrData(res.qrCode)
+      if (res.qrCode) {
+        setQrData(res.qrCode)
+      } else if (res.status === 'CONNECTING') {
+        // Backend timed out polling — keep trying from frontend
+        pollForQr()
+      }
       mutate()
     } finally {
       setLoading(false)
     }
+  }
+
+  async function pollForQr() {
+    setQrPolling(true)
+    const deadline = Date.now() + 30_000
+    while (Date.now() < deadline) {
+      await new Promise((res) => setTimeout(res, 2_000))
+      try {
+        const res = await api.get<{ qrCode: string }>('/whatsapp/qr')
+        setQrData(res.qrCode)
+        setQrPolling(false)
+        return
+      } catch {
+        // 404 = QR not ready yet, keep polling
+      }
+      const statusRes = await api.get<{ status: string }>('/whatsapp/status').catch(() => null)
+      if (statusRes?.status === 'CONNECTED') {
+        setQrPolling(false)
+        mutate()
+        return
+      }
+    }
+    setQrPolling(false)
   }
 
   async function handleDisconnect() {
@@ -109,10 +144,10 @@ export default function WhatsAppPage() {
               <Button
                 className="flex-1"
                 onClick={handleConnect}
-                disabled={loading || !can({ scope: 'whatsapp:connect', feature: 'whatsapp' })}
+                disabled={loading || qrPolling || !can({ scope: 'whatsapp:connect', feature: 'whatsapp' })}
               >
                 <QrCode className="h-4 w-4" />
-                {loading ? 'Conectando...' : 'Conectar WhatsApp'}
+                {loading ? 'Aguardando QR...' : qrPolling ? 'Carregando QR...' : 'Conectar WhatsApp'}
               </Button>
             ) : (
               <Button

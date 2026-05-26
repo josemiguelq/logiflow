@@ -19,12 +19,20 @@ export async function notificationRoutes(app: FastifyInstance) {
     { preHandler: [requireStoreUser, requireScope('whatsapp:connect')] },
     async (req, reply) => {
       await whatsapp.connect(req.actor.storeId)
-      await new Promise((res) => setTimeout(res, 3_000))
-      const qr = await whatsapp.getQRCode(req.actor.storeId)
-      if (qr) {
-        const dataUrl = await QRCode.toDataURL(qr)
-        return reply.send({ status: 'CONNECTING', qrCode: dataUrl })
+
+      // Poll for QR for up to 20 seconds (Baileys is async — QR arrives via event)
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline) {
+        await new Promise((res) => setTimeout(res, 800))
+        const qr = await whatsapp.getQRCode(req.actor.storeId)
+        if (qr) {
+          const dataUrl = await QRCode.toDataURL(qr)
+          return reply.send({ status: 'CONNECTING', qrCode: dataUrl })
+        }
+        const status = await whatsapp.getStatus(req.actor.storeId)
+        if (status === 'CONNECTED') return reply.send({ status })
       }
+
       const status = await whatsapp.getStatus(req.actor.storeId)
       return reply.send({ status })
     }
