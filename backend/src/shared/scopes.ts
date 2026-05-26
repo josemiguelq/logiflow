@@ -15,6 +15,7 @@ export const SCOPES = [
   'customers:view',
   'customers:create',
   'customers:edit',
+  'customers:delete',
 
   // Deliverers
   'deliverers:view',
@@ -56,6 +57,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'customers:view':       'Clientes — visualizar',
   'customers:create':     'Clientes — criar',
   'customers:edit':       'Clientes — editar',
+  'customers:delete':     'Clientes — excluir',
   'deliverers:view':          'Entregadores — visualizar',
   'deliverers:manage':        'Entregadores — gerenciar',
   'deliverers:force_offline': 'Entregadores — forçar offline',
@@ -74,7 +76,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Pedidos',        scopes: ['orders:view', 'orders:create', 'orders:cancel', 'orders:delete'] },
   { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
-  { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit'] },
+  { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
   { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline'] },
   { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete'] },
   { label: 'WhatsApp',       scopes: ['whatsapp:view', 'whatsapp:connect'] },
@@ -87,7 +89,7 @@ export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   OWNER: [...SCOPES],
   MANAGER: SCOPES.filter(s =>
     !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect',
-      'routes:delete', 'orders:delete'].includes(s)
+      'routes:delete', 'orders:delete', 'customers:delete'].includes(s)
   ),
   ASSISTANT: [
     'orders:view', 'orders:create',

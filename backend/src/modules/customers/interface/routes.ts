@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
+import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgCustomerRepo } from '../infrastructure/repositories/pg-customer-repo'
 
 const addressSchema = z.object({
@@ -108,6 +109,33 @@ export async function customerRoutes(app: FastifyInstance) {
       }
 
       return repo.findById(id, req.actor.storeId)
+    }
+  )
+
+  // ── Delete ──────────────────────────────────────────────────────────────────
+
+  app.delete(
+    '/customers/:id',
+    { preHandler: [requireStoreUser, requireScope('customers:delete')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const existing = await repo.findById(id, req.actor.storeId)
+      if (!existing) return reply.code(404).send({ error: 'Cliente não encontrado' })
+      await db.query(`DELETE FROM customers WHERE id = $1 AND store_id = $2`, [id, req.actor.storeId])
+      return { ok: true }
+    }
+  )
+
+  app.delete(
+    '/customers',
+    { preHandler: [requireStoreUser, requireScope('customers:delete')] },
+    async (req, reply) => {
+      const { ids } = z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(req.body)
+      const { rowCount } = await db.query(
+        `DELETE FROM customers WHERE id = ANY($1::uuid[]) AND store_id = $2`,
+        [ids, req.actor.storeId]
+      )
+      return { ok: true, deleted: rowCount ?? 0 }
     }
   )
 
