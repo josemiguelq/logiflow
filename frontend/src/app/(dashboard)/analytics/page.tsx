@@ -42,6 +42,13 @@ interface OrderAverages {
 
 interface DelivererCount { name: string; delivered: number }
 
+interface OrderDurations {
+  avgPrepMin:  number
+  avgRouteMin: number
+  avgTotalMin: number
+  count:       number
+}
+
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 function toDateStr(d: Date) {
@@ -87,6 +94,14 @@ function fmtMonth(iso: string) {
   const [y, m] = iso.split('-')
   const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
   return `${months[Number(m) - 1]}/${y!.slice(2)}`
+}
+
+function fmtDuration(minutes: number): string {
+  if (minutes < 1) return '< 1 min'
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  const h = Math.floor(minutes / 60)
+  const m = Math.round(minutes % 60)
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
 }
 
 // ── Status card config ────────────────────────────────────────────────────────
@@ -165,6 +180,13 @@ export default function AnalyticsPage() {
 
   const { data: delivererCounts = [], isLoading: dcLoading } = useSWR<DelivererCount[]>(
     `/analytics/deliverers/delivered-counts?${dcParams}`,
+    fetcher
+  )
+
+  const [durRange, setDurRange] = useState(thisMonthRange)
+  const durParams = new URLSearchParams({ from: durRange.from, to: durRange.to })
+  const { data: durations, isLoading: durLoading } = useSWR<OrderDurations>(
+    `/analytics/orders/durations?${durParams}`,
     fetcher
   )
 
@@ -350,6 +372,91 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Order durations */}
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center gap-2 mr-auto">
+            <Clock className="h-4 w-4 text-blue-500" />
+            <span className="text-sm font-semibold text-gray-800">Tempo médio por fase</span>
+            {durations && durations.count > 0 && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                {durations.count} {durations.count === 1 ? 'pedido' : 'pedidos'}
+              </span>
+            )}
+          </div>
+
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            {([
+              { label: 'Hoje',        range: todayRange()     },
+              { label: 'Este mês',    range: thisMonthRange() },
+              { label: 'Mês passado', range: lastMonthRange() },
+            ] as const).map(({ label, range }, i) => {
+              const active = durRange.from === range.from && durRange.to === range.to
+              return (
+                <button
+                  key={label}
+                  onClick={() => setDurRange(range)}
+                  className={`px-3 py-1.5 transition-colors ${i > 0 ? 'border-l border-gray-200' : ''} ${
+                    active ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600">
+            <Calendar className="h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="date"
+              value={durRange.from}
+              max={durRange.to}
+              onChange={e => setDurRange(r => ({ ...r, from: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="date"
+              value={durRange.to}
+              min={durRange.from}
+              max={toDateStr(new Date())}
+              onChange={e => setDurRange(r => ({ ...r, to: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+          </div>
+        </div>
+
+        {durLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+          </div>
+        ) : !durations || durations.count === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+            <Clock className="mb-2 h-8 w-8" />
+            <p className="text-sm">Nenhuma entrega concluída no período</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 divide-x divide-gray-100">
+            <div className="px-5 py-5">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-amber-600">Preparação</p>
+              <p className="text-2xl font-bold text-gray-900">{fmtDuration(durations.avgPrepMin)}</p>
+              <p className="mt-1 text-xs text-gray-400">criação → coleta</p>
+            </div>
+            <div className="px-5 py-5">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-indigo-600">Em rota</p>
+              <p className="text-2xl font-bold text-gray-900">{fmtDuration(durations.avgRouteMin)}</p>
+              <p className="mt-1 text-xs text-gray-400">coleta → entrega</p>
+            </div>
+            <div className="px-5 py-5">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-green-600">Total</p>
+              <p className="text-2xl font-bold text-gray-900">{fmtDuration(durations.avgTotalMin)}</p>
+              <p className="mt-1 text-xs text-gray-400">criação → entrega</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Delivered orders per deliverer */}
