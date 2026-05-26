@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck } from 'lucide-react'
+import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2 } from 'lucide-react'
 import { Order, OrderStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { useAccess } from '@/hooks/useAccess'
 import { OrderCard } from '@/components/orders/order-card'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/badge'
@@ -27,12 +28,15 @@ export default function OrdersPage() {
   const { user }   = useAuth()
   const { on, onReconnect } = useWebSocket(user?.storeId)
   const router     = useRouter()
+  const { can }    = useAccess()
 
   const [status,       setStatus]       = useState<OrderStatus | ''>('')
   const [delivererId,  setDelivererId]  = useState('')
   const [showNewOrder,    setShowNewOrder]    = useState(false)
   const [assigning,       setAssigning]       = useState<Order | null>(null)
   const [view,            setView]            = useState<'cards' | 'map'>('cards')
+  const [deletingOrder,   setDeletingOrder]   = useState<Order | null>(null)
+  const [deleteLoading,   setDeleteLoading]   = useState(false)
   // Batch assign
   const [batchMode,        setBatchMode]        = useState(false)
   const [batchSelected,    setBatchSelected]    = useState<string[]>([])
@@ -82,6 +86,22 @@ export default function OrdersPage() {
   async function handleCancel(orderId: string) {
     await api.patch(`/orders/${orderId}/cancel`, {})
     mutate()
+  }
+
+  async function handleDelete(order: Order) {
+    setDeletingOrder(order)
+  }
+
+  async function confirmDelete() {
+    if (!deletingOrder) return
+    setDeleteLoading(true)
+    try {
+      await api.delete(`/orders/${deletingOrder.id}`)
+      setDeletingOrder(null)
+      mutate()
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   async function handleSaveNote(orderId: string, note: string) {
@@ -295,6 +315,7 @@ export default function OrdersPage() {
                             onAssign={!batchMode ? () => setAssigning(order) : undefined}
                             onCancel={!batchMode ? () => handleCancel(order.id) : undefined}
                             onSaveNote={!batchMode ? (note) => handleSaveNote(order.id, note) : undefined}
+                            onDelete={!batchMode && can({ scope: 'orders:delete' }) ? () => handleDelete(order) : undefined}
                           />
                         </div>
                       </div>
@@ -347,13 +368,24 @@ export default function OrdersPage() {
                               {formatDate(order.createdAt)}
                             </td>
                             <td className="px-4 py-2.5 text-right">
-                              <Link
-                                href={`/orders/${order.id}`}
-                                className="text-xs font-medium hover:underline"
-                                style={{ color: 'var(--color-primary)' }}
-                              >
-                                Ver
-                              </Link>
+                              <div className="flex items-center justify-end gap-2">
+                                <Link
+                                  href={`/orders/${order.id}`}
+                                  className="text-xs font-medium hover:underline"
+                                  style={{ color: 'var(--color-primary)' }}
+                                >
+                                  Ver
+                                </Link>
+                                {can({ scope: 'orders:delete' }) && (
+                                  <button
+                                    onClick={() => handleDelete(order)}
+                                    className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                    title="Excluir pedido"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -417,6 +449,43 @@ export default function OrdersPage() {
           onClose={() => setAssigning(null)}
           onAssigned={(routeId) => { setAssigning(null); router.push(`/routes/${routeId}`) }}
         />
+      )}
+
+      {deletingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">Excluir pedido</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  O pedido{' '}
+                  <span className="font-mono font-bold">#{deletingOrder.id.slice(-8).toUpperCase()}</span>{' '}
+                  de <span className="font-medium">{deletingOrder.customer.name}</span> será excluído permanentemente.
+                  Esta ação não pode ser desfeita.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingOrder(null)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleteLoading}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 transition-colors"
+              >
+                {deleteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {deleteLoading ? 'Excluindo…' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

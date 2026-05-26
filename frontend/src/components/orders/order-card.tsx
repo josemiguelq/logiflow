@@ -5,16 +5,17 @@ import Link from 'next/link'
 import { Order } from '@/types'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
-import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X } from 'lucide-react'
+import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X, Trash2 } from 'lucide-react'
 
 interface Props {
   order: Order
   onAssign?: () => void
   onCancel?: () => void
   onSaveNote?: (note: string) => Promise<void>
+  onDelete?: () => void
 }
 
-export function OrderCard({ order, onAssign, onCancel, onSaveNote }: Props) {
+export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: Props) {
   const canTrack = ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
   const [copied,      setCopied]      = useState(false)
   const [editingNote, setEditingNote] = useState(false)
@@ -200,6 +201,16 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote }: Props) {
           >
             Ver detalhes
           </Link>
+        )}
+
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="flex items-center justify-center rounded-md border border-red-200 px-2 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
+            title="Excluir pedido"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
     </div>

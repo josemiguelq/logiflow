@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { OrderStatus, canTransition } from '../domain/entities'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
+import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgOrderRepo } from '../infrastructure/repositories/pg-order-repo'
 import { createPgRouteRepo } from '../../routes/infrastructure/repositories/pg-route-repo'
 import { generateCode } from '../../../shared/utils/code-generator'
@@ -800,6 +801,38 @@ export async function orderRoutes(app: FastifyInstance) {
 
       const routeId = (order as Record<string, unknown>).route_id as string | undefined
       if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+
+      return { ok: true }
+    }
+  )
+
+  // Hard-delete a single order (store admin, scope-gated)
+  app.delete(
+    '/orders/:id',
+    { preHandler: [requireStoreUser, requireScope('orders:delete')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { rows: [order] } = await db.query(
+        `SELECT id, route_id, deliverer_id FROM orders WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
+
+      const o = order as Record<string, unknown>
+      await db.query(`DELETE FROM orders WHERE id = $1`, [id])
+
+      if (o.route_id) {
+        await db.query(
+          `UPDATE routes
+           SET status = 'FINISHED', finished_at = COALESCE(finished_at, now())
+           WHERE id = $1 AND status != 'FINISHED'
+             AND NOT EXISTS (SELECT 1 FROM orders WHERE route_id = $1)`,
+          [o.route_id]
+        )
+      }
+
+      await invalidateStoreOrders(req.actor.storeId)
+      if (o.deliverer_id) await invalidateDelivererOrders(o.deliverer_id as string)
 
       return { ok: true }
     }

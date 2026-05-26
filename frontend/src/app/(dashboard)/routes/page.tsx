@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Download, Eye, Loader2, X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Download, Eye, Loader2, X, Calendar, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -193,9 +193,72 @@ function ExportModal({ onClose }: ExportModalProps) {
 
 interface PagedRoutes { items: DeliveryRoute[]; total: number; page: number; pages: number }
 
+interface DeleteRouteModalProps {
+  route: DeliveryRoute
+  onClose: () => void
+  onDeleted: () => void
+}
+
+function DeleteRouteModal({ route, onClose, onDeleted }: DeleteRouteModalProps) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
+
+  async function handleDelete() {
+    setLoading(true)
+    setError('')
+    try {
+      await api.delete(`/routes/${route.id}`)
+      onDeleted()
+    } catch (err: unknown) {
+      setError((err as Error).message)
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+            <Trash2 className="h-5 w-5 text-red-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Excluir rota</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Esta ação irá excluir permanentemente a rota{' '}
+              <span className="font-mono font-bold">{route.pickupCode}</span> e todos os{' '}
+              <span className="font-semibold text-red-700">{route.orderCount} pedido{route.orderCount !== 1 ? 's' : ''}</span>{' '}
+              associados a ela. Esta ação não pode ser desfeita.
+            </p>
+          </div>
+        </div>
+        {error && (
+          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={loading}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 transition-colors"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {loading ? 'Excluindo…' : 'Excluir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function RoutesPage() {
   const [page, setPage] = useState(1)
-  const { data, isLoading } = useSWR<PagedRoutes>(
+  const { data, isLoading, mutate } = useSWR<PagedRoutes>(
     `/routes?page=${page}`,
     (url: string) => api.get<PagedRoutes>(url)
   )
@@ -205,6 +268,7 @@ export default function RoutesPage() {
   const features = useStoreFeatures()
   const { can }  = useAccess()
   const [showExportModal, setShowExportModal] = useState(false)
+  const [deletingRoute, setDeletingRoute]     = useState<DeliveryRoute | null>(null)
 
   return (
     <div className="p-6">
@@ -274,13 +338,24 @@ export default function RoutesPage() {
                     })}
                   </td>
                   <td className="px-4 py-3">
-                    <Link
-                      href={`/routes/${route.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      Ver detalhes
-                    </Link>
+                    <div className="flex items-center justify-end gap-1">
+                      <Link
+                        href={`/routes/${route.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Ver detalhes
+                      </Link>
+                      {can({ scope: 'routes:delete' }) && (
+                        <button
+                          onClick={() => setDeletingRoute(route)}
+                          className="rounded-lg p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                          title="Excluir rota"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -316,6 +391,14 @@ export default function RoutesPage() {
 
       {showExportModal && (
         <ExportModal onClose={() => setShowExportModal(false)} />
+      )}
+
+      {deletingRoute && (
+        <DeleteRouteModal
+          route={deletingRoute}
+          onClose={() => setDeletingRoute(null)}
+          onDeleted={() => { setDeletingRoute(null); mutate() }}
+        />
       )}
     </div>
   )
