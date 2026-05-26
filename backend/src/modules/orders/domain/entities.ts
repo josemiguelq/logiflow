@@ -55,6 +55,12 @@ export interface OrderWithDetails extends Order {
     lat?: number
     lng?: number
   }
+  // All proof photos (one element for old orders, multiple for new)
+  proofs: Array<{
+    photoUrl: string
+    lat?: number
+    lng?: number
+  }>
 }
 
 export const validTransitions: Record<OrderStatus, OrderStatus[]> = {

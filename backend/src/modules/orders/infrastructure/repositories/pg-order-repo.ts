@@ -74,13 +74,9 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
           status: row.deliverer_status as string,
         }
       : undefined,
-    proof: row.proof_photo_url
-      ? {
-          photoUrl: row.proof_photo_url as string,   // raw path — resolved to signed URL at endpoint level
-          lat:      row.proof_lat as number | undefined,
-          lng:      row.proof_lng as number | undefined,
-        }
-      : undefined,
+    proofs: (row.proofs as Array<{ photoUrl: string; lat?: number; lng?: number }> | null) ?? [],
+    // Backward-compat shorthand — first photo
+    proof: ((row.proofs as Array<{ photoUrl: string; lat?: number; lng?: number }> | null) ?? [])[0],
   }
 }
 
@@ -95,14 +91,16 @@ const WITH_JOINS = `
     COALESCE(o.delivery_lng,  ca.lng)               AS customer_lng,
     d.name       AS deliverer_name,
     d.status     AS deliverer_status,
-    p.photo_url  AS proof_photo_url,
-    p.lat        AS proof_lat,
-    p.lng        AS proof_lng
+    (SELECT COALESCE(
+       json_agg(
+         json_build_object('photoUrl', p.photo_url, 'lat', p.lat, 'lng', p.lng)
+         ORDER BY p.photo_index ASC, p.created_at ASC
+       ), '[]'::json)
+     FROM proof_of_delivery p WHERE p.order_id = o.id) AS proofs
   FROM orders o
   JOIN customers c   ON c.id = o.customer_id
   LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
   LEFT JOIN deliverers d ON d.id = o.deliverer_id
-  LEFT JOIN proof_of_delivery p ON p.order_id = o.id
 `
 
 export function createPgOrderRepo(db: DB): IOrderRepository {
@@ -231,13 +229,11 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return mapOrderRow(rows[0] as Record<string, unknown>)
     },
 
-    async addProof(orderId, photoUrl, lat, lng) {
+    async addProof(orderId, photoUrl, lat, lng, photoIndex = 1) {
       await db.query(
-        `INSERT INTO proof_of_delivery (order_id, photo_url, lat, lng)
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT (order_id) DO UPDATE
-         SET photo_url = $2, lat = $3, lng = $4`,
-        [orderId, photoUrl, lat ?? null, lng ?? null]
+        `INSERT INTO proof_of_delivery (order_id, photo_url, lat, lng, photo_index)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [orderId, photoUrl, lat ?? null, lng ?? null, photoIndex]
       )
     },
 
