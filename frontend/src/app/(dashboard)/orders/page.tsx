@@ -401,7 +401,7 @@ export default function OrdersPage() {
 
       {/* ── Batch assign sticky bar ── */}
       {batchMode && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-2xl">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white shadow-2xl md:left-64">
           <div className="mx-auto flex max-w-screen-xl items-center gap-3 px-4 py-3 sm:px-6">
             <span className="shrink-0 text-sm font-medium text-gray-700">
               {batchSelected.length} selecionado(s)
