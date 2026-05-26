@@ -17,26 +17,53 @@ function buildStatusMessage(
   customerName: string,
   trackingUrl: string,
   deliveryCode: string,
+  deliveryAddress: string,
+  delivererName: string | undefined,
 ): string {
+  const addrLine     = `📍 Endereço de entrega: *${deliveryAddress}*`
+  const delivLine    = delivererName ? `🛵 Entregador: *${delivererName}*` : ''
+  const infoBlock    = [addrLine, delivLine].filter(Boolean).join('\n')
+
   switch (statusEvent) {
     case 'PREPARING':
-      return `Olá, ${customerName}! Seu pedido foi registrado e está sendo preparado. 🛒\n\nAcompanhe em tempo real:\n${trackingUrl}`
+      return (
+        `Olá, ${customerName}! Seu pedido foi registrado e está sendo preparado. 🛒\n\n` +
+        `${addrLine}\n\n` +
+        `Acompanhe em tempo real:\n${trackingUrl}`
+      )
     case 'ASSIGNED':
-      return `Olá, ${customerName}! Seu pedido foi atribuído a um entregador e logo vai sair. 📦\n\nAcompanhe em tempo real:\n${trackingUrl}`
+      return (
+        `Olá, ${customerName}! Seu pedido foi atribuído a um entregador e logo vai sair. 📦\n\n` +
+        `${infoBlock}\n\n` +
+        `Acompanhe em tempo real:\n${trackingUrl}`
+      )
     case 'ON_ROUTE':
-      return `Olá, ${customerName}! O entregador retirou seus pedidos da loja e está a caminho. 🚴\n\nAcompanhe em tempo real:\n${trackingUrl}`
+      return (
+        `Olá, ${customerName}! O entregador retirou seus pedidos da loja e está a caminho. 🚴\n\n` +
+        `${infoBlock}\n\n` +
+        `Acompanhe em tempo real:\n${trackingUrl}`
+      )
     case 'OUT_FOR_DELIVERY':
       return (
         `Olá, ${customerName}! Seu pedido está saindo para entrega agora! 🏃\n\n` +
+        `${infoBlock}\n\n` +
         `Acompanhe em tempo real:\n${trackingUrl}\n\n` +
         `Código de confirmação: *${deliveryCode}*`
       )
     case 'DELIVERED':
-      return `Olá, ${customerName}! Seu pedido foi entregue com sucesso. ✅\n\nObrigado por comprar conosco!`
+      return (
+        `Olá, ${customerName}! Seu pedido foi entregue com sucesso. ✅\n\n` +
+        `${addrLine}\n\n` +
+        `Obrigado por comprar conosco!`
+      )
     case 'CANCELLED':
       return `Olá, ${customerName}! Infelizmente seu pedido foi cancelado. ❌\n\nPara dúvidas, entre em contato com a loja.`
     default:
-      return `Olá, ${customerName}! O status do seu pedido foi atualizado.\n\nAcompanhe em tempo real:\n${trackingUrl}`
+      return (
+        `Olá, ${customerName}! O status do seu pedido foi atualizado.\n\n` +
+        `${addrLine}\n\n` +
+        `Acompanhe em tempo real:\n${trackingUrl}`
+      )
   }
 }
 
@@ -66,7 +93,14 @@ async function start() {
     if (!phone) return
 
     const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'https://logiflow-beige.vercel.app/rastreio'}/${orderId}`
-    const message = buildStatusMessage(statusEvent, order.customer.name, trackingUrl, order.deliveryCode)
+    const message = buildStatusMessage(
+      statusEvent,
+      order.customer.name,
+      trackingUrl,
+      order.deliveryCode,
+      order.customer.address,
+      order.deliverer?.name,
+    )
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
     try {
