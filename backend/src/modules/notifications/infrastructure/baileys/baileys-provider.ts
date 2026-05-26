@@ -53,12 +53,14 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
 
       if (connection === 'close') {
         const code = (lastDisconnect?.error as Boom)?.output?.statusCode
-        const shouldReconnect = code !== DisconnectReason.loggedOut
         sockets.delete(storeId)
+        qrCodes.delete(storeId)
         await sessionStore.setStatus(storeId, 'DISCONNECTED')
-        if (shouldReconnect) {
+        if (code !== DisconnectReason.loggedOut) {
+          // Transient error — auto-retry with existing credentials
           setTimeout(() => createSocket(storeId), 5_000)
         }
+        // loggedOut: credentials are dead. Wait for explicit connect() call.
       }
     })
 
@@ -66,11 +68,26 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
     return socket
   }
 
+  async function clearCredentials(storeId: string) {
+    await db.query(
+      `UPDATE whatsapp_sessions SET session_data = NULL WHERE store_id = $1`,
+      [storeId]
+    )
+    await db.query(`DELETE FROM whatsapp_keys WHERE store_id = $1`, [storeId])
+  }
+
   return {
     async connect(storeId) {
-      if (!sockets.has(storeId)) {
-        await createSocket(storeId)
+      // Close any lingering socket before starting fresh
+      const existing = sockets.get(storeId)
+      if (existing) {
+        try { existing.end(undefined) } catch { /* best-effort */ }
+        sockets.delete(storeId)
+        qrCodes.delete(storeId)
       }
+      // Wipe stale credentials — forces Baileys to generate a new QR
+      await clearCredentials(storeId)
+      await createSocket(storeId)
     },
 
     async disconnect(storeId) {
