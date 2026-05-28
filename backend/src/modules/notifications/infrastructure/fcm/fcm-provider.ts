@@ -23,9 +23,6 @@ export function createFcmProvider(): IPushNotificationProvider {
         android:      { priority: 'high' },
         apns:         { payload: { aps: { sound: 'default', badge: 1 } } },
       })
-<<<<<<< Updated upstream
-      return { successCount: result.successCount, failureCount: result.failureCount }
-=======
 
       const invalidTokens: string[] = []
       result.responses.forEach((resp, i) => {
@@ -44,7 +41,6 @@ export function createFcmProvider(): IPushNotificationProvider {
       })
 
       return { successCount: result.successCount, failureCount: result.failureCount, invalidTokens }
->>>>>>> Stashed changes
     },
   }
 }
