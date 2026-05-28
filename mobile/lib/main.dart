@@ -1,8 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'app.dart';
 import 'core/auth/auth_provider.dart';
+import 'core/push/push_notification_service.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 void main() async {
@@ -15,6 +17,7 @@ void main() async {
       options.profilesSampleRate = 1.0;
     },
     appRunner: () async {
+      await Firebase.initializeApp();
       // Capture Flutter widget-tree errors (build, layout, paint)
       final originalOnError = FlutterError.onError;
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -52,6 +55,9 @@ void main() async {
       final container = ProviderContainer();
       try {
         await container.read(authProvider.notifier).restoreSession();
+        if (container.read(authProvider) != null) {
+          PushNotificationService.init().ignore();
+        }
       } catch (e, st) {
         await Sentry.captureException(e, stackTrace: st,
             hint: Hint.withMap({'context': 'restoreSession'}));

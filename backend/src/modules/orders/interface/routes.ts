@@ -21,6 +21,10 @@ const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
     .catch(() => { /* non-fatal */ })
 
+const queuePush = (delivererId: string, orderId: string, storeId: string, statusEvent: string) =>
+  notificationQueue.add('push', { type: 'push', delivererId, orderId, storeId, statusEvent })
+    .catch(() => { /* non-fatal */ })
+
 const STORE_ORDERS_TTL     = 30  // seconds
 const DELIVERER_ORDERS_TTL = 15  // seconds
 
@@ -355,6 +359,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
       wsHub.broadcastOrderUpdate(req.actor.storeId, order)
       queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
+      queuePush(body.delivererId, order.id, req.actor.storeId, 'ASSIGNED')
       invalidateStoreOrders(req.actor.storeId)
       invalidateDelivererOrders(body.delivererId)
       return { route, order }
@@ -610,6 +615,7 @@ export async function orderRoutes(app: FastifyInstance) {
       for (const o of claimedOrders) {
         wsHub.broadcastOrderUpdate(req.actor.storeId, o)
         queueNotif(req.actor.storeId, o.id, 'ASSIGNED')
+        queuePush(req.actor.sub, o.id, req.actor.storeId, 'ASSIGNED')
       }
       invalidateStoreOrders(req.actor.storeId)
       invalidateDelivererOrders(req.actor.sub)
