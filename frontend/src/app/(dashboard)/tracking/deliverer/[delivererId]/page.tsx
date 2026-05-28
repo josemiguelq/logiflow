@@ -249,7 +249,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
         </aside>
 
         {/* Mapa */}
-        <div className="relative min-h-[300px] flex-1 bg-gray-100">
+        <div className="relative isolate min-h-[300px] flex-1 bg-gray-100">
           {!location && (
             <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-700 shadow-sm">
               <Truck className="h-3.5 w-3.5" />

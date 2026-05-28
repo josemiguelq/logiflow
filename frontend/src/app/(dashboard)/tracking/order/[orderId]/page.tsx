@@ -145,7 +145,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ orderI
         </aside>
 
         {/* Mapa */}
-        <div className="relative min-h-[300px] flex-1 bg-gray-100">
+        <div className="relative isolate min-h-[300px] flex-1 bg-gray-100">
           {!canTrack && order && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
               <p className="text-sm font-medium text-gray-500">
