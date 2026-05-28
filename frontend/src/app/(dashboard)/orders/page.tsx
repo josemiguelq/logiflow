@@ -75,7 +75,7 @@ export default function OrdersPage() {
       id:     o.id,
       lat:    o.customer.lat!,
       lng:    o.customer.lng!,
-      label:  `${o.customer.name} · #${o.id.slice(-8).toUpperCase()}`,
+      label:  `${o.customer.name} · ···${o.customer.phone.slice(-4)} · #${o.id.slice(-8).toUpperCase()}`,
       status: `${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''} · ${o.customer.address}`,
       selectable:     batchMode && o.status === 'PREPARING',
       selected:       batchSelected.includes(o.id),
