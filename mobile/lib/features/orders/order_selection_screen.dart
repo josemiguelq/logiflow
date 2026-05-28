@@ -16,6 +16,7 @@ import '../../core/models/route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
 import '../tracking/location_service.dart';
+import 'order_selection_controller.dart';
 
 // ── providers ────────────────────────────────────────────────────────────────
 
@@ -81,8 +82,7 @@ class OrderSelectionScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
-  final List<String> _selected    = [];
-  final Set<String>  _hiddenByOthers = {};   // order IDs reserved by other deliverers
+  OrderSelectionController _sel = const OrderSelectionController();
   bool _claiming       = false;
   bool _togglingStatus = false;
   bool _openingRoute   = false;
@@ -107,7 +107,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
             final status  = data['status'] as String?;
             // Always unblock the order — it may have been in _hiddenByOthers
             // from a reservation that was later claimed or returned.
-            if (orderId != null) setState(() => _hiddenByOthers.remove(orderId));
+            if (orderId != null) setState(() => _sel = _sel.onWsOrderUnreserved(orderId));
             // Invalidate when the order enters or leaves the preparing list
             if (status == 'PREPARING' || status == 'ASSIGNED') {
               ref.invalidate(_preparingOrdersProvider);
@@ -119,10 +119,9 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
           if (orderId == null) return;
           setState(() {
             if (event == 'order_reserved') {
-              // Don't hide orders reserved by this deliverer
-              if (!_selected.contains(orderId)) _hiddenByOthers.add(orderId);
+              _sel = _sel.onWsOrderReserved(orderId);
             } else if (event == 'order_unreserved') {
-              _hiddenByOthers.remove(orderId);
+              _sel = _sel.onWsOrderUnreserved(orderId);
             }
           });
         },
@@ -141,7 +140,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   void dispose() {
     _wsSub?.cancel();
     // Release all reservations held by this screen session
-    for (final id in List<String>.from(_selected)) {
+    for (final id in List<String>.from(_sel.selected)) {
       ApiClient().dio.delete('/deliverer/orders/$id/reserve').ignore();
     }
     super.dispose();
@@ -155,23 +154,19 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
   Future<void> _toggleSelect(String orderId) async {
     if (_reserving) return;
-    final sel = _selected.contains(orderId);
 
-    if (sel) {
-      setState(() => _selected.remove(orderId));
+    if (_sel.isSelected(orderId)) {
+      setState(() => _sel = _sel.deselect(orderId));
       ApiClient().dio.delete('/deliverer/orders/$orderId/reserve').ignore();
       return;
     }
 
-    // Add optimistically before the HTTP call so the WS order_reserved event
-    // (which can arrive before the await resumes) sees it in _selected and
-    // doesn't mistakenly hide the card in _hiddenByOthers.
-    setState(() { _reserving = true; _selected.add(orderId); });
+    setState(() { _reserving = true; _sel = _sel.optimisticReserve(orderId); });
     try {
       await ApiClient().dio.post('/deliverer/orders/$orderId/reserve');
     } on DioException catch (e) {
       if (!mounted) return;
-      setState(() => _selected.remove(orderId));
+      setState(() => _sel = _sel.rollbackReserve(orderId));
       final msg = (e.response?.data as Map?)?['error'] as String?
           ?? 'Não foi possível reservar o pedido';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -229,7 +224,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     try {
       final prepList = ref.read(_preparingOrdersProvider).value ?? [];
       final validIds = prepList.map((o) => o.id).toSet();
-      final orderedIds = _selected.where((id) => validIds.contains(id)).toList();
+      final orderedIds = _sel.selected.where((id) => validIds.contains(id)).toList();
       final res  = await ApiClient().dio.post('/deliverer/orders/claim', data: {
         'orderIds': orderedIds,
       });
@@ -254,7 +249,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() { _claiming = false; _selected.clear(); _hiddenByOthers.clear(); });
+      if (mounted) setState(() { _claiming = false; _sel = _sel.clear(); });
     }
   }
 
@@ -273,7 +268,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
     final firstName = session?.name.split(' ').first ?? '';
 
-    final showClaim = _selected.isNotEmpty && routeList.isEmpty;
+    final showClaim = _sel.hasSelection && routeList.isEmpty;
 
     return Scaffold(
       drawer: const AppDrawer(),
@@ -391,9 +386,9 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                                         style: TextStyle(
                                             fontWeight: FontWeight.w600, fontSize: 14),
                                       ),
-                                      if (_selected.isNotEmpty)
+                                      if (_sel.hasSelection)
                                         TextButton(
-                                          onPressed: () => setState(() => _selected.clear()),
+                                          onPressed: () => setState(() => _sel = _sel.clear()),
                                           child: const Text('Limpar'),
                                         ),
                                     ],
@@ -407,10 +402,10 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                                     (_, i) {
                                       final store = storeLoc.value ?? const _StoreLocation(null, null);
                                       final o   = preparingList[i];
-                                      if (_hiddenByOthers.contains(o.id)) return const SizedBox.shrink();
+                                      if (_sel.isHidden(o.id)) return const SizedBox.shrink();
                                       final dist = _distanceKm(store, o);
-                                      final sel  = _selected.contains(o.id);
-                                      final selOrder = sel ? _selected.indexOf(o.id) + 1 : null;
+                                      final sel  = _sel.isSelected(o.id);
+                                      final selOrder = sel ? _sel.selected.indexOf(o.id) + 1 : null;
                                       return Padding(
                                         padding: const EdgeInsets.only(bottom: 10),
                                         child: _OrderSelectionTile(
@@ -473,7 +468,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                         label: Text(
                           _claiming
                               ? 'Iniciando...'
-                              : 'Iniciar rota (${_selected.length})',
+                              : 'Iniciar rota (${_sel.selected.length})',
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -507,7 +502,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
   Widget _buildMapView(List<Order> orders) {
     final withCoords = orders
-        .where((o) => o.customerLat != null && o.customerLng != null && !_hiddenByOthers.contains(o.id))
+        .where((o) => o.customerLat != null && o.customerLng != null && !_sel.isHidden(o.id))
         .toList();
 
     if (withCoords.isEmpty) {
@@ -539,12 +534,12 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         ),
         MarkerLayer(
           markers: withCoords.map((o) {
-            final sel      = _selected.contains(o.id);
-            final selOrder = sel ? _selected.indexOf(o.id) + 1 : null;
+            final sel      = _sel.isSelected(o.id);
+            final selOrder = sel ? _sel.selected.indexOf(o.id) + 1 : null;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
-              width: 80,
-              height: 72,
+              width: 160,
+              height: 80,
               alignment: Alignment.topCenter,
               child: GestureDetector(
                 onTap: () => _toggleSelect(o.id),
@@ -623,11 +618,10 @@ class _OrderPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstName = name.split(' ').first;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Label com o primeiro nome
+        // Label com o nome completo do cliente
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
@@ -642,12 +636,15 @@ class _OrderPin extends StatelessWidget {
             ],
           ),
           child: Text(
-            firstName,
+            name,
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1E293B),
             ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         const SizedBox(height: 2),
