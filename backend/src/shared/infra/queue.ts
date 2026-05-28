@@ -24,11 +24,11 @@ export type NotificationJob =
       statusEvent: string
     }
   | {
-      type:        'push'
-      delivererId: string
-      orderId:     string
-      storeId:     string
-      statusEvent: string
+      type:         'push'
+      delivererId?: string
+      orderId:      string
+      storeId:      string
+      statusEvent:  string
     }
 
 export function createNotificationWorker(

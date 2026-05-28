@@ -8,10 +8,10 @@ export function buildPushPayload(
   const data = { orderId, event: statusEvent }
 
   switch (statusEvent) {
-    case 'ASSIGNED':
+    case 'PREPARING':
       return {
-        title: 'Novo pedido para coletar 📦',
-        body:  `Pedido de ${customerName} está esperando na loja`,
+        title: 'Novo pedido disponível 🛒',
+        body:  `Pedido de ${customerName} aguarda entregador`,
         data,
       }
     case 'CANCELLED':
