@@ -119,7 +119,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
           if (orderId == null) return;
           setState(() {
             if (event == 'order_reserved') {
-              _hiddenByOthers.add(orderId);
+              // Don't hide orders reserved by this deliverer
+              if (!_selected.contains(orderId)) _hiddenByOthers.add(orderId);
             } else if (event == 'order_unreserved') {
               _hiddenByOthers.remove(orderId);
             }
@@ -162,12 +163,15 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       return;
     }
 
-    setState(() => _reserving = true);
+    // Add optimistically before the HTTP call so the WS order_reserved event
+    // (which can arrive before the await resumes) sees it in _selected and
+    // doesn't mistakenly hide the card in _hiddenByOthers.
+    setState(() { _reserving = true; _selected.add(orderId); });
     try {
       await ApiClient().dio.post('/deliverer/orders/$orderId/reserve');
-      if (mounted) setState(() => _selected.add(orderId));
     } on DioException catch (e) {
       if (!mounted) return;
+      setState(() => _selected.remove(orderId));
       final msg = (e.response?.data as Map?)?['error'] as String?
           ?? 'Não foi possível reservar o pedido';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));

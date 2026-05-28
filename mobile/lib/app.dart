@@ -85,6 +85,7 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
         if (issue != null) _showLocationDialog(issue);
       } else {
         tracking.stopTracking();
+        _router.go('/login');
       }
     });
   }
