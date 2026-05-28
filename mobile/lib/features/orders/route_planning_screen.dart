@@ -229,8 +229,8 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
             final o = entry.value;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
-              width: 80,
-              height: 72,
+              width: 160,
+              height: 80,
               alignment: Alignment.topCenter,
               child: _RouteMapPin(
                 position: position,
@@ -326,12 +326,15 @@ class _RouteMapPin extends StatelessWidget {
             ],
           ),
           child: Text(
-            name.split(' ').first, // primeiro nome apenas para não sobrepor
+            name,
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1E293B),
             ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         const SizedBox(height: 2),
