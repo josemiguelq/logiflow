@@ -5,6 +5,7 @@ import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { requireRole, requireScope } from '../../../shared/middleware/rbac'
 import { createPgDelivererRepo } from '../infrastructure/repositories/pg-deliverer-repo'
+import { createPgDeviceTokenRepo } from '../../notifications/infrastructure/repositories/pg-device-token-repo'
 
 const createSchema = z.object({
   name:     z.string().min(1),
@@ -282,4 +283,33 @@ export async function delivererRoutes(app: FastifyInstance) {
       requireDeliveryPhoto: sv.require_delivery_photo === 'true',
     }
   })
+
+  // ── Push token registration ───────────────────────────────────────────────
+
+  const tokenSchema = z.object({
+    token:    z.string().min(1),
+    platform: z.enum(['android', 'ios']),
+  })
+
+  const deviceTokenRepo = createPgDeviceTokenRepo(db)
+
+  app.post(
+    '/deliverer/push-token',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { token, platform } = tokenSchema.parse(req.body)
+      await deviceTokenRepo.upsert(req.actor.sub, token, platform)
+      return reply.code(204).send()
+    }
+  )
+
+  app.delete(
+    '/deliverer/push-token',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { token } = z.object({ token: z.string().min(1) }).parse(req.body)
+      await deviceTokenRepo.delete(token)
+      return reply.code(204).send()
+    }
+  )
 }

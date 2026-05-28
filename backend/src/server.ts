@@ -5,6 +5,9 @@ import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
 import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/pg-order-repo'
+import { createFcmProvider } from './modules/notifications/infrastructure/fcm/fcm-provider'
+import { createPgDeviceTokenRepo } from './modules/notifications/infrastructure/repositories/pg-device-token-repo'
+import { buildPushPayload } from './modules/notifications/application/use-cases/build-push-payload'
 import { startHeartbeat } from './shared/infra/websocket'
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
@@ -72,9 +75,34 @@ async function start() {
   const whatsapp       = createBaileysProvider(db)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
+  const pushProvider   = createFcmProvider()
+  const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
   // ── Notification worker ──────────────────────────────────────────────────
   createNotificationWorker(async (job) => {
+    // ── Push notification ──
+    if (job.data.type === 'push') {
+      const { delivererId, orderId, storeId, statusEvent } = job.data
+
+      const tokens = await deviceTokenRepo.findByDeliverer(delivererId)
+      if (tokens.length === 0) return
+
+      const order = await orderRepo.findById(orderId, storeId)
+      if (!order) return
+
+      const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
+      try {
+        const { failureCount } = await pushProvider.send(tokens, payload)
+        if (failureCount > 0) {
+          app.log.warn({ orderId, delivererId, failureCount }, 'Some FCM tokens failed')
+        }
+      } catch (err) {
+        app.log.warn({ err, orderId, delivererId }, 'FCM push notification failed (non-fatal)')
+      }
+      return
+    }
+
+    // ── WhatsApp notification ──
     const { storeId, orderId, statusEvent } = job.data
 
     // Abort if the store no longer has the whatsapp feature enabled
