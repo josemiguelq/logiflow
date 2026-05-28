@@ -44,15 +44,22 @@ async function invalidateDelivererOrders(delivererId: string) {
   try { await redis.del(`orders:deliverer:${delivererId}`) } catch { /* non-fatal */ }
 }
 
-async function signOrderProof<T extends { proof?: { photoUrl: string; lat?: number; lng?: number } | undefined }>(
+type ProofPhoto = { photoUrl: string; lat?: number; lng?: number }
+
+async function signOrderProof<T extends { proof?: ProofPhoto; proofs: ProofPhoto[] }>(
   order: T
 ): Promise<T> {
-  if (!order.proof) return order
-  const signedUrl = await resolveImageUrl(order.proof.photoUrl)
-  return { ...order, proof: { ...order.proof, photoUrl: signedUrl ?? order.proof.photoUrl } }
+  if (!order.proofs?.length) return order
+  const signedProofs = await Promise.all(
+    order.proofs.map(async (p) => {
+      const url = await resolveImageUrl(p.photoUrl)
+      return { ...p, photoUrl: url ?? p.photoUrl }
+    })
+  )
+  return { ...order, proofs: signedProofs, proof: signedProofs[0] }
 }
 
-async function signOrdersProof<T extends { proof?: { photoUrl: string; lat?: number; lng?: number } | undefined }>(
+async function signOrdersProof<T extends { proof?: ProofPhoto; proofs: ProofPhoto[] }>(
   orders: T[]
 ): Promise<T[]> {
   return Promise.all(orders.map(signOrderProof))
@@ -625,8 +632,9 @@ export async function orderRoutes(app: FastifyInstance) {
 
   const pickupSchema   = z.object({ code: z.string() })
   const deliverySchema = z.object({
-    code:     z.string().default(''),
-    photoUrl:      z.string().optional(),
+    code:          z.string().default(''),
+    photoUrl:      z.string().optional(),                      // legacy: old app — single photo
+    photoUrls:     z.array(z.string()).optional(),             // new: multiple photos
     lat:           z.number().optional(),
     lng:           z.number().optional(),
     note:          z.string().max(500).optional(),
@@ -670,21 +678,42 @@ export async function orderRoutes(app: FastifyInstance) {
       )
       const requireDeliveryCode = (settingRow as Record<string, unknown> | undefined)?.value !== 'false'
 
-      // Upload proof photo to storage if provided as base64 data URI
-      let photoUrl = body.photoUrl
-      if (photoUrl?.startsWith('data:')) {
-        try {
-          photoUrl = await uploadBase64(`proof/${id}`, photoUrl)
-        } catch (uploadErr) {
-          req.log.error({ err: uploadErr }, 'proof photo upload failed — delivery will proceed without photo')
-          photoUrl = undefined
+      // Normalise: old clients send `photoUrl`, new clients send `photoUrls[]`
+      const rawUrls = body.photoUrls?.length
+        ? body.photoUrls
+        : body.photoUrl ? [body.photoUrl] : []
+
+      // Read max_proof_photos setting
+      const { rows: [maxRow] } = await db.query(
+        `SELECT COALESCE(ssv.value, s.default_value) AS value
+         FROM settings s
+         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
+         WHERE s.name = 'max_proof_photos'`,
+        [req.actor.storeId]
+      )
+      const maxPhotos = parseInt((maxRow as Record<string, unknown> | undefined)?.value as string ?? '1', 10) || 1
+      const cappedUrls = rawUrls.slice(0, maxPhotos)
+
+      // Upload each photo (base64 data URIs → storage)
+      const uploadedUrls: string[] = []
+      for (let i = 0; i < cappedUrls.length; i++) {
+        const url = cappedUrls[i]!
+        if (url.startsWith('data:')) {
+          try {
+            uploadedUrls.push(await uploadBase64(`proof/${id}/${i + 1}`, url))
+          } catch (uploadErr) {
+            req.log.error({ err: uploadErr }, 'proof photo upload failed — skipping')
+          }
+        } else {
+          uploadedUrls.push(url)
         }
       }
 
       try {
         const order = await confirmDelivery(
           { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub,
-            requireDeliveryCode, ...body, photoUrl },
+            requireDeliveryCode, code: body.code, photoUrls: uploadedUrls,
+            lat: body.lat, lng: body.lng, note: body.note },
           { orderRepo }
         )
 

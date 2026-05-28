@@ -17,6 +17,7 @@ interface StoreSettings {
   requireDeliveryCode:   boolean
   allowCustomerRatings:  boolean
   paymentMethodsEnabled: boolean
+  maxProofPhotos:       number      
 }
 
 interface ThemeData {
@@ -152,6 +153,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
 
   const [storeName,             setStoreName]             = useState('')
   const [maxOrders,             setMaxOrders]             = useState(5)
+  const [maxProofPhotos,        setMaxProofPhotos]        = useState(2)
   const [requirePhoto,          setRequirePhoto]          = useState(false)
   const [requirePickupCode,     setRequirePickupCode]     = useState(true)
   const [requireDeliveryCode,   setRequireDeliveryCode]   = useState(true)
@@ -164,6 +166,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
     if (data) {
       setStoreName(data.storeName ?? '')
       setMaxOrders(data.maxOrdersPerRoute)
+      setMaxProofPhotos(data.maxProofPhotos ?? 2)
       setRequirePhoto(data.requireDeliveryPhoto)
       setRequirePickupCode(data.requirePickupCode)
       setRequireDeliveryCode(data.requireDeliveryCode)
@@ -180,6 +183,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         storeName:            storeName.trim() || undefined,
         maxOrdersPerRoute:     maxOrders,
         requireDeliveryPhoto:  requirePhoto,
+        maxProofPhotos,
         requirePickupCode,
         requireDeliveryCode,
         paymentMethodsEnabled,
@@ -226,6 +230,26 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
               className="flex-1 accent-[--color-primary]"
             />
             <span className="w-8 text-center text-sm font-semibold text-gray-900">{maxOrders}</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            Máximo de fotos por entrega
+          </label>
+          <p className="mb-2 text-xs text-gray-500">
+            Quantidade máxima de fotos de comprovante que o entregador pode enviar por pedido
+          </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={1}
+              max={5}
+              value={maxProofPhotos}
+              onChange={(e) => setMaxProofPhotos(Number(e.target.value))}
+              className="flex-1 accent-[--color-primary]"
+            />
+            <span className="w-8 text-center text-sm font-semibold text-gray-900">{maxProofPhotos}</span>
           </div>
         </div>
 

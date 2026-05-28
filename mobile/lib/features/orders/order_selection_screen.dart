@@ -115,11 +115,14 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
             return;
           }
 
-          final orderId = data['orderId'] as String?;
+          final orderId     = data['orderId']     as String?;
+          final delivererId = data['delivererId'] as String?;
           if (orderId == null) return;
           setState(() {
             if (event == 'order_reserved') {
-              _hiddenByOthers.add(orderId);
+              final myId = ref.read(authProvider)?.id;
+              // Only hide orders reserved by OTHER deliverers, not by ourselves
+              if (delivererId != myId) _hiddenByOthers.add(orderId);
             } else if (event == 'order_unreserved') {
               _hiddenByOthers.remove(orderId);
             }
@@ -619,11 +622,9 @@ class _OrderPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstName = name.split(' ').first;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Label com o primeiro nome
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
@@ -638,7 +639,9 @@ class _OrderPin extends StatelessWidget {
             ],
           ),
           child: Text(
-            firstName,
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,

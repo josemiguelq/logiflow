@@ -9,7 +9,7 @@ export interface IOrderRepository {
   create(data: Omit<Order, 'id' | 'createdAt'>): Promise<Order>
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>
   assignDeliverer(id: string, delivererId: string, routePosition: number): Promise<Order>
-  addProof(orderId: string, photoUrl: string, lat?: number, lng?: number): Promise<void>
+  addProof(orderId: string, photoUrl: string, lat?: number, lng?: number, photoIndex?: number): Promise<void>
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
 }
