@@ -120,6 +120,15 @@ export default function RouteDetailPage({ params }: Props) {
               hour: '2-digit', minute: '2-digit',
             })}
           </p>
+          {route.finishedAt && (
+            <p className="mt-0.5 flex items-center gap-1.5 text-sm text-green-700">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              Finalizada em {new Date(route.finishedAt).toLocaleString('pt-BR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${STATUS_COLOR[route.status]}`}>
@@ -213,12 +222,20 @@ export default function RouteDetailPage({ params }: Props) {
                 </div>
               </div>
 
-              {/* Status icon */}
-              <div className="shrink-0">
+              {/* Status icon + delivery time */}
+              <div className="shrink-0 flex flex-col items-end gap-1">
                 {order.status === 'DELIVERED' ? (
                   <CheckCircle2 className="h-5 w-5 text-green-500" />
                 ) : (
                   <Clock className="h-5 w-5 text-gray-300" />
+                )}
+                {order.deliveredAt && (
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    {new Date(order.deliveredAt).toLocaleString('pt-BR', {
+                      day: '2-digit', month: '2-digit',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
                 )}
               </div>
             </Link>

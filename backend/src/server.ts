@@ -5,6 +5,9 @@ import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
 import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/pg-order-repo'
+import { createFcmProvider } from './modules/notifications/infrastructure/fcm/fcm-provider'
+import { createPgDeviceTokenRepo } from './modules/notifications/infrastructure/repositories/pg-device-token-repo'
+import { buildPushPayload } from './modules/notifications/application/use-cases/build-push-payload'
 import { startHeartbeat } from './shared/infra/websocket'
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
@@ -72,9 +75,46 @@ async function start() {
   const whatsapp       = createBaileysProvider(db)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
+  const pushProvider   = createFcmProvider()
+  const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
   // ── Notification worker ──────────────────────────────────────────────────
   createNotificationWorker(async (job) => {
+    // ── Push notification ──
+    if (job.data.type === 'push') {
+      const { delivererId, orderId, storeId, statusEvent } = job.data
+      app.log.info({ orderId, storeId, delivererId, statusEvent }, '[push] job received')
+
+      const tokens = delivererId
+        ? await deviceTokenRepo.findByDeliverer(delivererId)
+        : await deviceTokenRepo.findByStore(storeId)
+      app.log.info({ orderId, storeId, tokenCount: tokens.length }, '[push] tokens found')
+      if (tokens.length === 0) {
+        app.log.warn({ orderId, storeId }, '[push] no tokens — skipping')
+        return
+      }
+
+      const order = await orderRepo.findById(orderId, storeId)
+      if (!order) {
+        app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
+        return
+      }
+
+      const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
+      app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
+      try {
+        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        app.log.info({ orderId, storeId, successCount, failureCount }, '[push] FCM result')
+        if (failureCount > 0) {
+          app.log.warn({ orderId, storeId, failureCount }, '[push] some FCM tokens failed')
+        }
+      } catch (err) {
+        app.log.error({ err, orderId, storeId }, '[push] FCM send error')
+      }
+      return
+    }
+
+    // ── WhatsApp notification ──
     const { storeId, orderId, statusEvent } = job.data
 
     // Abort if the store no longer has the whatsapp feature enabled

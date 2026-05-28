@@ -3,12 +3,13 @@
 import { use } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
+import { LiveMap } from '@/components/map'
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -105,6 +106,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             </section>
           )}
+
+          <section className="border-t border-gray-100 pt-4">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+              Datas
+            </h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2 text-gray-700">
+                <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                <span className="text-gray-500">Criado em:</span>
+                {formatDate(order.createdAt)}
+              </div>
+              {order.pickedUpAt && (
+                <div className="flex items-center gap-2 text-gray-700">
+                  <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                  <span className="text-gray-500">Coletado em:</span>
+                  {formatDate(order.pickedUpAt)}
+                </div>
+              )}
+              {order.deliveredAt && (
+                <div className="flex items-center gap-2 text-gray-700">
+                  <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                  <span className="text-gray-500">Entregue em:</span>
+                  {formatDate(order.deliveredAt)}
+                </div>
+              )}
+            </div>
+          </section>
 
           {order.notes && (
             <section className="border-t border-gray-100 pt-4">

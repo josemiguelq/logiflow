@@ -10,13 +10,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 interface StoreSettings {
-  storeName:            string
-  maxOrdersPerRoute:    number
-  requireDeliveryPhoto: boolean
-  requirePickupCode:    boolean
-  requireDeliveryCode:  boolean
-  allowCustomerRatings: boolean
-  maxProofPhotos:       number
+  storeName:             string
+  maxOrdersPerRoute:     number
+  requireDeliveryPhoto:  boolean
+  requirePickupCode:     boolean
+  requireDeliveryCode:   boolean
+  allowCustomerRatings:  boolean
+  paymentMethodsEnabled: boolean
+  maxProofPhotos:       number      
 }
 
 interface ThemeData {
@@ -157,6 +158,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [requirePickupCode,     setRequirePickupCode]     = useState(true)
   const [requireDeliveryCode,   setRequireDeliveryCode]   = useState(true)
   const [allowCustomerRatings,  setAllowCustomerRatings]  = useState(false)
+  const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -169,6 +171,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setRequirePickupCode(data.requirePickupCode)
       setRequireDeliveryCode(data.requireDeliveryCode)
       setAllowCustomerRatings(data.allowCustomerRatings ?? false)
+      setPaymentMethodsEnabled(data.paymentMethodsEnabled ?? false)
     }
   }, [data])
 
@@ -178,11 +181,12 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
     try {
       await api.patch('/store/settings', {
         storeName:            storeName.trim() || undefined,
-        maxOrdersPerRoute:    maxOrders,
+        maxOrdersPerRoute:     maxOrders,
+        requireDeliveryPhoto:  requirePhoto,
         maxProofPhotos,
-        requireDeliveryPhoto: requirePhoto,
         requirePickupCode,
         requireDeliveryCode,
+        paymentMethodsEnabled,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
@@ -251,9 +255,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
 
         {(
           [
-            { label: 'Exigir foto na entrega',   desc: 'O entregador deve fotografar a entrega no app',                value: requirePhoto,       set: setRequirePhoto },
-            { label: 'Exigir código de coleta', desc: 'Entregador confirma retirada com o código da rota',            value: requirePickupCode,  set: setRequirePickupCode },
-            { label: 'Exigir código de entrega', desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode, set: setRequireDeliveryCode },
+            { label: 'Exigir foto na entrega',    desc: 'O entregador deve fotografar a entrega no app',                value: requirePhoto,          set: setRequirePhoto },
+            { label: 'Exigir código de coleta',  desc: 'Entregador confirma retirada com o código da rota',            value: requirePickupCode,     set: setRequirePickupCode },
+            { label: 'Exigir código de entrega', desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode,   set: setRequireDeliveryCode },
+            { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago, dinheiro, cartão)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
             ...(features.customerRatingsEnabled
               ? [{ label: 'Avaliação do cliente', desc: 'Clientes podem avaliar a entrega com até 5 estrelas na página de rastreamento', value: allowCustomerRatings, set: setAllowCustomerRatings }]
               : []),

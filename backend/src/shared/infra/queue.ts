@@ -16,12 +16,20 @@ function makeConnection() {
 
 export const notificationQueue = new Queue('notifications', { connection: makeConnection() })
 
-export type NotificationJob = {
-  type:        'whatsapp'
-  storeId:     string
-  orderId:     string
-  statusEvent: string   // PREPARING | ASSIGNED | ON_ROUTE | OUT_FOR_DELIVERY | DELIVERED | CANCELLED
-}
+export type NotificationJob =
+  | {
+      type:        'whatsapp'
+      storeId:     string
+      orderId:     string
+      statusEvent: string
+    }
+  | {
+      type:         'push'
+      delivererId?: string
+      orderId:      string
+      storeId:      string
+      statusEvent:  string
+    }
 
 export function createNotificationWorker(
   handler: (job: Job<NotificationJob>) => Promise<void>

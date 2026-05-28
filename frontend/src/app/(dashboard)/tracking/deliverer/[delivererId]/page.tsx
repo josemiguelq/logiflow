@@ -3,14 +3,14 @@
 import { use, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X } from 'lucide-react'
+import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X, CheckCircle2, Clock } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { StatusBadge } from '@/components/ui/badge'
-import { LiveMap, MapDestination } from '@/components/map'
-import { STATUS_LABELS } from '@/lib/utils'
+import { LiveMap, MapDestination, ProofMarker } from '@/components/map'
+import { STATUS_LABELS, formatDate } from '@/lib/utils'
 
 interface LocationPoint { lat: number; lng: number; recorded_at: string }
 interface DelivererInfo  { id: string; name: string; status: string }
@@ -71,9 +71,9 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
 
   useEffect(() => onReconnect(() => { mutateLocation(); mutateOrders() }), [onReconnect, mutateLocation, mutateOrders])
 
-  const activeOrders = orders.filter(
-    (o) => !['DELIVERED', 'CANCELLED'].includes(o.status)
-  )
+  const activeOrders    = orders.filter((o) => !['DELIVERED', 'CANCELLED'].includes(o.status))
+  const deliveredOrders = orders.filter((o) => o.status === 'DELIVERED')
+    .sort((a, b) => (b.deliveredAt ?? b.createdAt) > (a.deliveredAt ?? a.createdAt) ? 1 : -1)
 
   const destinations: MapDestination[] = activeOrders
     .filter((o) => o.customer.lat != null)
@@ -83,6 +83,12 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
       label:  `${i + 1}. ${o.customer.name}`,
       status: STATUS_LABELS[o.status],
     }))
+
+  const proofMarkers: ProofMarker[] = orders.flatMap((o) =>
+    (o.proofs ?? [])
+      .filter((p) => p.lat != null && p.lng != null)
+      .map((p) => ({ lat: p.lat!, lng: p.lng!, label: o.customer.name }))
+  )
 
   const STATUS_DOT: Record<string, string> = {
     AVAILABLE: 'bg-green-500',
@@ -200,14 +206,14 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
           </div>
 
           {/* Lista de pedidos ativos */}
-          <div className="flex-1 p-5">
+          <div className="p-5 border-b border-gray-100">
             <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">
               Pedidos em rota ({activeOrders.length})
             </p>
 
             {activeOrders.length === 0 ? (
-              <div className="flex flex-col items-center rounded-xl border border-dashed border-gray-200 py-8 text-gray-400">
-                <Package className="mb-2 h-8 w-8" />
+              <div className="flex flex-col items-center rounded-xl border border-dashed border-gray-200 py-6 text-gray-400">
+                <Package className="mb-2 h-6 w-6" />
                 <p className="text-sm">Nenhum pedido ativo</p>
               </div>
             ) : (
@@ -238,6 +244,12 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
                               <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
                               <span className="line-clamp-1">{order.customer.address}</span>
                             </div>
+                            {order.pickedUpAt && (
+                              <div className="mt-1 flex items-center gap-1 text-xs text-blue-500">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                Recolhido {formatDate(order.pickedUpAt)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </Link>
@@ -246,10 +258,54 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
               </ol>
             )}
           </div>
+
+          {/* Pedidos entregues */}
+          {deliveredOrders.length > 0 && (
+            <div className="flex-1 overflow-y-auto p-5">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">
+                Entregues ({deliveredOrders.length})
+              </p>
+              <ol className="space-y-2">
+                {deliveredOrders.map((order) => (
+                  <li key={order.id}>
+                    <Link
+                      href={`/orders/${order.id}`}
+                      className="block rounded-xl border border-gray-100 bg-gray-50 p-3 transition-colors hover:border-gray-200 hover:bg-white"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-900">
+                            {order.customer.name}
+                          </p>
+                          <div className="mt-0.5 flex items-start gap-1 text-xs text-gray-500">
+                            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span className="line-clamp-1">{order.customer.address}</span>
+                          </div>
+                          {order.pickedUpAt && (
+                            <div className="mt-1 flex items-center gap-1 text-xs text-blue-500">
+                              <Clock className="h-3 w-3 shrink-0" />
+                              Recolhido {formatDate(order.pickedUpAt)}
+                            </div>
+                          )}
+                          {order.deliveredAt && (
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-green-600">
+                              <CheckCircle2 className="h-3 w-3 shrink-0" />
+                              Entregue {formatDate(order.deliveredAt)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </aside>
 
         {/* Mapa */}
-        <div className="relative min-h-[300px] flex-1 bg-gray-100">
+        <div className="relative isolate min-h-[300px] flex-1 bg-gray-100">
           {!location && (
             <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-700 shadow-sm">
               <Truck className="h-3.5 w-3.5" />
@@ -261,6 +317,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
             destinations={destinations}
+            proofMarkers={proofMarkers}
             trail={history}
             height="100%"
           />

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/api_client.dart';
+import '../push/push_notification_service.dart';
 
 class DelivererSession {
   final String id;
@@ -130,6 +131,7 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
     await _api.setToken(token);
     await _api.saveSession(session.toJson());
     state = session;
+    PushNotificationService.init().ignore();
   }
 
   void completeOnboarding(String? profileImageUrl) {
@@ -188,6 +190,7 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
   }
 
   Future<void> logout() async {
+    await PushNotificationService.unregister();
     await _clearAndLogout();
   }
 

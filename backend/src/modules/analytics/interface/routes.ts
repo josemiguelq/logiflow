@@ -141,6 +141,36 @@ export async function analyticsRoutes(app: FastifyInstance) {
     }))
   })
 
+  // GET /analytics/orders/durations?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get('/analytics/orders/durations', { preHandler: guard }, async (req) => {
+    const { from, to } = z.object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).parse(req.query)
+
+    const { rows: [row] } = await db.query(
+      `SELECT
+         ROUND(AVG(EXTRACT(EPOCH FROM (picked_up_at - created_at)) / 60)::numeric, 1)  AS avg_prep_min,
+         ROUND(AVG(EXTRACT(EPOCH FROM (delivered_at - picked_up_at)) / 60)::numeric, 1) AS avg_route_min,
+         ROUND(AVG(EXTRACT(EPOCH FROM (delivered_at - created_at)) / 60)::numeric, 1)  AS avg_total_min,
+         COUNT(*)::int AS count
+       FROM orders
+       WHERE store_id      = $1
+         AND status        = 'DELIVERED'
+         AND picked_up_at IS NOT NULL
+         AND delivered_at IS NOT NULL
+         AND delivered_at >= $2::date
+         AND delivered_at <  $3::date + INTERVAL '1 day'`,
+      [req.actor.storeId, from, to]
+    )
+    return {
+      avgPrepMin:   row ? Number(row.avg_prep_min)   || 0 : 0,
+      avgRouteMin:  row ? Number(row.avg_route_min)  || 0 : 0,
+      avgTotalMin:  row ? Number(row.avg_total_min)  || 0 : 0,
+      count:        row ? Number(row.count)          || 0 : 0,
+    }
+  })
+
   // GET /analytics/deliverers/summary
   app.get('/analytics/deliverers/summary', { preHandler: guard }, async (req) => {
     const { rows } = await db.query(
