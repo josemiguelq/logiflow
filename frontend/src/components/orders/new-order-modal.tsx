@@ -27,6 +27,11 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
     search.length >= 2 ? `/customers?search=${encodeURIComponent(search)}` : null,
     (url: string) => api.get<{ items: Customer[] }>(url)
   )
+  const { data: storeSettings } = useSWR<{ paymentMethodsEnabled: boolean }>(
+    '/store/settings',
+    (url: string) => api.get<{ paymentMethodsEnabled: boolean }>(url)
+  )
+  const paymentMethodsEnabled = storeSettings?.paymentMethodsEnabled ?? false
   const customers = customersData?.items ?? []
 
   function selectCustomer(c: Customer) {
@@ -165,43 +170,45 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
             </div>
           )}
 
-          {/* Payment method */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Forma de pagamento
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { value: 'prepaid', label: 'Pré-pago' },
-                { value: 'cash',   label: 'Dinheiro' },
-                { value: 'card',   label: 'Cartão' },
-              ] as const).map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => { setPaymentMethod(value); if (value !== 'cash') setCashAmount('') }}
-                  className="rounded-lg border-2 py-2 text-sm font-medium transition-colors"
-                  style={paymentMethod === value
-                    ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, white)' }
-                    : { borderColor: '#E5E7EB', color: '#6B7280' }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {paymentMethod === 'cash' && (
-              <div className="mt-2">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Valor a cobrar (R$)"
-                  value={cashAmount}
-                  onChange={(e) => setCashAmount(e.target.value)}
-                />
+          {/* Payment method — only shown when store has the feature enabled */}
+          {paymentMethodsEnabled && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Forma de pagamento
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: 'prepaid', label: 'Pré-pago' },
+                  { value: 'cash',   label: 'Dinheiro' },
+                  { value: 'card',   label: 'Cartão' },
+                ] as const).map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { setPaymentMethod(value); if (value !== 'cash') setCashAmount('') }}
+                    className="rounded-lg border-2 py-2 text-sm font-medium transition-colors"
+                    style={paymentMethod === value
+                      ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, white)' }
+                      : { borderColor: '#E5E7EB', color: '#6B7280' }}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
+              {paymentMethod === 'cash' && (
+                <div className="mt-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Valor a cobrar (R$)"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>
