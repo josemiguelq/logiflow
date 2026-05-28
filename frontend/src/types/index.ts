@@ -76,6 +76,11 @@ export interface Order {
     lat?: number
     lng?: number
   }
+  proofs: Array<{
+    photoUrl: string
+    lat?: number
+    lng?: number
+  }>
 }
 
 export type RouteStatus = 'CREATED' | 'STARTED' | 'FINISHED'
