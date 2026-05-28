@@ -175,10 +175,11 @@ export async function settingsRoutes(app: FastifyInstance) {
       storeLat:             (store as Record<string, unknown> | undefined)?.lat  ?? null,
       storeLng:             (store as Record<string, unknown> | undefined)?.lng  ?? null,
       maxOrdersPerRoute:    parseInt(s.max_orders_per_route    ?? '5'),
-      requireDeliveryPhoto: s.require_delivery_photo === 'true',
-      requirePickupCode:    s.require_pickup_code    !== 'false',
-      requireDeliveryCode:  s.require_delivery_code  !== 'false',
-      allowCustomerRatings: s.allow_customer_ratings === 'true',
+      requireDeliveryPhoto:    s.require_delivery_photo    === 'true',
+      requirePickupCode:        s.require_pickup_code        !== 'false',
+      requireDeliveryCode:      s.require_delivery_code      !== 'false',
+      allowCustomerRatings:     s.allow_customer_ratings     === 'true',
+      paymentMethodsEnabled:    s.payment_methods_enabled    === 'true',
     }
   })
 
@@ -186,12 +187,13 @@ export async function settingsRoutes(app: FastifyInstance) {
   const storeSettingsSchema = z.object({
     storeName:            z.string().min(1).optional(),
     maxOrdersPerRoute:    z.number().int().min(1).max(20).optional(),
-    requireDeliveryPhoto: z.boolean().optional(),
-    requirePickupCode:    z.boolean().optional(),
-    requireDeliveryCode:  z.boolean().optional(),
-    allowCustomerRatings: z.boolean().optional(),
-    storeLat:             z.number().optional().nullable(),
-    storeLng:             z.number().optional().nullable(),
+    requireDeliveryPhoto:  z.boolean().optional(),
+    requirePickupCode:     z.boolean().optional(),
+    requireDeliveryCode:   z.boolean().optional(),
+    allowCustomerRatings:  z.boolean().optional(),
+    paymentMethodsEnabled: z.boolean().optional(),
+    storeLat:              z.number().optional().nullable(),
+    storeLng:              z.number().optional().nullable(),
   })
 
   app.patch('/store/settings', { preHandler: requireStoreUser }, async (req, reply) => {
@@ -214,6 +216,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['requireDeliveryPhoto', 'require_delivery_photo'],
       ['requirePickupCode',    'require_pickup_code'],
       ['requireDeliveryCode',  'require_delivery_code'],
+      ['paymentMethodsEnabled','payment_methods_enabled'],
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))
