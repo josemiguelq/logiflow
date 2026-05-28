@@ -103,10 +103,11 @@ async function start() {
       const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
       app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ orderId, storeId, successCount, failureCount }, '[push] FCM result')
-        if (failureCount > 0) {
-          app.log.warn({ orderId, storeId, failureCount }, '[push] some FCM tokens failed')
+        if (invalidTokens.length > 0) {
+          app.log.warn({ orderId, storeId, count: invalidTokens.length }, '[push] removing invalid tokens')
+          await Promise.all(invalidTokens.map((t) => deviceTokenRepo.delete(t)))
         }
       } catch (err) {
         app.log.error({ err, orderId, storeId }, '[push] FCM send error')

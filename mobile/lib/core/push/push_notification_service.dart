@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../api/api_client.dart';
+import 'local_notifications.dart';
 
 // ignore: avoid_print
 void _log(String msg) => print('[FCM] $msg');
@@ -21,6 +22,8 @@ class PushNotificationService {
     _log('init() called');
     FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
+    await initLocalNotifications();
+
     final settings = await _messaging.requestPermission(
       alert:        true,
       badge:        true,
@@ -34,16 +37,14 @@ class PushNotificationService {
       return;
     }
 
-    // Android foreground notifications
-    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    // Foreground message listener
+    // Show notification via flutter_local_notifications when app is in foreground
     FirebaseMessaging.onMessage.listen((message) {
       _log('foreground message: ${message.messageId} | ${message.notification?.title} | ${message.notification?.body}');
+      final title = message.notification?.title;
+      final body  = message.notification?.body;
+      if (title != null && body != null) {
+        showLocalNotification(title: title, body: body);
+      }
     });
 
     final token = await _messaging.getToken();

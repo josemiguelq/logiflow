@@ -14,7 +14,7 @@ function ensureInit() {
 export function createFcmProvider(): IPushNotificationProvider {
   return {
     async send(tokens: string[], payload: PushPayload) {
-      if (tokens.length === 0) return { successCount: 0, failureCount: 0 }
+      if (tokens.length === 0) return { successCount: 0, failureCount: 0, invalidTokens: [] }
       ensureInit()
       const result = await admin.messaging().sendEachForMulticast({
         tokens,
@@ -23,7 +23,22 @@ export function createFcmProvider(): IPushNotificationProvider {
         android:      { priority: 'high' },
         apns:         { payload: { aps: { sound: 'default', badge: 1 } } },
       })
-      return { successCount: result.successCount, failureCount: result.failureCount }
+
+      const invalidTokens: string[] = []
+      result.responses.forEach((resp, i) => {
+        if (!resp.success) {
+          const code = resp.error?.code ?? ''
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token' ||
+            code === 'messaging/invalid-argument'
+          ) {
+            invalidTokens.push(tokens[i]!)
+          }
+        }
+      })
+
+      return { successCount: result.successCount, failureCount: result.failureCount, invalidTokens }
     },
   }
 }

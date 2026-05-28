@@ -7,7 +7,7 @@ export interface PushPayload {
 }
 
 export interface IPushNotificationProvider {
-  send(tokens: string[], payload: PushPayload): Promise<{ successCount: number; failureCount: number }>
+  send(tokens: string[], payload: PushPayload): Promise<{ successCount: number; failureCount: number; invalidTokens: string[] }>
 }
 
 export interface IDeviceTokenRepository {
