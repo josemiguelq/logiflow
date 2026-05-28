@@ -8,19 +8,13 @@ interface Destination {
   lat: number; lng: number; label: string; status?: string
 }
 
-export interface ProofMarker {
-  lat: number; lng: number; label: string
-}
-
 interface Props {
-  delivererLat?:   number | null
-  delivererLng?:   number | null
-  delivererName?:  string
-  destinations?:   Destination[]
-  proofMarkers?:   ProofMarker[]
-  trail?:          TrailPoint[]
-  height?:         string
-  autoFitBounds?:  boolean
+  delivererLat?:  number | null
+  delivererLng?:  number | null
+  delivererName?: string
+  destinations?:  Destination[]
+  trail?:         TrailPoint[]
+  height?:        string
 }
 
 const DEFAULT_CENTER = { lat: -20.4697, lng: -54.6201 }
@@ -54,16 +48,13 @@ export function DelivererGoogleMap({
   delivererLng,
   delivererName = 'Entregador',
   destinations  = [],
-  proofMarkers  = [],
   trail         = [],
   height        = '100%',
-  autoFitBounds = false,
 }: Props) {
   const divRef           = useRef<HTMLDivElement>(null)
   const mapRef           = useRef<google.maps.Map | null>(null)
   const delivererRef     = useRef<google.maps.Marker | null>(null)
   const destMarkersRef   = useRef<google.maps.Marker[]>([])
-  const proofMarkersRef  = useRef<google.maps.Marker[]>([])
   const trailLayersRef   = useRef<(google.maps.Polyline | google.maps.Circle | google.maps.Marker)[]>([])
   const infoWindowRef    = useRef<google.maps.InfoWindow | null>(null)
 
@@ -96,8 +87,6 @@ export function DelivererGoogleMap({
       delivererRef.current = null
       destMarkersRef.current.forEach(m => m.setMap(null))
       destMarkersRef.current = []
-      proofMarkersRef.current.forEach(m => m.setMap(null))
-      proofMarkersRef.current = []
       trailLayersRef.current.forEach(l => l.setMap(null))
       trailLayersRef.current = []
       mapRef.current = null
@@ -174,48 +163,6 @@ export function DelivererGoogleMap({
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destinations])
-
-  // autoFitBounds: fit map to destinations + deliverer + proof markers
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !autoFitBounds) return
-
-    const allPoints: { lat: number; lng: number }[] = [
-      ...destinations,
-      ...proofMarkers,
-      ...(delivererLat != null && delivererLng != null ? [{ lat: delivererLat, lng: delivererLng }] : []),
-    ]
-    if (allPoints.length === 0) return
-
-    const bounds = new google.maps.LatLngBounds()
-    allPoints.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }))
-    map.fitBounds(bounds, 60)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinations, proofMarkers, delivererLat, delivererLng, autoFitBounds])
-
-  // Proof photo location markers (purple camera)
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-
-    proofMarkersRef.current.forEach(m => m.setMap(null))
-    proofMarkersRef.current = proofMarkers.map((p) => {
-      const svgIcon = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="13" fill="#7C3AED" stroke="white" stroke-width="2"/><path d="M9 10l1.5-2h7L19 10h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h2zm5 7a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" fill="white"/></svg>')}`
-      const marker = new google.maps.Marker({
-        position: { lat: p.lat, lng: p.lng },
-        map,
-        title: p.label,
-        icon: { url: svgIcon, scaledSize: new google.maps.Size(28, 28), anchor: new google.maps.Point(14, 14) },
-        zIndex: 15,
-      })
-      marker.addListener('click', () => {
-        infoWindowRef.current?.setContent(`<strong>📷 Foto tirada aqui</strong><br>${p.label}`)
-        infoWindowRef.current?.open(map, marker)
-      })
-      return marker
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proofMarkers])
 
   // Trail
   useEffect(() => {
