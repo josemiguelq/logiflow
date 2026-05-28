@@ -83,23 +83,33 @@ async function start() {
     // ── Push notification ──
     if (job.data.type === 'push') {
       const { delivererId, orderId, storeId, statusEvent } = job.data
+      app.log.info({ orderId, storeId, delivererId, statusEvent }, '[push] job received')
 
       const tokens = delivererId
         ? await deviceTokenRepo.findByDeliverer(delivererId)
         : await deviceTokenRepo.findByStore(storeId)
-      if (tokens.length === 0) return
+      app.log.info({ orderId, storeId, tokenCount: tokens.length }, '[push] tokens found')
+      if (tokens.length === 0) {
+        app.log.warn({ orderId, storeId }, '[push] no tokens — skipping')
+        return
+      }
 
       const order = await orderRepo.findById(orderId, storeId)
-      if (!order) return
+      if (!order) {
+        app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
+        return
+      }
 
       const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
+      app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
       try {
-        const { failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        app.log.info({ orderId, storeId, successCount, failureCount }, '[push] FCM result')
         if (failureCount > 0) {
-          app.log.warn({ orderId, storeId, failureCount }, 'Some FCM tokens failed')
+          app.log.warn({ orderId, storeId, failureCount }, '[push] some FCM tokens failed')
         }
       } catch (err) {
-        app.log.warn({ err, orderId, storeId }, 'FCM push notification failed (non-fatal)')
+        app.log.error({ err, orderId, storeId }, '[push] FCM send error')
       }
       return
     }
