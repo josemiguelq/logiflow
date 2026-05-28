@@ -344,7 +344,7 @@ export default function OrdersPage() {
                           <th className="hidden sm:table-cell px-4 py-2.5 text-left">Endereço</th>
                           <th className="hidden md:table-cell px-4 py-2.5 text-left">Entregador</th>
                           <th className="px-4 py-2.5 text-left">Status</th>
-                          <th className="px-4 py-2.5 text-left">Data</th>
+                          <th className="px-4 py-2.5 text-left">Datas</th>
                           <th className="px-4 py-2.5" />
                         </tr>
                       </thead>
@@ -365,7 +365,23 @@ export default function OrdersPage() {
                               <StatusBadge status={order.status} />
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">
-                              {formatDate(order.createdAt)}
+                              <div className="space-y-0.5">
+                                {order.deliveredAt && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-green-600 font-medium">Entregue</span>
+                                    <span>{formatDate(order.deliveredAt)}</span>
+                                  </div>
+                                )}
+                                {order.pickedUpAt && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-blue-500 font-medium">Recolhido</span>
+                                    <span>{formatDate(order.pickedUpAt)}</span>
+                                  </div>
+                                )}
+                                {!order.deliveredAt && !order.pickedUpAt && (
+                                  <span>{formatDate(order.createdAt)}</span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
