@@ -23,7 +23,28 @@ export function createFcmProvider(): IPushNotificationProvider {
         android:      { priority: 'high' },
         apns:         { payload: { aps: { sound: 'default', badge: 1 } } },
       })
+<<<<<<< Updated upstream
       return { successCount: result.successCount, failureCount: result.failureCount }
+=======
+
+      const invalidTokens: string[] = []
+      result.responses.forEach((resp, i) => {
+        if (!resp.success) {
+          const code = resp.error?.code ?? ''
+          console.log(`[FCM] token[${i}] failed: code=${code} message=${resp.error?.message}`)
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token' ||
+            code === 'messaging/invalid-argument' ||
+            code === 'messaging/unregistered'
+          ) {
+            invalidTokens.push(tokens[i]!)
+          }
+        }
+      })
+
+      return { successCount: result.successCount, failureCount: result.failureCount, invalidTokens }
+>>>>>>> Stashed changes
     },
   }
 }
