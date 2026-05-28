@@ -43,6 +43,12 @@ const grayDestinationIcon = new L.Icon({
   popupAnchor:[1, -34],
 })
 
+export interface ProofMarker {
+  lat:   number
+  lng:   number
+  label: string  // customer name — shown in popup to compare with delivery address
+}
+
 export interface MapDestination {
   id?: string
   lat: number
@@ -66,6 +72,7 @@ interface Props {
   delivererLng?: number | null
   delivererName?: string
   destinations?: MapDestination[]
+  proofMarkers?: ProofMarker[]
   trail?: TrailPoint[]
   height?: string
   autoFitBounds?: boolean
@@ -79,6 +86,7 @@ export function LiveMap({
   delivererLng,
   delivererName = 'Entregador',
   destinations = [],
+  proofMarkers = [],
   trail = [],
   height = '100%',
   autoFitBounds = false,
@@ -88,6 +96,7 @@ export function LiveMap({
   const mapRef              = useRef<L.Map | null>(null)
   const delivererMarkerRef  = useRef<L.Marker | null>(null)
   const destMarkersRef      = useRef<L.Marker[]>([])
+  const proofMarkersRef     = useRef<L.Marker[]>([])
   const trailLayersRef      = useRef<L.Layer[]>([])
 
   // Initialize and destroy the Leaflet map.
@@ -112,6 +121,8 @@ export function LiveMap({
       delivererMarkerRef.current = null
       destMarkersRef.current.forEach((m) => m.remove())
       destMarkersRef.current = []
+      proofMarkersRef.current.forEach((m) => m.remove())
+      proofMarkersRef.current = []
       trailLayersRef.current.forEach((l) => l.remove())
       trailLayersRef.current = []
 
@@ -186,6 +197,27 @@ export function LiveMap({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destinations, autoFitBounds, onDestinationClick])
+
+  // Render proof-photo location markers (purple camera icon).
+  // These can differ from the delivery address when the deliverer took the photo elsewhere.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    proofMarkersRef.current.forEach((m) => m.remove())
+    proofMarkersRef.current = proofMarkers.map((p) => {
+      const icon = new L.DivIcon({
+        className: '',
+        html: `<div style="width:28px;height:28px;background:#7C3AED;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,.35)"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><path d="M9 3L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg></div>`,
+        iconSize:    [28, 28],
+        iconAnchor:  [14, 14],
+        popupAnchor: [0, -18],
+      })
+      return L.marker([p.lat, p.lng], { icon })
+        .bindPopup(`<strong>📷 Foto tirada aqui</strong><br>${p.label}`)
+        .addTo(map)
+    })
+  }, [proofMarkers])
 
   // Render trail polyline + individual point markers + start/end markers
   useEffect(() => {

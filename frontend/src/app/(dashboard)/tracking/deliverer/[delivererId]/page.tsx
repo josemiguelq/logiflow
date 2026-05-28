@@ -3,14 +3,14 @@
 import { use, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X } from 'lucide-react'
+import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X, CheckCircle2, Clock } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { StatusBadge } from '@/components/ui/badge'
-import { LiveMap, MapDestination } from '@/components/map'
-import { STATUS_LABELS } from '@/lib/utils'
+import { LiveMap, MapDestination, ProofMarker } from '@/components/map'
+import { STATUS_LABELS, formatDate } from '@/lib/utils'
 
 interface LocationPoint { lat: number; lng: number; recorded_at: string }
 interface DelivererInfo  { id: string; name: string; status: string }
@@ -71,9 +71,9 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
 
   useEffect(() => onReconnect(() => { mutateLocation(); mutateOrders() }), [onReconnect, mutateLocation, mutateOrders])
 
-  const activeOrders = orders.filter(
-    (o) => !['DELIVERED', 'CANCELLED'].includes(o.status)
-  )
+  const activeOrders    = orders.filter((o) => !['DELIVERED', 'CANCELLED'].includes(o.status))
+  const deliveredOrders = orders.filter((o) => o.status === 'DELIVERED')
+    .sort((a, b) => (b.deliveredAt ?? b.createdAt) > (a.deliveredAt ?? a.createdAt) ? 1 : -1)
 
   const destinations: MapDestination[] = activeOrders
     .filter((o) => o.customer.lat != null)
@@ -83,6 +83,12 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
       label:  `${i + 1}. ${o.customer.name}`,
       status: STATUS_LABELS[o.status],
     }))
+
+  const proofMarkers: ProofMarker[] = orders.flatMap((o) =>
+    (o.proofs ?? [])
+      .filter((p) => p.lat != null && p.lng != null)
+      .map((p) => ({ lat: p.lat!, lng: p.lng!, label: o.customer.name }))
+  )
 
   const STATUS_DOT: Record<string, string> = {
     AVAILABLE: 'bg-green-500',
