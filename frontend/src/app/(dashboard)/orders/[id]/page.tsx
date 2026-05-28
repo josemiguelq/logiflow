@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
-import { LiveMap } from '@/components/map'
+import { DelivererGoogleMap } from '@/components/map'
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -176,12 +176,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     Local onde a foto foi tirada
                   </div>
                   <div className="h-56 overflow-hidden rounded-xl border border-gray-100">
-                    <LiveMap
+                    <DelivererGoogleMap
                       height="100%"
                       autoFitBounds
                       destinations={
                         order.customer.lat != null && order.customer.lng != null
-                          ? [{ lat: order.customer.lat, lng: order.customer.lng, label: order.customer.name, markerColor: 'red' }]
+                          ? [{ lat: order.customer.lat, lng: order.customer.lng, label: order.customer.name }]
                           : []
                       }
                       proofMarkers={[{ lat: order.proof.lat, lng: order.proof.lng, label: order.customer.name }]}

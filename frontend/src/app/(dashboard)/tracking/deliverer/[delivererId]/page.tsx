@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { StatusBadge } from '@/components/ui/badge'
-import { LiveMap, MapDestination, ProofMarker } from '@/components/map'
+import { DelivererGoogleMap, MapDestination, ProofMarker } from '@/components/map'
 import { STATUS_LABELS, formatDate } from '@/lib/utils'
 
 interface LocationPoint { lat: number; lng: number; recorded_at: string }
@@ -312,7 +312,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
               Aguardando localização do entregador...
             </div>
           )}
-          <LiveMap
+          <DelivererGoogleMap
             delivererLat={location?.lat}
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
