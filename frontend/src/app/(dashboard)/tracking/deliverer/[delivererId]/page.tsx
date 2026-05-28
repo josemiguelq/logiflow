@@ -206,14 +206,14 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
           </div>
 
           {/* Lista de pedidos ativos */}
-          <div className="flex-1 p-5">
+          <div className="p-5 border-b border-gray-100">
             <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">
               Pedidos em rota ({activeOrders.length})
             </p>
 
             {activeOrders.length === 0 ? (
-              <div className="flex flex-col items-center rounded-xl border border-dashed border-gray-200 py-8 text-gray-400">
-                <Package className="mb-2 h-8 w-8" />
+              <div className="flex flex-col items-center rounded-xl border border-dashed border-gray-200 py-6 text-gray-400">
+                <Package className="mb-2 h-6 w-6" />
                 <p className="text-sm">Nenhum pedido ativo</p>
               </div>
             ) : (
@@ -244,6 +244,12 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
                               <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
                               <span className="line-clamp-1">{order.customer.address}</span>
                             </div>
+                            {order.pickedUpAt && (
+                              <div className="mt-1 flex items-center gap-1 text-xs text-blue-500">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                Recolhido {formatDate(order.pickedUpAt)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </Link>
@@ -252,6 +258,50 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
               </ol>
             )}
           </div>
+
+          {/* Pedidos entregues */}
+          {deliveredOrders.length > 0 && (
+            <div className="flex-1 overflow-y-auto p-5">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">
+                Entregues ({deliveredOrders.length})
+              </p>
+              <ol className="space-y-2">
+                {deliveredOrders.map((order) => (
+                  <li key={order.id}>
+                    <Link
+                      href={`/orders/${order.id}`}
+                      className="block rounded-xl border border-gray-100 bg-gray-50 p-3 transition-colors hover:border-gray-200 hover:bg-white"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-900">
+                            {order.customer.name}
+                          </p>
+                          <div className="mt-0.5 flex items-start gap-1 text-xs text-gray-500">
+                            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span className="line-clamp-1">{order.customer.address}</span>
+                          </div>
+                          {order.pickedUpAt && (
+                            <div className="mt-1 flex items-center gap-1 text-xs text-blue-500">
+                              <Clock className="h-3 w-3 shrink-0" />
+                              Recolhido {formatDate(order.pickedUpAt)}
+                            </div>
+                          )}
+                          {order.deliveredAt && (
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-green-600">
+                              <CheckCircle2 className="h-3 w-3 shrink-0" />
+                              Entregue {formatDate(order.deliveredAt)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </aside>
 
         {/* Mapa */}
@@ -267,6 +317,7 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
             delivererLng={location?.lng}
             delivererName={deliverer?.name}
             destinations={destinations}
+            proofMarkers={proofMarkers}
             trail={history}
             height="100%"
           />
