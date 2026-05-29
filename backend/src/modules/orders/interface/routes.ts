@@ -14,7 +14,7 @@ import { confirmDelivery } from '../application/use-cases/confirm-delivery'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
-import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
+import { uploadBase64, resolveImageUrl, deleteFiles } from '../../../shared/storage/client'
 import { assertCanCreateOrder } from '../../../shared/billing'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
@@ -852,6 +852,11 @@ export async function orderRoutes(app: FastifyInstance) {
       )
       if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
 
+      const { rows: proofRows } = await db.query(
+        `SELECT photo_url FROM proof_of_delivery WHERE order_id = $1`,
+        [id]
+      )
+
       const o = order as Record<string, unknown>
       await db.query(`DELETE FROM orders WHERE id = $1`, [id])
 
@@ -867,6 +872,11 @@ export async function orderRoutes(app: FastifyInstance) {
 
       await invalidateStoreOrders(req.actor.storeId)
       if (o.deliverer_id) await invalidateDelivererOrders(o.deliverer_id as string)
+
+      const photoPaths = proofRows.map((r: Record<string, unknown>) => r.photo_url as string)
+      deleteFiles(photoPaths).catch(err =>
+        req.log.error({ err, orderId: id }, 'failed to delete proof photos from storage')
+      )
 
       return { ok: true }
     }

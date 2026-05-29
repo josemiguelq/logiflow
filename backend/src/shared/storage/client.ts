@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
@@ -80,4 +80,19 @@ export async function uploadBase64(pathWithoutExt: string, dataUri: string): Pro
   }
 
   return path
+}
+
+/**
+ * Deletes one or more storage paths from the bucket.
+ * Silently skips paths that look like full URLs or data URIs (legacy values).
+ * Never throws — logs errors internally so callers can fire-and-forget.
+ */
+export async function deleteFiles(paths: (string | null | undefined)[]): Promise<void> {
+  const keys = paths
+    .filter((p): p is string => !!p && !p.startsWith('http') && !p.startsWith('data:'))
+  if (keys.length === 0) return
+  await s3.send(new DeleteObjectsCommand({
+    Bucket: BUCKET,
+    Delete: { Objects: keys.map(Key => ({ Key })) },
+  }))
 }
