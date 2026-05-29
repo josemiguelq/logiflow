@@ -8,6 +8,6 @@ ALTER TABLE proof_of_delivery
   ADD COLUMN IF NOT EXISTS photo_index INTEGER NOT NULL DEFAULT 1;
 
 -- Setting: max proof photos per order (default 1 = same as today)
-INSERT INTO settings (name, default_value, description)
-VALUES ('max_proof_photos', '2', 'Número máximo de fotos de comprovante por pedido')
+INSERT INTO settings (name, default_value)
+VALUES ('max_proof_photos', '2')
 ON CONFLICT (name) DO UPDATE SET default_value = EXCLUDED.default_value;
