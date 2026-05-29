@@ -180,6 +180,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       requireDeliveryCode:      s.require_delivery_code      !== 'false',
       allowCustomerRatings:     s.allow_customer_ratings     === 'true',
       paymentMethodsEnabled:    s.payment_methods_enabled    === 'true',
+      maxProofPhotos:       parseInt(s.max_proof_photos     ?? '2'),
     }
   })
 
@@ -192,6 +193,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     requireDeliveryCode:   z.boolean().optional(),
     allowCustomerRatings:  z.boolean().optional(),
     paymentMethodsEnabled: z.boolean().optional(),
+    maxProofPhotos:       z.number().int().min(1).max(5).optional(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
   })
@@ -216,6 +218,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['requireDeliveryPhoto', 'require_delivery_photo'],
       ['requirePickupCode',    'require_pickup_code'],
       ['requireDeliveryCode',  'require_delivery_code'],
+      ['maxProofPhotos',       'max_proof_photos'],
       ['paymentMethodsEnabled','payment_methods_enabled'],
     ]
     for (const [key, dbName] of simpleMap) {

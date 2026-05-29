@@ -156,42 +156,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {order.proof?.photoUrl && (
+          {order.proofs?.length > 0 && (
             <section className="border-t border-gray-100 pt-4">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Comprovante de Entrega
+                {order.proofs.length > 1 && (
+                  <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 normal-case tracking-normal">
+                    {order.proofs.length} fotos
+                  </span>
+                )}
               </h2>
-              <div className="overflow-hidden rounded-xl border border-gray-100">
-                <img
-                  src={order.proof.photoUrl}
-                  alt="Comprovante de entrega"
-                  className="w-full object-contain"
-                  style={{ maxHeight: 480 }}
-                />
-              </div>
-              {(order.proof.lat != null && order.proof.lng != null) && (
-                <div className="mt-3">
-                  <div className="mb-1.5 flex items-center gap-1.5 text-xs text-gray-500">
-                    <Camera className="h-3.5 w-3.5" />
-                    Local onde a foto foi tirada
-                  </div>
-                  <div className="h-56 overflow-hidden rounded-xl border border-gray-100">
-                    <LiveMap
-                      height="100%"
-                      autoFitBounds
-                      destinations={
-                        order.customer.lat != null && order.customer.lng != null
-                          ? [{ lat: order.customer.lat, lng: order.customer.lng, label: order.customer.name, markerColor: 'red' }]
-                          : []
-                      }
-                      proofMarkers={[{ lat: order.proof.lat, lng: order.proof.lng, label: order.customer.name }]}
+              <div className={`grid gap-2 ${order.proofs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {order.proofs.map((p, i) => (
+                  <div key={i} className="overflow-hidden rounded-xl border border-gray-100">
+                    <img
+                      src={p.photoUrl}
+                      alt={`Comprovante ${i + 1}`}
+                      className="w-full object-contain"
+                      style={{ maxHeight: order.proofs.length > 1 ? 240 : 480 }}
                     />
+                    {(p.lat != null && p.lng != null) && (
+                      <p className="px-2 pb-1.5 pt-1 text-xs text-gray-400">
+                        {p.lat.toFixed(5)}, {p.lng.toFixed(5)}
+                      </p>
+                    )}
                   </div>
-                  <p className="mt-1.5 text-xs text-gray-400">
-                    {order.proof.lat.toFixed(5)}, {order.proof.lng.toFixed(5)}
-                  </p>
-                </div>
-              )}
+                ))}
+              </div>
             </section>
           )}
         </div>

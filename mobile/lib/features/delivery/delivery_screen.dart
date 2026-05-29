@@ -379,6 +379,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         order:                widget.order,
         requireDeliveryCode:  settings.requireDeliveryCode,
         requireDeliveryPhoto: settings.requireDeliveryPhoto,
+        maxProofPhotos:       settings.maxProofPhotos,
         onDelivered:          widget.onDelivered,
       ),
     );
@@ -389,11 +390,13 @@ class _DeliveryConfirmSheet extends StatefulWidget {
   final Order order;
   final bool requireDeliveryCode;
   final bool requireDeliveryPhoto;
+  final int maxProofPhotos;
   final VoidCallback onDelivered;
   const _DeliveryConfirmSheet({
     required this.order,
     required this.requireDeliveryCode,
     required this.requireDeliveryPhoto,
+    this.maxProofPhotos = 2,
     required this.onDelivered,
   });
 
@@ -404,7 +407,7 @@ class _DeliveryConfirmSheet extends StatefulWidget {
 class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
-  XFile? _photo;
+  final List<XFile> _photos = [];
   bool _loading = false;
   String? _error;
 
@@ -416,9 +419,14 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   }
 
   Future<void> _takePhoto() async {
+    if (_photos.length >= widget.maxProofPhotos) return;
     final f = await ImagePicker().pickImage(
       source: ImageSource.camera, maxWidth: 1280, imageQuality: 60);
-    if (f != null) setState(() => _photo = f);
+    if (f != null) setState(() => _photos.add(f));
+  }
+
+  void _removePhoto(int index) {
+    setState(() => _photos.removeAt(index));
   }
 
   Future<void> _confirm() async {
@@ -427,7 +435,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       setState(() => _error = 'Informe os 4 últimos dígitos do telefone');
       return;
     }
-    if (widget.requireDeliveryPhoto && _photo == null) {
+    if (widget.requireDeliveryPhoto && _photos.isEmpty) {
       setState(() => _error = 'Foto de comprovante é obrigatória');
       return;
     }
@@ -439,30 +447,30 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       } catch (_) {}
 
-      String? photoUrl;
-      if (_photo != null) {
-        final bytes = await _photo!.readAsBytes();
-        const maxBytes = 10 * 1024 * 1024;
+      final List<String> photoUrls = [];
+      const maxBytes = 10 * 1024 * 1024;
+      for (final photo in _photos) {
+        final bytes = await photo.readAsBytes();
         if (bytes.length > maxBytes) {
           setState(() {
-            _error = 'Foto muito grande (máx. 10 MB). Tente novamente.';
+            _error = 'Uma das fotos é muito grande (máx. 10 MB). Tente novamente.';
             _loading = false;
           });
           return;
         }
-        photoUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        photoUrls.add('data:image/jpeg;base64,${base64Encode(bytes)}');
       }
 
       final note = _noteCtrl.text.trim();
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
         data: {
-          'code':          code,
-          if (photoUrl != null) 'photoUrl': photoUrl,
-          if (pos != null) 'lat': pos.latitude,
-          if (pos != null) 'lng': pos.longitude,
-          if (note.isNotEmpty) 'note': note,
-          if (widget.order.isCash) 'cashCollected': true,
+          'code':                    code,
+          if (photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+          if (pos != null)          'lat': pos.latitude,
+          if (pos != null)          'lng': pos.longitude,
+          if (note.isNotEmpty)      'note': note,
+          if (widget.order.isCash)  'cashCollected': true,
         },
       );
 
@@ -566,35 +574,14 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
             const SizedBox(height: 16),
           ],
 
-          if (widget.requireDeliveryPhoto) ...[
-            GestureDetector(
-              onTap: _takePhoto,
-              child: Container(
-                height: 80,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _photo == null && _error != null
-                        ? const Color(0xFFDC2626)
-                        : Colors.grey.shade200,
-                  ),
-                ),
-                child: _photo != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(File(_photo!.path), fit: BoxFit.cover))
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.camera_alt_outlined, color: Colors.grey.shade400),
-                          const SizedBox(width: 8),
-                          Text('Foto de comprovante (obrigatória)',
-                              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-                        ],
-                      ),
-              ),
+          if (widget.requireDeliveryPhoto || widget.maxProofPhotos > 1) ...[
+            _PhotoSection(
+              photos:          _photos,
+              maxPhotos:       widget.maxProofPhotos,
+              required:        widget.requireDeliveryPhoto,
+              hasError:        _photos.isEmpty && _error != null,
+              onAdd:           _takePhoto,
+              onRemove:        _removePhoto,
             ),
             const SizedBox(height: 12),
           ],
@@ -634,6 +621,133 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Photo section widget ─────────────────────────────────────────────────────
+
+class _PhotoSection extends StatelessWidget {
+  final List<XFile> photos;
+  final int maxPhotos;
+  final bool required;
+  final bool hasError;
+  final VoidCallback onAdd;
+  final void Function(int) onRemove;
+
+  const _PhotoSection({
+    required this.photos,
+    required this.maxPhotos,
+    required this.required,
+    required this.hasError,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canAdd = photos.length < maxPhotos;
+    final label = required
+        ? 'Foto de comprovante (obrigatória)'
+        : 'Foto de comprovante (opcional)';
+    final countLabel = maxPhotos > 1
+        ? '${photos.length}/$maxPhotos fotos'
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: hasError ? const Color(0xFFDC2626) : Colors.grey.shade600)),
+            if (countLabel != null) ...[
+              const Spacer(),
+              Text(countLabel,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (photos.isEmpty && !canAdd)
+          const SizedBox.shrink()
+        else
+          SizedBox(
+            height: 80,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                // Existing photos
+                for (int i = 0; i < photos.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.file(
+                            File(photos[i].path),
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 2,
+                          right: 2,
+                          child: GestureDetector(
+                            onTap: () => onRemove(i),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(2),
+                              child: const Icon(Icons.close,
+                                  size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // Add button
+                if (canAdd)
+                  GestureDetector(
+                    onTap: onAdd,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: hasError && photos.isEmpty
+                              ? const Color(0xFFDC2626)
+                              : Colors.grey.shade300,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.camera_alt_outlined,
+                              color: Colors.grey.shade400, size: 24),
+                          const SizedBox(height: 4),
+                          Text('Adicionar',
+                              style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
