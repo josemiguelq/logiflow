@@ -11,13 +11,27 @@ typedef WsMessage = Map<String, dynamic>;
 
 enum LocationPermissionIssue { serviceDisabled, denied, deniedForever }
 
+class _PendingPoint {
+  final double   lat;
+  final double   lng;
+  final DateTime recordedAt;
+  const _PendingPoint(this.lat, this.lng, this.recordedAt);
+  Map<String, dynamic> toJson() => {
+    'lat':        lat,
+    'lng':        lng,
+    'recordedAt': recordedAt.toUtc().toIso8601String(),
+  };
+}
+
 class LocationService {
-  WebSocket?                   _socket;
-  bool                         _connecting  = false;
-  bool                         _started     = false;
-  String?                      _delivererId;
+  WebSocket?                    _socket;
+  bool                          _connecting  = false;
+  bool                          _started     = false;
+  bool                          _flushing    = false;
+  String?                       _delivererId;
   StreamSubscription<Position>? _positionSub;
-  final _api = ApiClient();
+  final _api   = ApiClient();
+  final _queue = <_PendingPoint>[];
 
   final _messageController = StreamController<WsMessage>.broadcast();
   Stream<WsMessage> get messageStream => _messageController.stream;
@@ -153,49 +167,71 @@ class LocationService {
   }
 
   void _sendLocation(double lat, double lng) {
-    final payload = {
-      'event': 'location',
-      'data': {'lat': lat, 'lng': lng},
-    };
+    final recordedAt = DateTime.now();
 
     if (_socket?.readyState == WebSocket.open) {
       debugPrint('[Location] Enviando via WebSocket: lat=$lat, lng=$lng');
       try {
-        _socket!.add(jsonEncode(payload));
+        _socket!.add(jsonEncode({
+          'event': 'location',
+          'data':  {'lat': lat, 'lng': lng},
+        }));
+        _flushQueue();   // aproveita conexão boa para esvaziar fila
+        return;
       } catch (e, st) {
         debugPrint('[Location] Erro ao enviar via WebSocket: $e');
-        Sentry.captureException(
-          e,
-          stackTrace: st,
-          withScope: (scope) {
-            scope.setTag('delivererId', _delivererId ?? 'unknown');
-            scope.setContexts('location', {'lat': lat, 'lng': lng, 'transport': 'websocket'});
-          },
-        );
+        Sentry.captureException(e, stackTrace: st,
+            withScope: (s) => s.setTag('delivererId', _delivererId ?? 'unknown'));
+        // cai para o fallback HTTP abaixo
       }
-    } else {
-      debugPrint('[Location] WebSocket indisponível '
-          '(state=${_socket?.readyState ?? "null"}) — usando HTTP');
-      _api.dio.post('/tracking/location', data: {'lat': lat, 'lng': lng}).then((_) {
-        debugPrint('[Location] HTTP enviado: lat=$lat, lng=$lng');
-      }).catchError((Object e) {
-        debugPrint('[Location] Erro no HTTP fallback: $e');
-        Sentry.captureException(
-          e,
-          withScope: (scope) {
-            scope.setTag('delivererId', _delivererId ?? 'unknown');
-            scope.setContexts('location', {'lat': lat, 'lng': lng, 'transport': 'http'});
-          },
-        );
-      });
+    }
 
-      // Tenta reconectar para o próximo envio
-      _connect();
+    debugPrint('[Location] WS indisponível — tentando HTTP '
+        '(fila=${_queue.length})');
+    _connect();   // tenta reconectar para o próximo ciclo
+
+    _api.dio
+        .post('/tracking/location', data: {'lat': lat, 'lng': lng,
+            'recordedAt': recordedAt.toUtc().toIso8601String()})
+        .then((_) {
+          debugPrint('[Location] HTTP ok: lat=$lat, lng=$lng');
+          _flushQueue();
+        })
+        .catchError((Object e) {
+          debugPrint('[Location] HTTP falhou — guardando na fila '
+              '(fila=${_queue.length + 1})');
+          _queue.add(_PendingPoint(lat, lng, recordedAt));
+          Sentry.captureException(e,
+              withScope: (s) {
+                s.setTag('delivererId', _delivererId ?? 'unknown');
+                s.setContexts('location', {
+                  'transport': 'http', 'queueSize': _queue.length,
+                });
+              });
+        });
+  }
+
+  Future<void> _flushQueue() async {
+    if (_queue.isEmpty || _flushing) return;
+    _flushing = true;
+    final snapshot = List<_PendingPoint>.from(_queue);
+    debugPrint('[Location] Enviando fila em batch: ${snapshot.length} pontos');
+    try {
+      await _api.dio.post('/tracking/location/batch', data: {
+        'points': snapshot.map((p) => p.toJson()).toList(),
+      });
+      _queue.removeRange(0, snapshot.length);
+      debugPrint('[Location] Fila enviada e limpa');
+    } catch (e) {
+      debugPrint('[Location] Batch falhou — fila mantida: $e');
+    } finally {
+      _flushing = false;
     }
   }
 
   void stopTracking() {
-    debugPrint('[Location] Parando rastreamento');
+    debugPrint('[Location] Parando rastreamento (fila=${_queue.length})');
+    _flushQueue();   // tentativa de último envio antes de parar
     _started = false;
     _positionSub?.cancel();
     _positionSub = null;

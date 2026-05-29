@@ -10,6 +10,14 @@ const locationSchema = z.object({
   lng: z.number(),
 })
 
+const batchSchema = z.object({
+  points: z.array(z.object({
+    lat:        z.number(),
+    lng:        z.number(),
+    recordedAt: z.string().datetime(),
+  })).min(1).max(200),
+})
+
 export async function trackingRoutes(app: FastifyInstance) {
   const repo = createPgTrackingRepo(db)
 
@@ -22,6 +30,22 @@ export async function trackingRoutes(app: FastifyInstance) {
       const saved = await repo.recordLocation(req.actor.sub, lat, lng)
       if (saved) {
         wsHub.broadcastDelivererLocation(req.actor.storeId, req.actor.sub, lat, lng)
+      }
+      return reply.send({ saved })
+    }
+  )
+
+  // Deliverer flushes queued locations (offline store-and-forward)
+  app.post(
+    '/tracking/location/batch',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { points } = batchSchema.parse(req.body)
+      const parsed = points.map(p => ({ ...p, recordedAt: new Date(p.recordedAt) }))
+      const saved = await repo.recordBatch(req.actor.sub, parsed)
+      if (saved > 0) {
+        const last = parsed[parsed.length - 1]!
+        wsHub.broadcastDelivererLocation(req.actor.storeId, req.actor.sub, last.lat, last.lng)
       }
       return reply.send({ saved })
     }

@@ -20,7 +20,8 @@ export function createPgTrackingRepo(db: DB) {
     async recordLocation(
       delivererId: string,
       lat: number,
-      lng: number
+      lng: number,
+      recordedAt?: Date,
     ) {
       const { rows: statusRows } = await db.query(
         `SELECT status FROM deliverers WHERE id = $1`,
@@ -36,19 +37,39 @@ export function createPgTrackingRepo(db: DB) {
         [delivererId]
       )
 
+      const ts = recordedAt ?? new Date()
       if (last[0]) {
         const dist = haversineMeters(last[0].lat, last[0].lng, lat, lng)
-        const elapsed =
-          (Date.now() - new Date(last[0].recorded_at).getTime()) / 1000
+        const elapsed = (ts.getTime() - new Date(last[0].recorded_at).getTime()) / 1000
         if (dist < MIN_DISTANCE_METERS && elapsed < MIN_TIME_SECONDS) return false
       }
 
       await db.query(
-        `INSERT INTO location_history (deliverer_id, lat, lng)
-         VALUES ($1,$2,$3)`,
-        [delivererId, lat, lng]
+        `INSERT INTO location_history (deliverer_id, lat, lng, recorded_at)
+         VALUES ($1,$2,$3,$4)`,
+        [delivererId, lat, lng, ts]
       )
       return true
+    },
+
+    async recordBatch(
+      delivererId: string,
+      points: Array<{ lat: number; lng: number; recordedAt: Date }>,
+    ) {
+      const { rows: statusRows } = await db.query(
+        `SELECT status FROM deliverers WHERE id = $1`,
+        [delivererId]
+      )
+      if (statusRows[0]?.status === 'OFFLINE') return 0
+
+      // Process in chronological order, re-using the same dedup logic
+      const sorted = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+      let saved = 0
+      for (const p of sorted) {
+        const ok = await this.recordLocation(delivererId, p.lat, p.lng, p.recordedAt)
+        if (ok) saved++
+      }
+      return saved
     },
 
     async getLatest(delivererId: string) {
