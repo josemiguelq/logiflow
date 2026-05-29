@@ -8,7 +8,7 @@ import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, 
 import { Order, OrderStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWs } from '@/hooks/WsContext'
 import { useAccess } from '@/hooks/useAccess'
 import { OrderCard } from '@/components/orders/order-card'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,7 @@ const COMPLETED_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELLED']
 
 export default function OrdersPage() {
   const { user }   = useAuth()
-  const { on, onReconnect } = useWebSocket(user?.storeId)
+  const { on, onReconnect } = useWs()
   const router     = useRouter()
   const { can }    = useAccess()
 
