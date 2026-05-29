@@ -6,8 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X, CheckCircle2, Clock } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
-import { useAuth } from '@/hooks/useAuth'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWs } from '@/hooks/WsContext'
 import { StatusBadge } from '@/components/ui/badge'
 import { LiveMap, MapDestination, ProofMarker } from '@/components/map'
 import { STATUS_LABELS, formatDate } from '@/lib/utils'
@@ -26,8 +25,7 @@ function yesterdayStr() {
 
 export default function DelivererTrackingPage({ params }: { params: Promise<{ delivererId: string }> }) {
   const { delivererId } = use(params)
-  const { user }        = useAuth()
-  const { on, onReconnect } = useWebSocket(user?.storeId)
+  const { on, onReconnect } = useWs()
 
   const [from, setFrom]           = useState(todayStr)
   const [to,   setTo]             = useState(todayStr)

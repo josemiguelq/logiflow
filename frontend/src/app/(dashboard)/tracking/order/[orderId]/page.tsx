@@ -6,8 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Truck, MapPin, Navigation } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
-import { useAuth } from '@/hooks/useAuth'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWs } from '@/hooks/WsContext'
 import { StatusBadge } from '@/components/ui/badge'
 import { LiveMap, MapDestination } from '@/components/map'
 
@@ -15,8 +14,7 @@ interface LocationPoint { lat: number; lng: number; recorded_at: string }
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = use(params)
-  const { user }    = useAuth()
-  const { on, onReconnect } = useWebSocket(user?.storeId)
+  const { on, onReconnect } = useWs()
 
   const { data: order, mutate } = useSWR<Order>(
     `/orders/${orderId}`,
