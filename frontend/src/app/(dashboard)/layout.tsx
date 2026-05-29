@@ -13,6 +13,7 @@ import { api } from '@/lib/api'
 interface DeliveryNotif {
   id:           string
   customerName: string
+  shortId:      string
 }
 
 interface ThemeData {
@@ -36,10 +37,14 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return on('order_updated', (data) => {
-      const order = data as { id: string; status: string; customerName?: string; customer?: { name: string } }
+      const order = data as { id: string; status: string; customer?: { name: string } }
       if (order.status !== 'DELIVERED') return
-      const name = order.customerName ?? order.customer?.name ?? 'Cliente'
-      const notif: DeliveryNotif = { id: order.id, customerName: name }
+      const shortId = '#' + order.id.slice(-8).toUpperCase()
+      const notif: DeliveryNotif = {
+        id:           order.id,
+        customerName: order.customer?.name ?? 'Cliente',
+        shortId,
+      }
       setNotifs(prev => [...prev.filter(n => n.id !== order.id), notif])
       setTimeout(() => dismiss(notif.id), 5000)
     })
@@ -108,7 +113,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400" />
             <span>
               <span className="font-semibold">{n.customerName}</span>
-              <span className="text-gray-300"> — pedido entregue</span>
+              <span className="text-gray-400 font-mono text-xs ml-1">{n.shortId}</span>
+              <span className="text-gray-300"> — entregue</span>
             </span>
             <button
               onClick={() => dismiss(n.id)}
