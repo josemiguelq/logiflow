@@ -281,6 +281,10 @@ export async function delivererRoutes(app: FastifyInstance) {
       requirePickupCode:    sv.require_pickup_code    !== 'false',
       requireDeliveryCode:  sv.require_delivery_code  !== 'false',
       requireDeliveryPhoto: sv.require_delivery_photo === 'true',
+<<<<<<< Updated upstream
+=======
+      maxProofPhotos:       parseInt(sv.max_proof_photos ?? '2', 10) || 1,
+>>>>>>> Stashed changes
     }
   })
 
