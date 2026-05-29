@@ -7,12 +7,13 @@ import useSWR from 'swr'
 import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { WsProvider, useWs } from '@/hooks/WsContext'
 import { api } from '@/lib/api'
 
 interface DeliveryNotif {
   id:           string
   customerName: string
+  shortId:      string
 }
 
 interface ThemeData {
@@ -20,14 +21,15 @@ interface ThemeData {
   features: { customThemeEnabled: boolean }
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router           = useRouter()
-  const pathname         = usePathname()
-  const { user, init }   = useAuth()
+// Inner component — can safely call useWs() because WsProvider is above it
+function DashboardShell({ children }: { children: React.ReactNode }) {
+  const router    = useRouter()
+  const pathname  = usePathname()
+  const { user, init } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifs, setNotifs]           = useState<DeliveryNotif[]>([])
   const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
-  const { on } = useWebSocket(user?.storeId)
+  const { on } = useWs()
 
   const dismiss = useCallback((id: string) => {
     setNotifs(prev => prev.filter(n => n.id !== id))
@@ -37,7 +39,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return on('order_updated', (data) => {
       const order = data as { id: string; status: string; customer?: { name: string } }
       if (order.status !== 'DELIVERED') return
-      const notif: DeliveryNotif = { id: order.id, customerName: order.customer?.name ?? 'Cliente' }
+      const shortId = '#' + order.id.slice(-8).toUpperCase()
+      const notif: DeliveryNotif = {
+        id:           order.id,
+        customerName: order.customer?.name ?? 'Cliente',
+        shortId,
+      }
       setNotifs(prev => [...prev.filter(n => n.id !== order.id), notif])
       setTimeout(() => dismiss(notif.id), 5000)
     })
@@ -59,7 +66,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!token) router.push('/login')
   }, [router])
 
-  // Close sidebar on navigation
   useEffect(() => { setSidebarOpen(false) }, [pathname])
 
   if (!user) return null
@@ -107,7 +113,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400" />
             <span>
               <span className="font-semibold">{n.customerName}</span>
-              <span className="text-gray-300"> — pedido entregue</span>
+              <span className="text-gray-400 font-mono text-xs ml-1">{n.shortId}</span>
+              <span className="text-gray-300"> — entregue</span>
             </span>
             <button
               onClick={() => dismiss(n.id)}
@@ -119,5 +126,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ))}
       </div>
     </div>
+  )
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <WsProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </WsProvider>
   )
 }

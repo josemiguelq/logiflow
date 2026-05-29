@@ -724,7 +724,8 @@ export async function orderRoutes(app: FastifyInstance) {
           )
         }
 
-        wsHub.broadcastOrderUpdate(req.actor.storeId, order)
+        const fullOrder = await orderRepo.findById(id, req.actor.storeId)
+        wsHub.broadcastOrderUpdate(req.actor.storeId, fullOrder ?? order)
         queueNotif(req.actor.storeId, id, 'DELIVERED')
         invalidateDelivererOrders(req.actor.sub)
         invalidateStoreOrders(req.actor.storeId)
