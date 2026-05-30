@@ -622,10 +622,6 @@ class _OrderPin extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-<<<<<<< HEAD
-        // Label com o nome completo do cliente
-=======
->>>>>>> b16c71b0ab2ee0cb99e0416333b0f40cafbe9fea
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
@@ -641,11 +637,8 @@ class _OrderPin extends StatelessWidget {
           ),
           child: Text(
             name,
-<<<<<<< HEAD
-=======
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
->>>>>>> b16c71b0ab2ee0cb99e0416333b0f40cafbe9fea
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
