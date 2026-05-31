@@ -11,9 +11,12 @@ import '../../core/models/order.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 
-final _activeDeliveryProvider = FutureProvider.autoDispose<List<Order>>((ref) async {
+final _activeDeliveryProvider =
+    FutureProvider.autoDispose<List<Order>>((ref) async {
   final res = await ApiClient().dio.get('/deliverer/orders');
-  final all = (res.data as List).map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
+  final all = (res.data as List)
+      .map((e) => Order.fromJson(e as Map<String, dynamic>))
+      .toList();
   return all
       .where((o) => o.status == 'ON_ROUTE' || o.status == 'OUT_FOR_DELIVERY')
       .toList()
@@ -25,14 +28,14 @@ class DeliveryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final orders   = ref.watch(_activeDeliveryProvider);
+    final orders = ref.watch(_activeDeliveryProvider);
     final settings = ref.watch(storeSettingsProvider);
 
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
         title: _BrandTitle(
-          brand:    settings.value?.brandName ?? 'LogiFlow',
+          brand: settings.value?.brandName ?? 'LogiFlow',
           subtitle: 'Entregas em rota',
         ),
         leading: IconButton(
@@ -48,7 +51,7 @@ class DeliveryScreen extends ConsumerWidget {
       ),
       body: orders.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error:   (e, _) => Center(child: Text('Erro: $e')),
+        error: (e, _) => Center(child: Text('Erro: $e')),
         data: (list) {
           if (list.isEmpty) {
             return _EmptyDeliveryState(onGoOrders: () => context.go('/orders'));
@@ -91,32 +94,34 @@ class _DeliveryCard extends ConsumerStatefulWidget {
 }
 
 class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
-  bool _navigating  = false;
-  bool _returning   = false;
-  bool _cancelling  = false;
+  bool _navigating = false;
+  bool _returning = false;
+  bool _cancelling = false;
 
   Future<void> _navigateTo() async {
     setState(() => _navigating = true);
     try {
       // Mark as OUT_FOR_DELIVERY before opening maps
-      await ApiClient().dio.patch('/deliverer/orders/${widget.order.id}/start-route', data: {});
+      await ApiClient()
+          .dio
+          .patch('/deliverer/orders/${widget.order.id}/start-route', data: {});
       widget.onDelivered(); // refresh the list
     } catch (_) {}
 
     Uri uri;
     if (widget.order.customerLat != null && widget.order.customerLng != null) {
-      uri = Uri.parse(
-          'https://www.google.com/maps/dir/?api=1'
+      uri = Uri.parse('https://www.google.com/maps/dir/?api=1'
           '&destination=${widget.order.customerLat},${widget.order.customerLng}'
           '&travelmode=driving');
     } else {
       final encoded = Uri.encodeComponent(widget.order.customerAddress);
-      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded');
+      uri =
+          Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded');
     }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Não foi possível abrir o Maps')));
+            const SnackBar(content: Text('Não foi possível abrir o Maps')));
       }
     }
     if (mounted) setState(() => _navigating = false);
@@ -126,19 +131,18 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   Widget build(BuildContext context) {
     final order = widget.order;
     final isOutForDelivery = order.status == 'OUT_FOR_DELIVERY';
-    final statusColor = isOutForDelivery
-        ? const Color(0xFFFFEDD5)
-        : const Color(0xFFE0E7FF);
+    final statusColor =
+        isOutForDelivery ? const Color(0xFFFFEDD5) : const Color(0xFFE0E7FF);
     final statusText = isOutForDelivery ? 'Saiu p/ entrega' : 'Em rota';
-    final statusTextColor = isOutForDelivery
-        ? const Color(0xFFEA580C)
-        : const Color(0xFF4F46E5);
+    final statusTextColor =
+        isOutForDelivery ? const Color(0xFFEA580C) : const Color(0xFF4F46E5);
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
+        border:
+            const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -158,7 +162,9 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                   radius: 16,
                   child: Text('${widget.position}',
                       style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -178,7 +184,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: statusColor,
                     borderRadius: BorderRadius.circular(100),
@@ -203,7 +210,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(order.customerAddress,
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      style:
+                          TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                 ),
               ],
             ),
@@ -229,7 +237,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, size: 15, color: Color(0xFFD97706)),
+                    const Icon(Icons.info_outline,
+                        size: 15, color: Color(0xFFD97706)),
                     const SizedBox(width: 6),
                     const Text(
                       'Observações',
@@ -258,7 +267,9 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                   child: OutlinedButton.icon(
                     onPressed: _navigating ? null : _navigateTo,
                     icon: _navigating
-                        ? const SizedBox(width: 16, height: 16,
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.navigation_outlined, size: 18),
                     label: const Text('Navegar'),
@@ -291,20 +302,37 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
               children: [
                 Expanded(
                   child: TextButton.icon(
-                    onPressed: (_navigating || _returning || _cancelling) ? null : () => _returnToQueue(context),
+                    onPressed: (_navigating || _returning || _cancelling)
+                        ? null
+                        : () => _returnToQueue(context),
                     icon: _returning
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                        : Icon(Icons.undo_rounded, size: 16, color: Colors.grey.shade500),
-                    label: Text('Devolver à fila', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(Icons.undo_rounded,
+                            size: 16, color: Colors.grey.shade500),
+                    label: Text('Devolver à fila',
+                        style: TextStyle(
+                            color: Colors.grey.shade600, fontSize: 13)),
                   ),
                 ),
                 Expanded(
                   child: TextButton.icon(
-                    onPressed: (_navigating || _returning || _cancelling) ? null : () => _showCancelSheet(context),
+                    onPressed: (_navigating || _returning || _cancelling)
+                        ? null
+                        : () => _showCancelSheet(context),
                     icon: _cancelling
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFDC2626)))
-                        : const Icon(Icons.close, size: 16, color: Color(0xFFDC2626)),
-                    label: const Text('Cancelar entrega', style: TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Color(0xFFDC2626)))
+                        : const Icon(Icons.close,
+                            size: 16, color: Color(0xFFDC2626)),
+                    label: const Text('Cancelar entrega',
+                        style:
+                            TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
                   ),
                 ),
               ],
@@ -331,7 +359,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            style:
+                TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
             child: const Text('Devolver'),
           ),
         ],
@@ -340,11 +369,15 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     if (confirm != true || !mounted) return;
     setState(() => _returning = true);
     try {
-      await ApiClient().dio.patch('/deliverer/orders/${widget.order.id}/return-to-queue', data: {});
+      await ApiClient().dio.patch(
+          '/deliverer/orders/${widget.order.id}/return-to-queue',
+          data: {});
       widget.onDelivered();
     } catch (e) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Não foi possível devolver o pedido. Tente novamente.')),
+        const SnackBar(
+            content:
+                Text('Não foi possível devolver o pedido. Tente novamente.')),
       );
     } finally {
       if (mounted) setState(() => _returning = false);
@@ -359,13 +392,38 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => _CancelDeliverySheet(
-        order:       widget.order,
+        order: widget.order,
         onCancelled: widget.onDelivered,
       ),
     );
   }
 
   Future<void> _showDeliveryDialog(BuildContext context) async {
+    // Se o pedido tiver observação, mostra um aviso antes de abrir a confirmação.
+    final notes = widget.order.notes?.trim();
+    if (notes != null && notes.isNotEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.info_outline, color: Color(0xFFD97706)),
+              SizedBox(width: 8),
+              Text('Observação'),
+            ],
+          ),
+          content: Text(notes),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendi'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+    }
+
     ref.invalidate(storeSettingsProvider);
     final settings = await ref.read(storeSettingsProvider.future);
     if (!mounted) return;
@@ -376,11 +434,11 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => _DeliveryConfirmSheet(
-        order:                widget.order,
-        requireDeliveryCode:  settings.requireDeliveryCode,
+        order: widget.order,
+        requireDeliveryCode: settings.requireDeliveryCode,
         requireDeliveryPhoto: settings.requireDeliveryPhoto,
-        maxProofPhotos:       settings.maxProofPhotos,
-        onDelivered:          widget.onDelivered,
+        maxProofPhotos: settings.maxProofPhotos,
+        onDelivered: widget.onDelivered,
       ),
     );
   }
@@ -421,7 +479,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   Future<void> _takePhoto() async {
     if (_photos.length >= widget.maxProofPhotos) return;
     final f = await ImagePicker().pickImage(
-      source: ImageSource.camera, maxWidth: 1280, imageQuality: 60);
+        source: ImageSource.camera, maxWidth: 1280, imageQuality: 60);
     if (f != null) setState(() => _photos.add(f));
   }
 
@@ -439,12 +497,16 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       setState(() => _error = 'Foto de comprovante é obrigatória');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
       Position? pos;
       try {
-        pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high);
       } catch (_) {}
 
       final List<String> photoUrls = [];
@@ -453,7 +515,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         final bytes = await photo.readAsBytes();
         if (bytes.length > maxBytes) {
           setState(() {
-            _error = 'Uma das fotos é muito grande (máx. 10 MB). Tente novamente.';
+            _error =
+                'Uma das fotos é muito grande (máx. 10 MB). Tente novamente.';
             _loading = false;
           });
           return;
@@ -465,20 +528,24 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
         data: {
-          'code':                    code,
+          'code': code,
           if (photoUrls.isNotEmpty) 'photoUrls': photoUrls,
-          if (pos != null)          'lat': pos.latitude,
-          if (pos != null)          'lng': pos.longitude,
-          if (note.isNotEmpty)      'note': note,
-          if (widget.order.isCash)  'cashCollected': true,
+          if (pos != null) 'lat': pos.latitude,
+          if (pos != null) 'lng': pos.longitude,
+          if (note.isNotEmpty) 'note': note,
+          if (widget.order.isCash) 'cashCollected': true,
         },
       );
 
       widget.onDelivered();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      final msg = (e as dynamic).response?.data?['error'] as String? ?? 'Código incorreto';
-      setState(() { _error = msg; _loading = false; });
+      final msg = (e as dynamic).response?.data?['error'] as String? ??
+          'Código incorreto';
+      setState(() {
+        _error = msg;
+        _loading = false;
+      });
     }
   }
 
@@ -495,7 +562,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         children: [
           Center(
             child: Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                   color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2)),
@@ -503,7 +571,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           ),
           const SizedBox(height: 16),
           Text('Confirmar entrega — ${widget.order.customerName}',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              style:
+                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('#${widget.order.shortId} · ${widget.order.customerAddress}',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
@@ -568,20 +637,22 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
                 prefixIcon: Icon(Icons.phone_outlined),
               ),
               style: const TextStyle(
-                  fontFamily: 'monospace', letterSpacing: 6,
-                  fontSize: 20, fontWeight: FontWeight.bold),
+                  fontFamily: 'monospace',
+                  letterSpacing: 6,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
           ],
 
           if (widget.requireDeliveryPhoto || widget.maxProofPhotos > 1) ...[
             _PhotoSection(
-              photos:          _photos,
-              maxPhotos:       widget.maxProofPhotos,
-              required:        widget.requireDeliveryPhoto,
-              hasError:        _photos.isEmpty && _error != null,
-              onAdd:           _takePhoto,
-              onRemove:        _removePhoto,
+              photos: _photos,
+              maxPhotos: widget.maxProofPhotos,
+              required: widget.requireDeliveryPhoto,
+              hasError: _photos.isEmpty && _error != null,
+              onAdd: _takePhoto,
+              onRemove: _removePhoto,
             ),
             const SizedBox(height: 12),
           ],
@@ -597,13 +668,15 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               alignLabelWithHint: true,
               counterText: '',
               prefixIcon: const Icon(Icons.notes_outlined),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
 
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+            Text(_error!,
+                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
           ],
 
           const SizedBox(height: 20),
@@ -611,12 +684,16 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _loading ? null : _confirm,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A)),
               child: _loading
                   ? const SizedBox(
-                      width: 22, height: 22,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Confirmar entrega', style: TextStyle(fontSize: 16)),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('Confirmar entrega',
+                      style: TextStyle(fontSize: 16)),
             ),
           ),
         ],
@@ -650,9 +727,8 @@ class _PhotoSection extends StatelessWidget {
     final label = required
         ? 'Foto de comprovante (obrigatória)'
         : 'Foto de comprovante (opcional)';
-    final countLabel = maxPhotos > 1
-        ? '${photos.length}/$maxPhotos fotos'
-        : null;
+    final countLabel =
+        maxPhotos > 1 ? '${photos.length}/$maxPhotos fotos' : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -662,7 +738,9 @@ class _PhotoSection extends StatelessWidget {
             Text(label,
                 style: TextStyle(
                     fontSize: 13,
-                    color: hasError ? const Color(0xFFDC2626) : Colors.grey.shade600)),
+                    color: hasError
+                        ? const Color(0xFFDC2626)
+                        : Colors.grey.shade600)),
             if (countLabel != null) ...[
               const Spacer(),
               Text(countLabel,
@@ -738,8 +816,7 @@ class _PhotoSection extends StatelessWidget {
                           const SizedBox(height: 4),
                           Text('Adicionar',
                               style: TextStyle(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 11)),
+                                  color: Colors.grey.shade500, fontSize: 11)),
                         ],
                       ),
                     ),
@@ -780,12 +857,16 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
       setState(() => _error = 'Descreva o motivo do cancelamento');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
       Position? pos;
       try {
-        pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high);
       } catch (_) {}
 
       await ApiClient().dio.post(
@@ -800,8 +881,12 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
       widget.onCancelled();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      final msg = (e as dynamic).response?.data?['error'] as String? ?? 'Erro ao cancelar. Tente novamente.';
-      setState(() { _error = msg; _loading = false; });
+      final msg = (e as dynamic).response?.data?['error'] as String? ??
+          'Erro ao cancelar. Tente novamente.';
+      setState(() {
+        _error = msg;
+        _loading = false;
+      });
     }
   }
 
@@ -818,7 +903,8 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
         children: [
           Center(
             child: Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                   color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2)),
@@ -830,7 +916,9 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
             const SizedBox(width: 8),
             Expanded(
               child: Text('Cancelar entrega — ${widget.order.customerName}',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
+                  style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
                       color: Color(0xFFDC2626))),
             ),
           ]),
@@ -838,7 +926,6 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
           Text('#${widget.order.shortId} · ${widget.order.customerAddress}',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 20),
-
           TextField(
             controller: _noteCtrl,
             maxLines: 3,
@@ -850,11 +937,14 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
               hintText: 'Ex: cliente recusou, endereço não encontrado...',
               alignLabelWithHint: true,
               counterText: '',
-              prefixIcon: const Icon(Icons.notes_outlined, color: Color(0xFFDC2626)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              prefixIcon:
+                  const Icon(Icons.notes_outlined, color: Color(0xFFDC2626)),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFDC2626), width: 2),
+                borderSide:
+                    const BorderSide(color: Color(0xFFDC2626), width: 2),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -862,23 +952,26 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
               ),
             ),
           ),
-
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+            Text(_error!,
+                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
           ],
-
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _loading ? null : _cancel,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626)),
               child: _loading
                   ? const SizedBox(
-                      width: 22, height: 22,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Confirmar cancelamento', style: TextStyle(fontSize: 16)),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('Confirmar cancelamento',
+                      style: TextStyle(fontSize: 16)),
             ),
           ),
         ],
@@ -901,7 +994,8 @@ class _EmptyDeliveryState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_outline, size: 64, color: Color(0xFF16A34A)),
+            const Icon(Icons.check_circle_outline,
+                size: 64, color: Color(0xFF16A34A)),
             const SizedBox(height: 16),
             const Text('Todas as entregas concluídas!',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -929,12 +1023,13 @@ class _BrandTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text(brand,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      Text(subtitle,
-          style: const TextStyle(fontSize: 11, color: Colors.white70)),
-    ],
-  );
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(brand,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          Text(subtitle,
+              style: const TextStyle(fontSize: 11, color: Colors.white70)),
+        ],
+      );
 }

@@ -637,16 +637,12 @@ class _OrderPin extends StatelessWidget {
           ),
           child: Text(
             name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1E293B),
             ),
             textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
         const SizedBox(height: 2),
