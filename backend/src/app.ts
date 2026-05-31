@@ -28,9 +28,15 @@ export function buildApp() {
 
   const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean) ?? []
 
+  // Allow local dev frontends (localhost, 127.0.0.1 and private LAN IPs) to hit
+  // this backend regardless of FRONTEND_URL, so a local dev server can target
+  // the deployed API without CORS errors.
+  const isLocalOrigin = (origin: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)
+
   app.register(cors, {
     origin(origin, cb) {
-      if (corsOrigins.length === 0 || !origin || corsOrigins.includes(origin)) {
+      if (corsOrigins.length === 0 || !origin || corsOrigins.includes(origin) || isLocalOrigin(origin)) {
         cb(null, true)   // reflect the Origin header — works with credentials
         return
       }
