@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2 } from 'lucide-react'
+import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X } from 'lucide-react'
 import { Order, OrderStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
@@ -30,6 +30,7 @@ export default function OrdersPage() {
 
   const [status,       setStatus]       = useState<OrderStatus | ''>('')
   const [delivererId,  setDelivererId]  = useState('')
+  const [search,       setSearch]       = useState('')
   const [showNewOrder,    setShowNewOrder]    = useState(false)
   const [assigning,       setAssigning]       = useState<Order | null>(null)
   const [view,            setView]            = useState<'cards' | 'map'>('cards')
@@ -54,9 +55,15 @@ export default function OrdersPage() {
   useEffect(() => on('order_updated', () => mutate()), [on, mutate])
   useEffect(() => onReconnect(() => mutate()), [onReconnect, mutate])
 
+  // Search by customer name (client-side)
+  const query = search.trim().toLowerCase()
+  const filteredOrders = query
+    ? orders.filter(o => o.customer.name.toLowerCase().includes(query))
+    : orders
+
   // Split active (cards) vs completed (table)
-  const activeOrders    = orders.filter(o => !COMPLETED_STATUSES.includes(o.status))
-  const completedOrders = orders.filter(o =>  COMPLETED_STATUSES.includes(o.status))
+  const activeOrders    = filteredOrders.filter(o => !COMPLETED_STATUSES.includes(o.status))
+  const completedOrders = filteredOrders.filter(o =>  COMPLETED_STATUSES.includes(o.status))
 
   // Map: all non-delivered orders with coordinates
   const { data: allOrders = [] } = useSWR(
@@ -67,6 +74,7 @@ export default function OrdersPage() {
 
   const mapOrders = (view === 'map' ? allOrders : orders)
     .filter(o => !COMPLETED_STATUSES.includes(o.status) && o.customer.lat != null)
+    .filter(o => !query || o.customer.name.toLowerCase().includes(query))
 
   const mapDestinations: MapDestination[] = mapOrders
     .map(o => ({
@@ -142,7 +150,9 @@ export default function OrdersPage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Pedidos</h1>
-            <p className="mt-0.5 text-sm text-gray-500">{orders.length} pedido(s)</p>
+            <p className="mt-0.5 text-sm text-gray-500">
+              {query ? `${filteredOrders.length} de ${orders.length}` : orders.length} pedido(s)
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -187,6 +197,28 @@ export default function OrdersPage() {
               <span className="hidden sm:inline">Novo Pedido</span>
             </Button>
           </div>
+        </div>
+
+        {/* Search by customer name */}
+        <div className="relative mb-3 w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nome do cliente..."
+            className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-9 text-sm text-gray-700 focus:outline-none focus:ring-2"
+            style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label="Limpar busca"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Filters */}
