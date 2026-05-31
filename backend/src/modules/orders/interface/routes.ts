@@ -267,6 +267,31 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Paginated, filterable list (full order history) — customer name, date range, status
+  app.get(
+    '/orders/search',
+    { preHandler: requireStoreUser },
+    async (req) => {
+      const { status, customerName, dateFrom, dateTo, page } = req.query as Record<string, string>
+      const isAssistant = req.actor.type === 'store_user' && req.actor.role === 'ASSISTANT'
+      const limit   = 20
+      const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
+
+      const { items, total } = await orderRepo.searchByStore(req.actor.storeId, {
+        status:          status as OrderStatus | undefined,
+        customerName:    customerName || undefined,
+        dateFrom:        dateFrom || undefined,
+        dateTo:          dateTo || undefined,
+        createdByUserId: isAssistant ? req.actor.sub : undefined,
+        page:            pageNum,
+        limit,
+      })
+
+      const pages = Math.max(1, Math.ceil(total / limit))
+      return { items: await signOrdersProof(items), total, page: pageNum, pages }
+    }
+  )
+
   app.get(
     '/orders/:id',
     { preHandler: requireStoreUser },

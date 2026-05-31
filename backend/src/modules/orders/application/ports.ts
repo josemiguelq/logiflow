@@ -3,6 +3,7 @@ import { Order, OrderWithDetails, OrderStatus } from '../domain/entities'
 export interface IOrderRepository {
   findById(id: string, storeId: string): Promise<OrderWithDetails | null>
   findByStore(storeId: string, filters: OrderFilters): Promise<OrderWithDetails[]>
+  searchByStore(storeId: string, filters: OrderFilters): Promise<{ items: OrderWithDetails[]; total: number }>
   findByDeliverer(delivererId: string): Promise<OrderWithDetails[]>
   findByRoute(routeId: string): Promise<OrderWithDetails[]>
   findPreparing(storeId: string, requestingDelivererId?: string): Promise<OrderWithDetails[]>
@@ -18,6 +19,9 @@ export interface OrderFilters {
   status?: OrderStatus
   delivererId?: string
   createdByUserId?: string
+  customerName?: string
+  dateFrom?: string
+  dateTo?: string
   page?: number
   limit?: number
 }
