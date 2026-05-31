@@ -61,9 +61,12 @@ export default function OrdersPage() {
     ? orders.filter(o => o.customer.name.toLowerCase().includes(query))
     : orders
 
-  // Split active (cards) vs completed (table)
+  // Split active (cards) vs completed (table). Table shows only orders created today.
+  const isToday = (d: string) => new Date(d).toDateString() === new Date().toDateString()
   const activeOrders    = filteredOrders.filter(o => !COMPLETED_STATUSES.includes(o.status))
-  const completedOrders = filteredOrders.filter(o =>  COMPLETED_STATUSES.includes(o.status))
+  const completedOrders = filteredOrders.filter(o =>
+    COMPLETED_STATUSES.includes(o.status) && isToday(o.createdAt)
+  )
 
   // Map: all non-delivered orders with coordinates
   const { data: allOrders = [] } = useSWR(
@@ -149,7 +152,7 @@ export default function OrdersPage() {
       <div className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Pedidos</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Em Andamento</h1>
             <p className="mt-0.5 text-sm text-gray-500">
               {query ? `${filteredOrders.length} de ${orders.length}` : orders.length} pedido(s)
             </p>
@@ -359,7 +362,7 @@ export default function OrdersPage() {
                 <section className="mt-8">
                   <div className="mb-3 flex items-center gap-2">
                     <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                      Histórico
+                      Concluídos hoje
                     </h2>
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
                       {completedOrders.length}

@@ -145,6 +145,50 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return rows.map(mapRow)
     },
 
+    async searchByStore(storeId, filters: OrderFilters) {
+      const conditions = ['o.store_id = $1']
+      const params: unknown[] = [storeId]
+      let idx = 2
+
+      if (filters.status) {
+        conditions.push(`o.status = $${idx++}`)
+        params.push(filters.status)
+      }
+      if (filters.createdByUserId) {
+        conditions.push(`o.created_by_user_id = $${idx++}`)
+        params.push(filters.createdByUserId)
+      }
+      if (filters.customerName) {
+        conditions.push(`c.name ILIKE $${idx++}`)
+        params.push(`%${filters.customerName}%`)
+      }
+      if (filters.dateFrom) {
+        conditions.push(`o.created_at >= $${idx++}::date`)
+        params.push(filters.dateFrom)
+      }
+      if (filters.dateTo) {
+        conditions.push(`o.created_at < ($${idx++}::date + interval '1 day')`)
+        params.push(filters.dateTo)
+      }
+
+      const limit  = filters.limit ?? 20
+      const offset = ((filters.page ?? 1) - 1) * limit
+      params.push(limit, offset)
+
+      const { rows } = await db.query(
+        `SELECT sub.*, COUNT(*) OVER() AS total_count
+         FROM (
+           ${WITH_JOINS}
+           WHERE ${conditions.join(' AND ')}
+           ORDER BY o.created_at DESC
+         ) sub
+         LIMIT $${idx++} OFFSET $${idx}`,
+        params
+      )
+      const total = rows.length > 0 ? Number((rows[0] as Record<string, unknown>).total_count) : 0
+      return { items: rows.map(mapRow), total }
+    },
+
     async findByDeliverer(delivererId) {
       const { rows } = await db.query(
         `${WITH_JOINS}

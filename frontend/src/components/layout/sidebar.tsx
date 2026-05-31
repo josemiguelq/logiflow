@@ -29,7 +29,8 @@ const BASE_NAV: {
   scope:   string | null
   feature: string | null   // canonical feature name, e.g. 'whatsapp'
 }[] = [
-  { href: '/orders',     label: 'Pedidos',      icon: Package,       scope: 'orders:view',     feature: null },
+  { href: '/orders',     label: 'Em Andamento', icon: Clock,         scope: 'orders:view',     feature: null },
+  { href: '/all-orders', label: 'Pedidos',      icon: Package,       scope: 'orders:view',     feature: null },
   { href: '/routes',     label: 'Rotas',         icon: Route,         scope: 'routes:view',     feature: null },
   { href: '/customers',  label: 'Clientes',      icon: Users,         scope: 'customers:view',  feature: null },
   { href: '/deliverers', label: 'Entregadores',  icon: Truck,         scope: 'deliverers:view', feature: null },
