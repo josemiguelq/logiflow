@@ -4,10 +4,11 @@ import { use, useState } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Clock, Flag, MapPin, Package } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, Flag, MapPin, Package, Pencil } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
+import { RouteEditor } from './_edit'
 
 const RouteMap = dynamic(() => import('./_map'), { ssr: false })
 
@@ -62,11 +63,12 @@ export default function RouteDetailPage({ params }: Props) {
     `/routes/${id}`,
     (url: string) => api.get<DeliveryRoute>(url)
   )
-  const { data: mapData } = useSWR<MapData>(
+  const { data: mapData, mutate: mutateMap } = useSWR<MapData>(
     `/routes/${id}/map-data`,
     (url: string) => api.get<MapData>(url)
   )
   const [finishing, setFinishing] = useState(false)
+  const [editing, setEditing]     = useState(false)
 
   async function forceFinish() {
     if (!confirm('Marcar rota como finalizada?')) return
@@ -134,6 +136,15 @@ export default function RouteDetailPage({ params }: Props) {
           <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${STATUS_COLOR[route.status]}`}>
             {STATUS_LABEL[route.status]}
           </span>
+          {route.status === 'CREATED' && !editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Editar rota
+            </button>
+          )}
           {route.status !== 'FINISHED' && can({ scope: 'routes:force_finish' }) && (
             <button
               onClick={forceFinish}
@@ -169,7 +180,7 @@ export default function RouteDetailPage({ params }: Props) {
 
       {/* Map */}
       {mapData && (mapData.orders.some(o => o.lat && o.lng) || mapData.trail.length >= 2) && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 shadow-sm" style={{ height: 360 }}>
+        <div className="isolate mb-6 overflow-hidden rounded-2xl border border-gray-200 shadow-sm" style={{ height: 360 }}>
           <RouteMap
             orders={mapData.orders.filter(o => o.lat != null && o.lng != null)}
             trail={mapData.trail}
@@ -182,7 +193,16 @@ export default function RouteDetailPage({ params }: Props) {
         Pedidos desta rota
       </h2>
 
-      {route.orders.length === 0 ? (
+      {editing ? (
+        <RouteEditor
+          route={route}
+          onCancel={() => setEditing(false)}
+          onSaved={async () => {
+            setEditing(false)
+            await Promise.all([mutate(), mutateMap()])
+          }}
+        />
+      ) : route.orders.length === 0 ? (
         <p className="text-sm text-gray-400 py-4">Nenhum pedido vinculado.</p>
       ) : (
         <div className="space-y-3">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
+import { forceLogout } from '@/lib/auth'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001'
 
@@ -38,8 +39,17 @@ export function useWebSocket(storeId: string | undefined) {
       } catch {}
     }
 
-    ws.current.onclose = () => {
-      reconnect.current = setTimeout(connect, 3_000)
+    ws.current.onclose = (event) => {
+      // 1008 = backend rejected the token (missing/invalid/expired) — log out instead of looping.
+      if (event.code === 1008) {
+        forceLogout()
+        return
+      }
+      // Only retry while we still have a token; otherwise stop the reconnect loop.
+      const stillAuthed = typeof window !== 'undefined' && !!localStorage.getItem('logiflow_token')
+      if (stillAuthed) {
+        reconnect.current = setTimeout(connect, 3_000)
+      }
     }
   }, [storeId])
 

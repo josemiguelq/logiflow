@@ -34,3 +34,13 @@ export const authStorage = {
     localStorage.removeItem(USER_KEY)
   },
 }
+
+// Clears the session and sends the user to the login page. Safe to call multiple
+// times — no-op when already on /login or running on the server.
+export function forceLogout() {
+  if (typeof window === 'undefined') return
+  authStorage.clear()
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}

@@ -1,3 +1,5 @@
+import { forceLogout } from './auth'
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
 function getToken(): string | null {
@@ -20,6 +22,11 @@ async function request<T>(
   })
 
   if (!res.ok) {
+    // Token invalid/expired — drop the session and redirect to login.
+    // Skip auth endpoints so a wrong password on /login doesn't trigger a redirect loop.
+    if (res.status === 401 && !path.startsWith('/auth/')) {
+      forceLogout()
+    }
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(err.error ?? 'Request failed')
   }
