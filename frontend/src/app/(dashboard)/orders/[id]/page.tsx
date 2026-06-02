@@ -1,6 +1,6 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera } from 'lucide-react'
@@ -10,13 +10,17 @@ import { StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
+import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
+
+const COMPLETED_STATUSES = ['DELIVERED', 'CANCELLED']
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { data: order, isLoading } = useSWR<Order>(
+  const { data: order, isLoading, mutate } = useSWR<Order>(
     `/orders/${id}`,
     (url: string) => api.get<Order>(url)
   )
+  const [adjusting, setAdjusting] = useState(false)
 
   if (isLoading) {
     return (
@@ -87,6 +91,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   {order.customer.complement && ` — ${order.customer.complement}`}
                 </span>
               </div>
+              {!COMPLETED_STATUSES.includes(order.status) && (
+                <button
+                  onClick={() => setAdjusting(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Ajustar endereço de entrega
+                </button>
+              )}
             </div>
           </section>
 
@@ -187,6 +200,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
+
+      {adjusting && (
+        <AdjustAddressModal
+          orderId={order.id}
+          customerId={order.customer.id}
+          currentAddress={order.customer.address}
+          onClose={() => setAdjusting(false)}
+          onChanged={() => { setAdjusting(false); mutate() }}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Menu, Truck, CheckCircle2, X, MapPin } from 'lucide-react'
 import useSWR from 'swr'
@@ -34,8 +34,21 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
   const { on } = useWs()
 
+  // How long each notification stays on screen before auto-dismissing
+  const NOTIF_TTL = 15_000
+  // Per-notification timers so replacing one (e.g. OUT_FOR_DELIVERY → DELIVERED) resets its timer
+  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
   const dismiss = useCallback((id: string) => {
+    const t = timers.current.get(id)
+    if (t) { clearTimeout(t); timers.current.delete(id) }
     setNotifs(prev => prev.filter(n => n.id !== id))
+  }, [])
+
+  // Clear any pending timers on unmount
+  useEffect(() => {
+    const map = timers.current
+    return () => { map.forEach(clearTimeout); map.clear() }
   }, [])
 
   useEffect(() => {
@@ -57,7 +70,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         address:       order.customer?.address,
       }
       setNotifs(prev => [...prev.filter(n => n.id !== order.id), notif])
-      setTimeout(() => dismiss(notif.id), 5000)
+      // Reset the timer if this order already had a notification
+      const existing = timers.current.get(order.id)
+      if (existing) clearTimeout(existing)
+      timers.current.set(order.id, setTimeout(() => dismiss(order.id), NOTIF_TTL))
     })
   }, [on, dismiss])
 
@@ -114,8 +130,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      {/* Delivery notifications */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
+      {/* Delivery notifications — stack upward, scroll if they exceed the viewport */}
+      <div className="fixed bottom-6 right-6 z-50 flex max-h-[calc(100vh-3rem)] flex-col items-end gap-3 overflow-y-auto pr-0.5">
         {notifs.map(n => {
           const delivered = n.type === 'DELIVERED'
           const Icon  = delivered ? CheckCircle2 : Truck
@@ -153,7 +169,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               </div>
               <button
                 onClick={() => dismiss(n.id)}
-                className="-mr-1 rounded p-0.5 text-gray-400 hover:text-white"
+                aria-label="Fechar notificação"
+                className="-mr-1 shrink-0 rounded-md p-1 text-gray-400 hover:bg-white/10 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
