@@ -5,11 +5,17 @@ import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/a
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgRouteRepo } from '../infrastructure/repositories/pg-route-repo'
 import { createPgOrderRepo } from '../../orders/infrastructure/repositories/pg-order-repo'
+import { OrderStatus, canTransition } from '../../orders/domain/entities'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
+import { redis } from '../../../shared/infra/redis'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('status_changed', { type: 'whatsapp', storeId, orderId, statusEvent })
+    .catch(() => { /* non-fatal */ })
+
+const queuePush = (delivererId: string, orderId: string, storeId: string, statusEvent: string) =>
+  notificationQueue.add('push', { type: 'push', delivererId, orderId, storeId, statusEvent })
     .catch(() => { /* non-fatal */ })
 
 export async function routeRoutes(app: FastifyInstance) {
@@ -148,6 +154,109 @@ export async function routeRoutes(app: FastifyInstance) {
       const route = await routeRepo.updateStatus(id, req.actor.storeId, status)
       if (!route) return reply.code(404).send({ error: 'Not found' })
       return route
+    }
+  )
+
+  // Edit a CREATED route: reorder existing orders and/or add new (unassigned) ones.
+  // Body is the FULL ordered list of order IDs (kept + new). Editing cannot remove orders.
+  app.patch(
+    '/routes/:id/orders',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { orderIds } = z.object({
+        orderIds: z.array(z.string().uuid()).min(1),
+      }).parse(req.body)
+
+      // Route must exist, belong to the store, and still be editable (not started)
+      const { rows: [routeRow] } = await db.query(
+        `SELECT id, deliverer_id, status FROM routes WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!routeRow) return reply.code(404).send({ error: 'Rota não encontrada' })
+      if (routeRow.status !== 'CREATED') {
+        return reply.code(400).send({ error: 'Só é possível editar rotas que ainda não foram iniciadas' })
+      }
+      const delivererId = routeRow.deliverer_id as string
+
+      // Current orders in the route
+      const { rows: currentRows } = await db.query(
+        `SELECT id, status FROM orders WHERE route_id = $1`,
+        [id]
+      )
+      const currentIds  = currentRows.map(r => r.id as string)
+      const currentSet  = new Set(currentIds)
+      const statusById  = new Map<string, string>(currentRows.map(r => [r.id as string, r.status as string]))
+
+      // Editing reorders/adds — it must keep every existing order
+      for (const cid of currentIds) {
+        if (!orderIds.includes(cid)) {
+          return reply.code(400).send({ error: 'Não é permitido remover pedidos da rota' })
+        }
+      }
+
+      // New orders = present in the payload but not yet in the route
+      const newIds  = orderIds.filter(oid => !currentSet.has(oid))
+      const newSet  = new Set(newIds)
+
+      // Validate each new order: must be an unassigned order of this store
+      for (const oid of newIds) {
+        const { rows: [o] } = await db.query(
+          `SELECT id, status, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+          [oid, req.actor.storeId]
+        )
+        if (!o) return reply.code(404).send({ error: `Pedido ${oid} não encontrado` })
+        if (o.route_id) return reply.code(409).send({ error: `Pedido ${oid} já está em uma rota` })
+        if (!canTransition(o.status as OrderStatus, 'ASSIGNED')) {
+          return reply.code(409).send({ error: `Pedido ${oid} não pode ser adicionado (status: ${o.status})` })
+        }
+      }
+
+      // Position constraint: a new order cannot sit before a finished (DELIVERED/CANCELLED) order
+      let maxLockedIndex = -1
+      orderIds.forEach((oid, i) => {
+        const st = statusById.get(oid)
+        if (st === 'DELIVERED' || st === 'CANCELLED') maxLockedIndex = i
+      })
+      for (let i = 0; i < orderIds.length; i++) {
+        if (newSet.has(orderIds[i]) && i <= maxLockedIndex) {
+          return reply.code(409).send({ error: 'Novos pedidos não podem ser inseridos antes de pedidos já concluídos' })
+        }
+      }
+
+      // Apply: attach new orders, then renumber positions in the requested order
+      await db.transaction(async (client) => {
+        for (const oid of newIds) {
+          await client.query(
+            `UPDATE orders SET deliverer_id = $2, route_id = $3, status = 'ASSIGNED' WHERE id = $1`,
+            [oid, delivererId, id]
+          )
+        }
+        for (let i = 0; i < orderIds.length; i++) {
+          await client.query(
+            `UPDATE orders SET route_position = $1 WHERE id = $2 AND route_id = $3`,
+            [i + 1, orderIds[i], id]
+          )
+        }
+      })
+
+      // Broadcast updates + notify customers of newly-assigned orders
+      const updatedOrders = await orderRepo.findByRoute(id)
+      for (const o of updatedOrders) {
+        wsHub.broadcastOrderUpdate(req.actor.storeId, o)
+      }
+      for (const oid of newIds) {
+        queueNotif(req.actor.storeId, oid, 'ASSIGNED')
+      }
+
+      // Notify the deliverer (push) that the route changed
+      queuePush(delivererId, orderIds[0], req.actor.storeId, 'ROUTE_UPDATED')
+
+      // Invalidate the deliverer's order cache so the app re-fetches the new order
+      try { await redis.del(`orders:deliverer:${delivererId}`) } catch { /* non-fatal */ }
+
+      const route = await routeRepo.findById(id, req.actor.storeId)
+      return { route }
     }
   )
 

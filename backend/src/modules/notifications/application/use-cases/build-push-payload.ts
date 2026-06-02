@@ -20,6 +20,12 @@ export function buildPushPayload(
         body:  `O pedido de ${customerName} foi cancelado`,
         data,
       }
+    case 'ROUTE_UPDATED':
+      return {
+        title: 'Rota atualizada 🔄',
+        body:  'Sua rota foi alterada. Confira a nova ordem das entregas.',
+        data,
+      }
     default:
       return {
         title: 'Pedido atualizado',
