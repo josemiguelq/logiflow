@@ -25,6 +25,11 @@ const queuePush = (storeId: string, orderId: string, statusEvent: string) =>
   notificationQueue.add('push', { type: 'push', storeId, orderId, statusEvent })
     .catch(() => { /* non-fatal */ })
 
+// Push targeted at a specific deliverer's devices (worker picks tokens by delivererId)
+const queuePushDeliverer = (delivererId: string, storeId: string, orderId: string, statusEvent: string) =>
+  notificationQueue.add('push', { type: 'push', delivererId, storeId, orderId, statusEvent })
+    .catch(() => { /* non-fatal */ })
+
 const STORE_ORDERS_TTL     = 30  // seconds
 const DELIVERER_ORDERS_TTL = 15  // seconds
 
@@ -438,6 +443,53 @@ export async function orderRoutes(app: FastifyInstance) {
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       invalidateStoreOrders(req.actor.storeId)
       if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+      return updated
+    }
+  )
+
+  // Store user fixes the delivery address of an order by picking one of the customer's addresses.
+  // Writes the override columns (delivery_address/lat/lng) and notifies customer + deliverer.
+  app.patch(
+    '/orders/:id/delivery-address',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { addressId } = z.object({ addressId: z.string().uuid() }).parse(req.body)
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+        return reply.code(400).send({ error: 'Não é possível alterar o endereço de um pedido finalizado' })
+      }
+
+      const { rows: [addr] } = await db.query(
+        `SELECT address, number, complement, lat, lng
+         FROM customer_addresses
+         WHERE id = $1 AND customer_id = $2 AND store_id = $3`,
+        [addressId, order.customerId, req.actor.storeId]
+      )
+      if (!addr) return reply.code(404).send({ error: 'Endereço não encontrado para este cliente' })
+
+      const base = addr.number ? `${addr.address}, ${addr.number}` : (addr.address as string)
+      const fullAddress = addr.complement ? `${base} - ${addr.complement}` : base
+
+      await db.query(
+        `UPDATE orders SET delivery_address = $1, delivery_lat = $2, delivery_lng = $3 WHERE id = $4`,
+        [fullAddress, addr.lat ?? null, addr.lng ?? null, id]
+      )
+
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+
+      // Notify the customer (WhatsApp) and the deliverer (push), if one is assigned
+      queueNotif(req.actor.storeId, id, 'ADDRESS_CHANGED')
+      if (updated.delivererId) {
+        queuePushDeliverer(updated.delivererId as string, req.actor.storeId, id, 'ADDRESS_CHANGED')
+      }
+
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+
       return updated
     }
   )

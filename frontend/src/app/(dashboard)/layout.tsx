@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Menu, Truck, CheckCircle2, X } from 'lucide-react'
+import { Menu, Truck, CheckCircle2, X, MapPin } from 'lucide-react'
 import useSWR from 'swr'
 import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,10 +11,12 @@ import { WsProvider, useWs } from '@/hooks/WsContext'
 import { api } from '@/lib/api'
 
 interface DeliveryNotif {
-  id:           string
-  type:         'DELIVERED' | 'OUT_FOR_DELIVERY'
-  customerName: string
-  shortId:      string
+  id:            string
+  type:          'DELIVERED' | 'OUT_FOR_DELIVERY'
+  customerName:  string
+  shortId:       string
+  delivererName?: string
+  address?:      string
 }
 
 interface ThemeData {
@@ -38,14 +40,21 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return on('order_updated', (data) => {
-      const order = data as { id: string; status: string; customer?: { name: string } }
+      const order = data as {
+        id: string
+        status: string
+        customer?: { name: string; address?: string }
+        deliverer?: { name: string }
+      }
       if (order.status !== 'DELIVERED' && order.status !== 'OUT_FOR_DELIVERY') return
       const shortId = '#' + order.id.slice(-8).toUpperCase()
       const notif: DeliveryNotif = {
-        id:           order.id,
-        type:         order.status,
-        customerName: order.customer?.name ?? 'Cliente',
+        id:            order.id,
+        type:          order.status,
+        customerName:  order.customer?.name ?? 'Cliente',
         shortId,
+        delivererName: order.deliverer?.name,
+        address:       order.customer?.address,
       }
       setNotifs(prev => [...prev.filter(n => n.id !== order.id), notif])
       setTimeout(() => dismiss(notif.id), 5000)
@@ -129,6 +138,18 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                   <span className="font-medium text-white">{n.customerName}</span>
                   <span className="ml-1 font-mono text-xs text-gray-400">{n.shortId}</span>
                 </p>
+                {n.delivererName && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
+                    <Truck className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{n.delivererName}</span>
+                  </p>
+                )}
+                {n.address && (
+                  <p className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-400">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{n.address}</span>
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => dismiss(n.id)}

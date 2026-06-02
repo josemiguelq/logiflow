@@ -61,6 +61,12 @@ function buildStatusMessage(
       )
     case 'CANCELLED':
       return `Olá, ${customerName}! Infelizmente seu pedido foi cancelado. ❌\n\nPara dúvidas, entre em contato com a loja.`
+    case 'ADDRESS_CHANGED':
+      return (
+        `Olá, ${customerName}! O endereço de entrega do seu pedido foi atualizado. 📍\n\n` +
+        `${addrLine}\n\n` +
+        `Acompanhe em tempo real:\n${trackingUrl}`
+      )
     default:
       return (
         `Olá, ${customerName}! O status do seu pedido foi atualizado.\n\n` +

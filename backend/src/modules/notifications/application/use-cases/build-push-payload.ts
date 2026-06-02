@@ -26,6 +26,12 @@ export function buildPushPayload(
         body:  'Sua rota foi alterada. Confira a nova ordem das entregas.',
         data,
       }
+    case 'ADDRESS_CHANGED':
+      return {
+        title: 'Endereço de entrega alterado 📍',
+        body:  `O endereço de entrega de ${customerName} foi atualizado. Confira no app.`,
+        data,
+      }
     default:
       return {
         title: 'Pedido atualizado',
