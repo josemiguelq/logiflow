@@ -12,6 +12,7 @@ import { api } from '@/lib/api'
 
 interface DeliveryNotif {
   id:           string
+  type:         'DELIVERED' | 'OUT_FOR_DELIVERY'
   customerName: string
   shortId:      string
 }
@@ -38,10 +39,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return on('order_updated', (data) => {
       const order = data as { id: string; status: string; customer?: { name: string } }
-      if (order.status !== 'DELIVERED') return
+      if (order.status !== 'DELIVERED' && order.status !== 'OUT_FOR_DELIVERY') return
       const shortId = '#' + order.id.slice(-8).toUpperCase()
       const notif: DeliveryNotif = {
         id:           order.id,
+        type:         order.status,
         customerName: order.customer?.name ?? 'Cliente',
         shortId,
       }
@@ -104,26 +106,39 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Delivery notifications */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 items-end">
-        {notifs.map(n => (
-          <div
-            key={n.id}
-            className="flex items-center gap-3 rounded-xl bg-gray-900 pl-4 pr-3 py-3 text-sm text-white shadow-lg"
-          >
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400" />
-            <span>
-              <span className="font-semibold">{n.customerName}</span>
-              <span className="text-gray-400 font-mono text-xs ml-1">{n.shortId}</span>
-              <span className="text-gray-300"> — entregue</span>
-            </span>
-            <button
-              onClick={() => dismiss(n.id)}
-              className="ml-1 rounded p-0.5 text-gray-400 hover:text-white"
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
+        {notifs.map(n => {
+          const delivered = n.type === 'DELIVERED'
+          const Icon  = delivered ? CheckCircle2 : Truck
+          const title = delivered ? 'Pedido entregue' : 'Saiu para entrega'
+          return (
+            <div
+              key={n.id}
+              className="flex w-[320px] items-start gap-3 rounded-xl bg-gray-900 pl-5 pr-4 py-4 text-white shadow-lg"
             >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
+              <span
+                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  delivered ? 'bg-green-500/15' : 'bg-orange-500/15'
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${delivered ? 'text-green-400' : 'text-orange-400'}`} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-semibold leading-tight">{title}</p>
+                <p className="mt-0.5 truncate text-sm text-gray-300">
+                  <span className="font-medium text-white">{n.customerName}</span>
+                  <span className="ml-1 font-mono text-xs text-gray-400">{n.shortId}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => dismiss(n.id)}
+                className="-mr-1 rounded p-0.5 text-gray-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
