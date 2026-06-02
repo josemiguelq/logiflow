@@ -972,6 +972,71 @@ export async function orderRoutes(app: FastifyInstance) {
     return reply.send({ ok: true })
   })
 
+  // Deliverer adds PREPARING orders to one of their own routes (CREATED or STARTED) and
+  // saves the new full order. New orders join as ON_ROUTE (STARTED) or ASSIGNED (CREATED).
+  app.patch('/deliverer/routes/:id/orders', { preHandler: requireDeliverer }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { orderIds } = z.object({ orderIds: z.array(z.string().uuid()).min(1) }).parse(req.body)
+
+    const { rows: [route] } = await db.query(
+      `SELECT id, store_id, status FROM routes WHERE id = $1 AND deliverer_id = $2`,
+      [id, req.actor.sub]
+    )
+    if (!route) return reply.code(404).send({ error: 'Rota não encontrada' })
+    if (route.status !== 'CREATED' && route.status !== 'STARTED') {
+      return reply.code(400).send({ error: 'Só é possível editar rotas criadas ou em andamento' })
+    }
+    const storeId = route.store_id as string
+
+    // Orders currently in the route — editing can reorder/add but not remove them
+    const { rows: currentRows } = await db.query(
+      `SELECT id FROM orders WHERE route_id = $1`,
+      [id]
+    )
+    const currentIds = (currentRows as Record<string, unknown>[]).map(r => r.id as string)
+    for (const cid of currentIds) {
+      if (!orderIds.includes(cid)) {
+        return reply.code(400).send({ error: 'Não é permitido remover pedidos da rota' })
+      }
+    }
+    const currentSet = new Set(currentIds)
+    const newIds = orderIds.filter(oid => !currentSet.has(oid))
+
+    // New orders join the route. On a started route they go straight to ON_ROUTE (the
+    // deliverer is already out); otherwise ASSIGNED. Atomic guard against races.
+    const newStatus = route.status === 'STARTED' ? 'ON_ROUTE' : 'ASSIGNED'
+    for (const oid of newIds) {
+      const { rowCount } = await db.query(
+        `UPDATE orders
+            SET status = $1, deliverer_id = $2, route_id = $3,
+                picked_up_at = CASE WHEN $1 = 'ON_ROUTE' THEN now() ELSE picked_up_at END,
+                reserved_by = NULL, reserved_at = NULL
+          WHERE id = $4 AND store_id = $5 AND status = 'PREPARING'
+            AND (deliverer_id IS NULL OR reserved_by = $2)`,
+        [newStatus, req.actor.sub, id, oid, storeId]
+      )
+      if ((rowCount ?? 0) === 0) {
+        return reply.code(409).send({ error: 'Um dos pedidos já foi pego por outro entregador. Atualize a lista.' })
+      }
+    }
+
+    // Renumber positions in the requested order
+    for (let i = 0; i < orderIds.length; i++) {
+      await db.query(
+        `UPDATE orders SET route_position = $1 WHERE id = $2 AND route_id = $3`,
+        [i + 1, orderIds[i], id]
+      )
+    }
+
+    const orders = await orderRepo.findByRoute(id)
+    for (const o of orders) wsHub.broadcastOrderUpdate(storeId, o)
+    for (const oid of newIds) queueNotif(storeId, oid, newStatus)
+    invalidateStoreOrders(storeId)
+    invalidateDelivererOrders(req.actor.sub)
+
+    return reply.send({ ok: true, orders })
+  })
+
   app.patch(
     '/deliverer/orders/:id/start-route',
     { preHandler: requireDeliverer },
