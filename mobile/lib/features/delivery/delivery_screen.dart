@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
+import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -22,6 +24,36 @@ final _activeDeliveryProvider =
       .toList()
     ..sort((a, b) => (a.routePosition ?? 99).compareTo(b.routePosition ?? 99));
 });
+
+// Opens the "add orders" flow for the deliverer's started route.
+Future<void> _addOrdersToStartedRoute(
+    BuildContext context, WidgetRef ref) async {
+  try {
+    final res = await ApiClient().dio.get('/deliverer/routes');
+    final routes = (res.data as List)
+        .map((e) => DelivererRoute.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final started = routes.where((r) => r.status == 'STARTED').toList();
+    if (started.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Nenhuma rota em andamento para editar')));
+      }
+      return;
+    }
+    final detail =
+        await ApiClient().dio.get('/deliverer/routes/${started.first.id}');
+    final route = DelivererRoute.fromJson(detail.data as Map<String, dynamic>);
+    if (!context.mounted) return;
+    final changed = await context.push<bool>('/route-add', extra: route);
+    if (changed == true) ref.invalidate(_activeDeliveryProvider);
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Não foi possível abrir a edição da rota')));
+    }
+  }
+}
 
 class DeliveryScreen extends ConsumerWidget {
   const DeliveryScreen({super.key});
@@ -43,6 +75,11 @@ class DeliveryScreen extends ConsumerWidget {
           onPressed: () => context.go('/orders'),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Adicionar pedidos',
+            icon: const Icon(Icons.add_location_alt_outlined),
+            onPressed: () => _addOrdersToStartedRoute(context, ref),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(_activeDeliveryProvider),
@@ -404,22 +441,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     if (notes != null && notes.isNotEmpty) {
       await showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
-          title: Row(
-            children: const [
-              Icon(Icons.info_outline, color: Color(0xFFD97706)),
-              SizedBox(width: 8),
-              Text('Observação'),
-            ],
-          ),
-          content: Text(notes),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Entendi'),
-            ),
-          ],
-        ),
+        barrierDismissible: false, // força ler — só sai pelo botão após o tempo
+        builder: (_) => _ObservationDialog(notes: notes),
       );
       if (!mounted) return;
     }
@@ -440,6 +463,101 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         maxProofPhotos: settings.maxProofPhotos,
         onDelivered: widget.onDelivered,
       ),
+    );
+  }
+}
+
+// Forces the deliverer to actually read the order's note: the "Entendi" button
+// stays disabled with a 3s loading countdown in the footer before it can be tapped.
+class _ObservationDialog extends StatefulWidget {
+  final String notes;
+  const _ObservationDialog({required this.notes});
+
+  @override
+  State<_ObservationDialog> createState() => _ObservationDialogState();
+}
+
+class _ObservationDialogState extends State<_ObservationDialog> {
+  static const _seconds = 3;
+  int _remaining = _seconds;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_remaining <= 1) {
+        t.cancel();
+        setState(() => _remaining = 0);
+      } else {
+        setState(() => _remaining--);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = _remaining == 0;
+    return AlertDialog(
+      title: Row(
+        children: const [
+          Icon(Icons.info_outline, color: Color(0xFFD97706)),
+          SizedBox(width: 8),
+          Text('Observação'),
+        ],
+      ),
+      content: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBEB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFCD34D)),
+        ),
+        child: Text(
+          widget.notes,
+          style: const TextStyle(
+            fontSize: 18,
+            height: 1.4,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF92400E),
+          ),
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      actions: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: ready ? () => Navigator.pop(context) : null,
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            child: ready
+                ? const Text('Entendi', style: TextStyle(fontSize: 16))
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.grey.shade500),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Leia a observação… ${_remaining}s',
+                          style: const TextStyle(fontSize: 15)),
+                    ],
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }
