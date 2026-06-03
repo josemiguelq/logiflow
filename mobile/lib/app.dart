@@ -20,8 +20,8 @@ final _router = GoRouter(
   initialLocation: '/orders',
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
-    final session   = container.read(authProvider);
-    final loc       = state.matchedLocation;
+    final session = container.read(authProvider);
+    final loc = state.matchedLocation;
 
     if (session == null) {
       return loc == '/login' ? null : '/login';
@@ -35,9 +35,9 @@ final _router = GoRouter(
     return null;
   },
   routes: [
-    GoRoute(path: '/login',   builder: (_, __) => const LoginScreen()),
-    GoRoute(path: '/setup',   builder: (_, __) => const SetupScreen()),
-    GoRoute(path: '/orders',  builder: (_, __) => const OrderSelectionScreen()),
+    GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+    GoRoute(path: '/setup', builder: (_, __) => const SetupScreen()),
+    GoRoute(path: '/orders', builder: (_, __) => const OrderSelectionScreen()),
     GoRoute(
       path: '/plan-route',
       builder: (_, state) => RoutePlanningScreen(
@@ -105,30 +105,32 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
       );
 }
 
-void showLocationPermissionDialog(BuildContext context, LocationPermissionIssue issue) {
+void showLocationPermissionDialog(
+    BuildContext context, LocationPermissionIssue issue) {
   final (title, message, openSettings) = switch (issue) {
     LocationPermissionIssue.serviceDisabled => (
-      'GPS desativado',
-      'Ligue o GPS do celular para que sua localização seja enviada durante as entregas.',
-      () => Geolocator.openLocationSettings(),
-    ),
+        'GPS desativado',
+        'Ligue o GPS do celular para que sua localização seja enviada durante as entregas.',
+        () => Geolocator.openLocationSettings(),
+      ),
     LocationPermissionIssue.denied => (
-      'Localização não permitida',
-      'Permita que o LogiFlow acesse sua localização para que o rastreamento de entregas funcione corretamente.',
-      () => Geolocator.openAppSettings(),
-    ),
+        'Localização não permitida',
+        'Permita que o LogiFlow acesse sua localização para que o rastreamento de entregas funcione corretamente.',
+        () => Geolocator.openAppSettings(),
+      ),
     LocationPermissionIssue.deniedForever => (
-      'Permissão de localização bloqueada',
-      'O acesso à localização foi bloqueado permanentemente. Vá em Configurações > Aplicativos > LogiFlow > Permissões e ative a localização.',
-      () => Geolocator.openAppSettings(),
-    ),
+        'Permissão de localização bloqueada',
+        'O acesso à localização foi bloqueado permanentemente. Vá em Configurações > Aplicativos > LogiFlow > Permissões e ative a localização.',
+        () => Geolocator.openAppSettings(),
+      ),
   };
 
   showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (dialogCtx) => AlertDialog(
-      icon: const Icon(Icons.location_off_rounded, size: 40, color: Color(0xFFEA580C)),
+      icon: const Icon(Icons.location_off_rounded,
+          size: 40, color: Color(0xFFEA580C)),
       title: Text(title, textAlign: TextAlign.center),
       content: Text(message, textAlign: TextAlign.center),
       actionsAlignment: MainAxisAlignment.center,
