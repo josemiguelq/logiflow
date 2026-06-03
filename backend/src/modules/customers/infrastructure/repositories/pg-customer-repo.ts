@@ -1,6 +1,11 @@
 import { DB } from '../../../../shared/db/client'
 import { Customer, CustomerAddress } from '../../domain/entities'
 
+// Accent maps for accent-insensitive name search via SQL translate().
+// "jose" matches "josé", "JOSÉ", etc. (covers PT-BR accents, both cases).
+const ACCENTS = 'áàâãäçéèêëíìîïñóòôõöúùûüÁÀÂÃÄÇÉÈÊËÍÌÎÏÑÓÒÔÕÖÚÙÛÜ'
+const PLAIN   = 'aaaaaceeeeiiiinooooouuuuAAAAACEEEEIIIINOOOOOUUUU'
+
 function mapAddressRow(r: Record<string, unknown>): CustomerAddress {
   return {
     id:         r.id as string,
@@ -56,10 +61,10 @@ export function createPgCustomerRepo(db: DB) {
       limit = 15,
     ): Promise<{ items: Customer[]; total: number }> {
       const baseWhere = search
-        ? 'c.store_id = $1 AND (c.name ILIKE $2 OR c.phone ILIKE $2)'
+        ? 'c.store_id = $1 AND (translate(c.name, $3, $4) ILIKE translate($2, $3, $4) OR c.phone ILIKE $2)'
         : 'c.store_id = $1'
       const offset  = (page - 1) * limit
-      const params  = search ? [storeId, `%${search}%`] : [storeId]
+      const params  = search ? [storeId, `%${search}%`, ACCENTS, PLAIN] : [storeId]
 
       const { rows } = await db.query(
         `SELECT sub.*, COUNT(*) OVER() AS total_count
