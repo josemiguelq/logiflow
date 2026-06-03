@@ -444,11 +444,12 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
             final selected = _selectedNew.contains(o.id);
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
-              width: 44,
-              height: 44,
+              width: 160,
+              height: 80,
+              alignment: Alignment.topCenter,
               child: GestureDetector(
                 onTap: () => _toggleAvailable(o),
-                child: _AvailablePin(selected: selected),
+                child: _AvailablePin(selected: selected, name: o.customerName),
               ),
             );
           }).toList(),
@@ -721,28 +722,61 @@ class _RouteMapPin extends StatelessWidget {
 
 class _AvailablePin extends StatelessWidget {
   final bool selected;
-  const _AvailablePin({required this.selected});
+  final String name;
+  const _AvailablePin({required this.selected, required this.name});
 
   @override
   Widget build(BuildContext context) {
     final color = selected ? _newColor : Colors.grey.shade500;
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Nome do cliente para identificar o pedido disponível
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Icon(selected ? Icons.check : Icons.add,
-          color: Colors.white, size: 18),
+          child: Text(
+            name,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: selected ? _newColor : const Color(0xFF1E293B),
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(selected ? Icons.check : Icons.add,
+              color: Colors.white, size: 18),
+        ),
+      ],
     );
   }
 }
