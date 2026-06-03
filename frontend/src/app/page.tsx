@@ -437,9 +437,11 @@ export default function LandingPage() {
             <span className="font-semibold text-gray-900">LogiFlow</span>
           </div>
           <p className="text-sm text-gray-400">© {new Date().getFullYear()} LogiFlow. Todos os direitos reservados.</p>
-          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-900">
-            Acessar painel →
-          </Link>
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <Link href="/privacidade" className="hover:text-gray-900">Privacidade</Link>
+            <Link href="/termos" className="hover:text-gray-900">Termos de Uso</Link>
+            <Link href="/login" className="hover:text-gray-900">Acessar painel →</Link>
+          </div>
         </div>
       </footer>
 
