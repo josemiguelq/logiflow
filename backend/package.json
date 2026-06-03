@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "test": "vitest run",
+    "test:int": "RUN_INTEGRATION=1 vitest run",
     "build": "tsc",
     "start": "node --dns-result-order=ipv4first dist/server.js",
     "migrate": "node --dns-result-order=ipv4first ./node_modules/.bin/tsx src/shared/db/migrate.ts",
@@ -42,5 +44,9 @@
     "tsx": "^4.16.2",
     "typescript": "^5.5.3",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^12.0.1",
+    "vitest": "^4.1.8"
   }
 }
