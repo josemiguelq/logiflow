@@ -1005,15 +1005,16 @@ export async function orderRoutes(app: FastifyInstance) {
     // New orders join the route. On a started route they go straight to ON_ROUTE (the
     // deliverer is already out); otherwise ASSIGNED. Atomic guard against races.
     const newStatus = route.status === 'STARTED' ? 'ON_ROUTE' : 'ASSIGNED'
+    const markPickedUp = newStatus === 'ON_ROUTE'
     for (const oid of newIds) {
       const { rowCount } = await db.query(
         `UPDATE orders
-            SET status = $1, deliverer_id = $2, route_id = $3,
-                picked_up_at = CASE WHEN $1 = 'ON_ROUTE' THEN now() ELSE picked_up_at END,
+            SET status = $1::order_status, deliverer_id = $2, route_id = $3,
+                picked_up_at = CASE WHEN $6 THEN now() ELSE picked_up_at END,
                 reserved_by = NULL, reserved_at = NULL
           WHERE id = $4 AND store_id = $5 AND status = 'PREPARING'
             AND (deliverer_id IS NULL OR reserved_by = $2)`,
-        [newStatus, req.actor.sub, id, oid, storeId]
+        [newStatus, req.actor.sub, id, oid, storeId, markPickedUp]
       )
       if ((rowCount ?? 0) === 0) {
         return reply.code(409).send({ error: 'Um dos pedidos já foi pego por outro entregador. Atualize a lista.' })
