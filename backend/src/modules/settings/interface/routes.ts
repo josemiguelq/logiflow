@@ -181,6 +181,10 @@ export async function settingsRoutes(app: FastifyInstance) {
       allowCustomerRatings:     s.allow_customer_ratings     === 'true',
       paymentMethodsEnabled:    s.payment_methods_enabled    === 'true',
       maxProofPhotos:       parseInt(s.max_proof_photos     ?? '2'),
+      delayPrepYellowMin:    parseInt(s.delay_prep_yellow_min    ?? '20'),
+      delayPrepRedMin:       parseInt(s.delay_prep_red_min       ?? '30'),
+      delayTransitYellowMin: parseInt(s.delay_transit_yellow_min ?? '50'),
+      delayTransitRedMin:    parseInt(s.delay_transit_red_min    ?? '60'),
     }
   })
 
@@ -194,6 +198,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     allowCustomerRatings:  z.boolean().optional(),
     paymentMethodsEnabled: z.boolean().optional(),
     maxProofPhotos:       z.number().int().min(1).max(5).optional(),
+    delayPrepYellowMin:    z.number().int().min(1).max(600).optional(),
+    delayPrepRedMin:       z.number().int().min(1).max(600).optional(),
+    delayTransitYellowMin: z.number().int().min(1).max(600).optional(),
+    delayTransitRedMin:    z.number().int().min(1).max(600).optional(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
   })
@@ -220,6 +228,10 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['requireDeliveryCode',  'require_delivery_code'],
       ['maxProofPhotos',       'max_proof_photos'],
       ['paymentMethodsEnabled','payment_methods_enabled'],
+      ['delayPrepYellowMin',    'delay_prep_yellow_min'],
+      ['delayPrepRedMin',       'delay_prep_red_min'],
+      ['delayTransitYellowMin', 'delay_transit_yellow_min'],
+      ['delayTransitRedMin',    'delay_transit_red_min'],
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))

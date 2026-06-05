@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Menu, Truck, CheckCircle2, X, MapPin } from 'lucide-react'
+import { Menu, Truck, CheckCircle2, X, MapPin, Clock } from 'lucide-react'
 import useSWR from 'swr'
 import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
@@ -12,11 +12,12 @@ import { api } from '@/lib/api'
 
 interface DeliveryNotif {
   id:            string
-  type:          'DELIVERED' | 'OUT_FOR_DELIVERY'
+  type:          'DELIVERED' | 'OUT_FOR_DELIVERY' | 'DELAYED_YELLOW' | 'DELAYED_RED'
   customerName:  string
   shortId:       string
   delivererName?: string
   address?:      string
+  minutes?:      number
 }
 
 interface ThemeData {
@@ -77,6 +78,33 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     })
   }, [on, dismiss])
 
+  // ── Bandeiras de atraso (pedido em rota parado há muito tempo) ──
+  useEffect(() => {
+    return on('order_delayed', (data) => {
+      const d = data as {
+        orderId: string
+        level: 'yellow' | 'red'
+        customerName?: string
+        shortId?: string
+        delivererName?: string
+        minutes?: number
+      }
+      const id = `delay-${d.orderId}`
+      const notif: DeliveryNotif = {
+        id,
+        type:          d.level === 'red' ? 'DELAYED_RED' : 'DELAYED_YELLOW',
+        customerName:  d.customerName ?? 'Cliente',
+        shortId:       d.shortId ?? '#' + d.orderId.slice(-8).toUpperCase(),
+        delivererName: d.delivererName,
+        minutes:       d.minutes,
+      }
+      setNotifs(prev => [...prev.filter(n => n.id !== id), notif])
+      const existing = timers.current.get(id)
+      if (existing) clearTimeout(existing)
+      timers.current.set(id, setTimeout(() => dismiss(id), NOTIF_TTL))
+    })
+  }, [on, dismiss])
+
   const logoUrl     = themeData?.theme?.logoUrl ?? null
   const customTheme = themeData?.features?.customThemeEnabled ?? false
   const storeName   = themeData?.theme?.storeName ?? null
@@ -134,22 +162,45 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="fixed bottom-6 right-6 z-50 flex max-h-[calc(100vh-3rem)] flex-col items-end gap-3 overflow-y-auto pr-0.5">
         {notifs.map(n => {
           const delivered = n.type === 'DELIVERED'
-          const Icon  = delivered ? CheckCircle2 : Truck
-          const title = delivered ? 'Pedido entregue' : 'Saiu para entrega'
+          const delayed   = n.type === 'DELAYED_YELLOW' || n.type === 'DELAYED_RED'
+          const delayedRed = n.type === 'DELAYED_RED'
+          const Icon  = delivered ? CheckCircle2 : delayed ? Clock : Truck
+          const title = delivered
+            ? 'Pedido entregue'
+            : delayed
+              ? (delayedRed ? 'Entrega muito atrasada 🚨' : 'Entrega atrasada ⏰')
+              : 'Saiu para entrega'
+          const iconWrap = delivered
+            ? 'bg-green-500/15'
+            : delayedRed
+              ? 'bg-red-500/20'
+              : delayed
+                ? 'bg-yellow-500/15'
+                : 'bg-orange-500/15'
+          const iconColor = delivered
+            ? 'text-green-400'
+            : delayedRed
+              ? 'text-red-400'
+              : delayed
+                ? 'text-yellow-400'
+                : 'text-orange-400'
           return (
             <div
               key={n.id}
               className="flex w-[320px] items-start gap-3 rounded-xl bg-gray-900 pl-5 pr-4 py-4 text-white shadow-lg"
             >
               <span
-                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  delivered ? 'bg-green-500/15' : 'bg-orange-500/15'
-                }`}
+                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconWrap}`}
               >
-                <Icon className={`h-5 w-5 ${delivered ? 'text-green-400' : 'text-orange-400'}`} />
+                <Icon className={`h-5 w-5 ${iconColor}`} />
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-base font-semibold leading-tight">{title}</p>
+                {delayed && n.minutes != null && (
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Em rota há {Math.floor(n.minutes)} min
+                  </p>
+                )}
                 <p className="mt-0.5 truncate text-sm text-gray-300">
                   <span className="font-medium text-white">{n.customerName}</span>
                   <span className="ml-1 font-mono text-xs text-gray-400">{n.shortId}</span>
