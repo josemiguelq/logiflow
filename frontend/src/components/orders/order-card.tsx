@@ -4,7 +4,10 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { Order } from '@/types'
 import { StatusBadge } from '@/components/ui/badge'
-import { formatDate } from '@/lib/utils'
+import { formatDate, getDelayInfo } from '@/lib/utils'
+import { useNow } from '@/hooks/useNow'
+import { useDelayThresholds } from '@/hooks/useDelayThresholds'
+import { DelayFlag } from '@/components/orders/delay-flag'
 import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X, Trash2 } from 'lucide-react'
 
 interface Props {
@@ -17,6 +20,9 @@ interface Props {
 
 export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: Props) {
   const canTrack = ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
+  const now        = useNow()
+  const thresholds = useDelayThresholds()
+  const delay      = getDelayInfo(order, thresholds, now)
   const [copied,      setCopied]      = useState(false)
   const [editingNote, setEditingNote] = useState(false)
   const [noteValue,   setNoteValue]   = useState(order.notes ?? '')
@@ -59,7 +65,11 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
   }
 
   return (
-    <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+    <div
+      className={`flex flex-col rounded-xl border shadow-sm hover:shadow-md transition-shadow ${
+        delay.level === 'red' ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
+      }`}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2 p-4 pb-3">
         <div>
@@ -72,7 +82,10 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
           </Link>
           <p className="text-sm text-gray-500">{order.customer.name}</p>
         </div>
-        <StatusBadge status={order.status} />
+        <div className="flex flex-col items-end gap-1.5">
+          <StatusBadge status={order.status} />
+          {delay.level !== 'none' && <DelayFlag delay={delay} />}
+        </div>
       </div>
 
       {/* Info */}

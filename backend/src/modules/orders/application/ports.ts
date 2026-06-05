@@ -13,6 +13,18 @@ export interface IOrderRepository {
   addProof(orderId: string, photoUrl: string, lat?: number, lng?: number, photoIndex?: number): Promise<void>
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
+  findInTransit(): Promise<InTransitOrder[]>
+}
+
+export interface InTransitOrder {
+  id:            string
+  storeId:       string
+  delivererId?:  string
+  customerName:  string
+  delivererName?: string
+  minutes:       number       // minutos desde picked_up_at
+  transitYellowMin: number    // limiares da loja (resolvidos com default)
+  transitRedMin:    number
 }
 
 export interface OrderFilters {

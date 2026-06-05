@@ -1,6 +1,6 @@
 import { DB } from '../../../../shared/db/client'
 import { Order, OrderStatus, OrderWithDetails } from '../../domain/entities'
-import { IOrderRepository, OrderFilters, PublicOrderView } from '../../application/ports'
+import { IOrderRepository, OrderFilters, PublicOrderView, InTransitOrder } from '../../application/ports'
 
 function mapOrderRow(row: Record<string, unknown>): Order {
   return {
@@ -309,6 +309,50 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         ratingComment: o.ratingComment,
         ratingEnabled: false, // overridden by route handler
       } as PublicOrderView
+    },
+
+    async findInTransit() {
+      // Pedidos em rota (já retirados) com os minutos desde a retirada e os
+      // limiares de atraso resolvidos por loja (override → default do catálogo).
+      const { rows } = await db.query(
+        `SELECT
+           o.id,
+           o.store_id,
+           o.deliverer_id,
+           c.name AS customer_name,
+           d.name AS deliverer_name,
+           EXTRACT(EPOCH FROM (now() - o.picked_up_at)) / 60 AS minutes,
+           COALESCE(
+             (SELECT ssv.value FROM store_setting_values ssv
+                JOIN settings s ON s.id = ssv.setting_id
+              WHERE s.name = 'delay_transit_yellow_min' AND ssv.store_id = o.store_id),
+             (SELECT default_value FROM settings WHERE name = 'delay_transit_yellow_min'),
+             '50'
+           ) AS transit_yellow_min,
+           COALESCE(
+             (SELECT ssv.value FROM store_setting_values ssv
+                JOIN settings s ON s.id = ssv.setting_id
+              WHERE s.name = 'delay_transit_red_min' AND ssv.store_id = o.store_id),
+             (SELECT default_value FROM settings WHERE name = 'delay_transit_red_min'),
+             '60'
+           ) AS transit_red_min
+         FROM orders o
+         JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN deliverers d ON d.id = o.deliverer_id
+         WHERE o.status IN ('ON_ROUTE', 'OUT_FOR_DELIVERY')
+           AND o.picked_up_at IS NOT NULL`,
+        []
+      )
+      return rows.map((r): InTransitOrder => ({
+        id:               r.id as string,
+        storeId:          r.store_id as string,
+        delivererId:      (r.deliverer_id as string | null) ?? undefined,
+        customerName:     r.customer_name as string,
+        delivererName:    (r.deliverer_name as string | null) ?? undefined,
+        minutes:          Number(r.minutes),
+        transitYellowMin: parseInt(r.transit_yellow_min as string, 10),
+        transitRedMin:    parseInt(r.transit_red_min as string, 10),
+      }))
     },
   }
 }

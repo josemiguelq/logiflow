@@ -17,7 +17,11 @@ interface StoreSettings {
   requireDeliveryCode:   boolean
   allowCustomerRatings:  boolean
   paymentMethodsEnabled: boolean
-  maxProofPhotos:       number      
+  maxProofPhotos:       number
+  delayPrepYellowMin:    number
+  delayPrepRedMin:       number
+  delayTransitYellowMin: number
+  delayTransitRedMin:    number
 }
 
 interface ThemeData {
@@ -83,6 +87,24 @@ function SectionCard({ icon: Icon, title, children }: {
         <h2 className="font-semibold text-gray-900">{title}</h2>
       </div>
       <div className="p-5">{children}</div>
+    </div>
+  )
+}
+
+function DelayField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-gray-600">{label}</label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={1}
+          max={600}
+          value={value}
+          onChange={(e) => onChange(Math.max(1, Math.min(600, Number(e.target.value) || 0)))}
+        />
+        <span className="text-xs text-gray-500">min</span>
+      </div>
     </div>
   )
 }
@@ -159,6 +181,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [requireDeliveryCode,   setRequireDeliveryCode]   = useState(true)
   const [allowCustomerRatings,  setAllowCustomerRatings]  = useState(false)
   const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState(false)
+  const [delayPrepYellow,    setDelayPrepYellow]    = useState(20)
+  const [delayPrepRed,       setDelayPrepRed]       = useState(30)
+  const [delayTransitYellow, setDelayTransitYellow] = useState(50)
+  const [delayTransitRed,    setDelayTransitRed]    = useState(60)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -172,6 +198,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setRequireDeliveryCode(data.requireDeliveryCode)
       setAllowCustomerRatings(data.allowCustomerRatings ?? false)
       setPaymentMethodsEnabled(data.paymentMethodsEnabled ?? false)
+      setDelayPrepYellow(data.delayPrepYellowMin ?? 20)
+      setDelayPrepRed(data.delayPrepRedMin ?? 30)
+      setDelayTransitYellow(data.delayTransitYellowMin ?? 50)
+      setDelayTransitRed(data.delayTransitRedMin ?? 60)
     }
   }, [data])
 
@@ -187,6 +217,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         requirePickupCode,
         requireDeliveryCode,
         paymentMethodsEnabled,
+        delayPrepYellowMin:    delayPrepYellow,
+        delayPrepRedMin:       delayPrepRed,
+        delayTransitYellowMin: delayTransitYellow,
+        delayTransitRedMin:    delayTransitRed,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
@@ -283,6 +317,32 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
             </button>
           </div>
         ))}
+
+        {/* Bandeiras de atraso */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <p className="text-sm font-medium text-gray-900">Bandeiras de atraso</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Tempo (em minutos) para um pedido ser marcado como atrasado. Em rota, o
+            entregador e o painel recebem um alerta nos limites de atraso.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Em preparação</p>
+              <div className="grid grid-cols-2 gap-3">
+                <DelayField label="Bandeira amarela" value={delayPrepYellow} onChange={setDelayPrepYellow} />
+                <DelayField label="Bandeira vermelha" value={delayPrepRed} onChange={setDelayPrepRed} />
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Em rota (após retirada)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <DelayField label="Amarela + alerta" value={delayTransitYellow} onChange={setDelayTransitYellow} />
+                <DelayField label="Vermelha" value={delayTransitRed} onChange={setDelayTransitRed} />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 

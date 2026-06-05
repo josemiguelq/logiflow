@@ -32,6 +32,18 @@ export function buildPushPayload(
         body:  `O endereço de entrega de ${customerName} foi atualizado. Confira no app.`,
         data,
       }
+    case 'DELAYED_PICKUP_YELLOW':
+      return {
+        title: 'Entrega atrasada ⏰',
+        body:  `O pedido de ${customerName} está em rota há mais de 50 min. Confira.`,
+        data,
+      }
+    case 'DELAYED_PICKUP_RED':
+      return {
+        title: 'Entrega muito atrasada 🚨',
+        body:  `O pedido de ${customerName} está em rota há mais de 1 hora. Verifique com urgência.`,
+        data,
+      }
     default:
       return {
         title: 'Pedido atualizado',

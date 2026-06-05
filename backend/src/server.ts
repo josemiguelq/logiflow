@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { buildApp } from './app'
-import { createNotificationWorker } from './shared/infra/queue'
+import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
+import { scanDelayedOrders } from './modules/orders/application/use-cases/scan-delayed-orders'
 import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
@@ -163,6 +164,13 @@ async function start() {
 
   // ── WebSocket heartbeat ──────────────────────────────────────────────────
   startHeartbeat()
+
+  // ── Delay scanner: alerta pedidos em rota parados há muito tempo ─────────
+  const runDelayScan = () =>
+    scanDelayedOrders({ orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[delay-scan] unexpected error'))
+  runDelayScan()
+  setInterval(runDelayScan, 60_000)
 
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)

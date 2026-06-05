@@ -56,6 +56,20 @@ export const wsHub = {
     this.broadcastToStore(storeId, 'deliverer_location', { delivererId, lat, lng })
   },
 
+  broadcastOrderDelayed(
+    storeId: string,
+    payload: {
+      orderId: string
+      level: 'yellow' | 'red'
+      customerName: string
+      shortId: string
+      delivererName?: string
+      minutes: number
+    }
+  ) {
+    this.broadcastToStore(storeId, 'order_delayed', payload)
+  },
+
   broadcastOrderReservation(storeId: string, orderId: string, delivererId: string | null) {
     if (delivererId) {
       this.broadcastToStore(storeId, 'order_reserved', { orderId, delivererId })
