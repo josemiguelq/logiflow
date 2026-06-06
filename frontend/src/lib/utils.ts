@@ -89,7 +89,16 @@ export function getDelayInfo(
   return NO_DELAY
 }
 
-/** Rótulo curto para a bandeira, ex.: "Atrasado · 23min". */
+/** Formata uma duração em minutos: "23min" ou, acima de 59min, "1h01min". */
+export function formatDelayDuration(minutes: number): string {
+  const m = Math.floor(minutes)
+  if (m < 60) return `${m}min`
+  const h  = Math.floor(m / 60)
+  const mm = (m % 60).toString().padStart(2, '0')
+  return `${h}h${mm}min`
+}
+
+/** Rótulo curto para a bandeira, ex.: "Atrasado · 23min" / "Atrasado · 1h01min". */
 export function delayLabel(info: DelayInfo): string {
-  return `Atrasado · ${Math.floor(info.minutes)}min`
+  return `Atrasado · ${formatDelayDuration(info.minutes)}`
 }

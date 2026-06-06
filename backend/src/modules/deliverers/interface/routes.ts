@@ -282,6 +282,11 @@ export async function delivererRoutes(app: FastifyInstance) {
       requireDeliveryCode:  sv.require_delivery_code  !== 'false',
       requireDeliveryPhoto: sv.require_delivery_photo === 'true',
       maxProofPhotos:       parseInt(sv.max_proof_photos ?? '2', 10) || 1,
+      // Limiares (min) das bandeiras de atraso — o app colore os cards com base neles.
+      delayPrepYellowMin:    parseInt(sv.delay_prep_yellow_min    ?? '20', 10) || 20,
+      delayPrepRedMin:       parseInt(sv.delay_prep_red_min       ?? '30', 10) || 30,
+      delayTransitYellowMin: parseInt(sv.delay_transit_yellow_min ?? '50', 10) || 50,
+      delayTransitRedMin:    parseInt(sv.delay_transit_red_min    ?? '60', 10) || 60,
     }
   })
 

@@ -8,6 +8,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { WsProvider, useWs } from '@/hooks/WsContext'
+import { formatDelayDuration } from '@/lib/utils'
 import { api } from '@/lib/api'
 
 interface DeliveryNotif {
@@ -198,7 +199,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 <p className="text-base font-semibold leading-tight">{title}</p>
                 {delayed && n.minutes != null && (
                   <p className="mt-0.5 text-xs text-gray-400">
-                    Em rota há {Math.floor(n.minutes)} min
+                    Em rota há {formatDelayDuration(n.minutes)}
                   </p>
                 )}
                 <p className="mt-0.5 truncate text-sm text-gray-300">

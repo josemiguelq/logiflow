@@ -1,5 +1,5 @@
 import { Flag } from 'lucide-react'
-import { DelayInfo, delayLabel } from '@/lib/utils'
+import { DelayInfo, delayLabel, formatDelayDuration } from '@/lib/utils'
 
 /** Bandeira de atraso (amarela/vermelha) para cards e detalhe de pedido. */
 export function DelayFlag({ delay }: { delay: DelayInfo }) {
@@ -8,7 +8,7 @@ export function DelayFlag({ delay }: { delay: DelayInfo }) {
   const phaseLabel = delay.phase === 'preparing' ? 'em preparação' : 'em rota'
   return (
     <span
-      title={`Pedido ${phaseLabel} há ${Math.floor(delay.minutes)} min`}
+      title={`Pedido ${phaseLabel} há ${formatDelayDuration(delay.minutes)}`}
       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
         red ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'
       }`}

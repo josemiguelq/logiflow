@@ -7,7 +7,7 @@ import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera } from 'lucide-
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
-import { formatDate, getDelayInfo } from '@/lib/utils'
+import { formatDate, getDelayInfo, formatDelayDuration } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
@@ -59,7 +59,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         >
           <Clock className="h-4 w-4 shrink-0" />
           <span>
-            Pedido atrasado há <strong>{Math.floor(delay.minutes)} min</strong>{' '}
+            Pedido atrasado há <strong>{formatDelayDuration(delay.minutes)}</strong>{' '}
             {delay.phase === 'preparing' ? 'em preparação' : 'em rota'}.
           </span>
         </div>
