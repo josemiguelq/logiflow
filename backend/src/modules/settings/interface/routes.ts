@@ -185,6 +185,9 @@ export async function settingsRoutes(app: FastifyInstance) {
       delayPrepRedMin:       parseInt(s.delay_prep_red_min       ?? '30'),
       delayTransitYellowMin: parseInt(s.delay_transit_yellow_min ?? '50'),
       delayTransitRedMin:    parseInt(s.delay_transit_red_min    ?? '60'),
+      deliveryProximityMeters:  parseInt(s.delivery_proximity_meters ?? '100'),
+      deliveryRequireProximity: s.delivery_require_proximity === 'true',
+      enforceDeliveryOrder:     s.enforce_delivery_order     === 'true',
     }
   })
 
@@ -202,6 +205,9 @@ export async function settingsRoutes(app: FastifyInstance) {
     delayPrepRedMin:       z.number().int().min(1).max(600).optional(),
     delayTransitYellowMin: z.number().int().min(1).max(600).optional(),
     delayTransitRedMin:    z.number().int().min(1).max(600).optional(),
+    deliveryProximityMeters:  z.number().int().min(10).max(5000).optional(),
+    deliveryRequireProximity: z.boolean().optional(),
+    enforceDeliveryOrder:     z.boolean().optional(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
   })
@@ -232,6 +238,9 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['delayPrepRedMin',       'delay_prep_red_min'],
       ['delayTransitYellowMin', 'delay_transit_yellow_min'],
       ['delayTransitRedMin',    'delay_transit_red_min'],
+      ['deliveryProximityMeters',  'delivery_proximity_meters'],
+      ['deliveryRequireProximity', 'delivery_require_proximity'],
+      ['enforceDeliveryOrder',     'enforce_delivery_order'],
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))

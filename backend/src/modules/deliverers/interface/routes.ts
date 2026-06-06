@@ -287,6 +287,9 @@ export async function delivererRoutes(app: FastifyInstance) {
       delayPrepRedMin:       parseInt(sv.delay_prep_red_min       ?? '30', 10) || 30,
       delayTransitYellowMin: parseInt(sv.delay_transit_yellow_min ?? '50', 10) || 50,
       delayTransitRedMin:    parseInt(sv.delay_transit_red_min    ?? '60', 10) || 60,
+      deliveryProximityMeters:  parseInt(sv.delivery_proximity_meters ?? '100', 10) || 100,
+      deliveryRequireProximity: sv.delivery_require_proximity === 'true',
+      enforceDeliveryOrder:     sv.enforce_delivery_order     === 'true',
     }
   })
 

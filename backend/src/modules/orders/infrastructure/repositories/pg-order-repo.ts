@@ -354,5 +354,16 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         transitRedMin:    parseInt(r.transit_red_min as string, 10),
       }))
     },
+
+    async getMinPendingRoutePosition(routeId) {
+      const { rows } = await db.query<{ pos: number | null }>(
+        `SELECT MIN(route_position) AS pos
+         FROM orders
+         WHERE route_id = $1 AND status NOT IN ('DELIVERED', 'CANCELLED')`,
+        [routeId]
+      )
+      const pos = rows[0]?.pos
+      return pos != null ? Number(pos) : null
+    },
   }
 }

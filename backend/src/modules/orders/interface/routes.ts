@@ -746,14 +746,21 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const body = deliverySchema.parse(req.body)
 
-      const { rows: [settingRow] } = await db.query(
-        `SELECT COALESCE(ssv.value, s.default_value) AS value
+      const { rows: settingRows } = await db.query(
+        `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
          FROM settings s
          LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
-         WHERE s.name = 'require_delivery_code'`,
+         WHERE s.name IN ('require_delivery_code', 'enforce_delivery_order',
+                          'delivery_require_proximity', 'delivery_proximity_meters')`,
         [req.actor.storeId]
       )
-      const requireDeliveryCode = (settingRow as Record<string, unknown> | undefined)?.value !== 'false'
+      const sv = Object.fromEntries(
+        settingRows.map((r: Record<string, unknown>) => [r.name as string, r.value as string])
+      )
+      const requireDeliveryCode = sv.require_delivery_code !== 'false'
+      const enforceOrder        = sv.enforce_delivery_order === 'true'
+      const requireProximity    = sv.delivery_require_proximity === 'true'
+      const proximityMeters     = parseInt(sv.delivery_proximity_meters ?? '100', 10) || 100
 
       // Normalise: old clients send `photoUrl`, new clients send `photoUrls[]`
       const rawUrls = body.photoUrls?.length
@@ -790,8 +797,9 @@ export async function orderRoutes(app: FastifyInstance) {
         const order = await confirmDelivery(
           { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub,
             requireDeliveryCode, code: body.code, photoUrls: uploadedUrls,
-            lat: body.lat, lng: body.lng, note: body.note },
-          { orderRepo }
+            lat: body.lat, lng: body.lng, note: body.note,
+            enforceOrder, requireProximity, proximityMeters },
+          { orderRepo, log: req.log }
         )
 
         if (body.cashCollected) {

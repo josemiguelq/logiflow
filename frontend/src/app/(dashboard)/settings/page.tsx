@@ -22,6 +22,9 @@ interface StoreSettings {
   delayPrepRedMin:       number
   delayTransitYellowMin: number
   delayTransitRedMin:    number
+  deliveryProximityMeters:  number
+  deliveryRequireProximity: boolean
+  enforceDeliveryOrder:     boolean
 }
 
 interface ThemeData {
@@ -185,6 +188,9 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [delayPrepRed,       setDelayPrepRed]       = useState(30)
   const [delayTransitYellow, setDelayTransitYellow] = useState(50)
   const [delayTransitRed,    setDelayTransitRed]    = useState(60)
+  const [proximityMeters,    setProximityMeters]    = useState(100)
+  const [requireProximity,   setRequireProximity]   = useState(false)
+  const [enforceOrder,       setEnforceOrder]       = useState(false)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -202,6 +208,9 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setDelayPrepRed(data.delayPrepRedMin ?? 30)
       setDelayTransitYellow(data.delayTransitYellowMin ?? 50)
       setDelayTransitRed(data.delayTransitRedMin ?? 60)
+      setProximityMeters(data.deliveryProximityMeters ?? 100)
+      setRequireProximity(data.deliveryRequireProximity ?? false)
+      setEnforceOrder(data.enforceDeliveryOrder ?? false)
     }
   }, [data])
 
@@ -221,6 +230,9 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         delayPrepRedMin:       delayPrepRed,
         delayTransitYellowMin: delayTransitYellow,
         delayTransitRedMin:    delayTransitRed,
+        deliveryProximityMeters:  proximityMeters,
+        deliveryRequireProximity: requireProximity,
+        enforceDeliveryOrder:     enforceOrder,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
@@ -293,6 +305,8 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
             { label: 'Exigir código de coleta',  desc: 'Entregador confirma retirada com o código da rota',            value: requirePickupCode,     set: setRequirePickupCode },
             { label: 'Exigir código de entrega', desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode,   set: setRequireDeliveryCode },
             { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago, dinheiro, cartão)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
+            { label: 'Permitir entrega apenas quando estiver perto', desc: 'Bloqueia concluir a entrega se o entregador estiver além da distância máxima. Desativado, apenas avisa.', value: requireProximity, set: setRequireProximity },
+            { label: 'Forçar ordem das entregas', desc: 'Obriga o entregador a seguir a ordem da rota, sem pular paradas.', value: enforceOrder, set: setEnforceOrder },
             ...(features.customerRatingsEnabled
               ? [{ label: 'Avaliação do cliente', desc: 'Clientes podem avaliar a entrega com até 5 estrelas na página de rastreamento', value: allowCustomerRatings, set: setAllowCustomerRatings }]
               : []),
@@ -317,6 +331,28 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
             </button>
           </div>
         ))}
+
+        {/* Distância máxima para entrega */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <label className="block text-sm font-medium text-gray-900">
+            Distância máxima para entrega
+          </label>
+          <p className="mt-0.5 mb-2 text-xs text-gray-500">
+            Raio (em metros) em que o entregador é considerado perto do endereço. Usado pela
+            regra &quot;Permitir entrega apenas quando estiver perto&quot;.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={10}
+              max={5000}
+              value={proximityMeters}
+              onChange={(e) => setProximityMeters(Math.max(10, Math.min(5000, Number(e.target.value) || 0)))}
+              className="w-32"
+            />
+            <span className="text-xs text-gray-500">metros</span>
+          </div>
+        </div>
 
         {/* Bandeiras de atraso */}
         <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">

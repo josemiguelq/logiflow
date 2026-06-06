@@ -14,6 +14,8 @@ export interface IOrderRepository {
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
   findInTransit(): Promise<InTransitOrder[]>
+  // Menor route_position ainda pendente (não entregue/cancelada) de uma rota.
+  getMinPendingRoutePosition(routeId: string): Promise<number | null>
 }
 
 export interface InTransitOrder {
