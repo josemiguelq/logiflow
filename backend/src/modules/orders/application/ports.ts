@@ -22,9 +22,8 @@ export interface InTransitOrder {
   delivererId?:  string
   customerName:  string
   delivererName?: string
-  minutes:       number       // minutos desde picked_up_at
-  transitYellowMin: number    // limiares da loja (resolvidos com default)
-  transitRedMin:    number
+  minutes:       number                       // minutos desde picked_up_at (para log)
+  delayLevel:    'none' | 'yellow' | 'red'     // calculado pela lógica central
 }
 
 export interface OrderFilters {

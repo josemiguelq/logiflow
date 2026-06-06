@@ -25,4 +25,6 @@ export interface RouteOrderItem {
   status: string
   routePosition?: number
   deliveredAt?: Date
+  delayLevel?: 'none' | 'yellow' | 'red'
+  delayMinutes?: number
 }

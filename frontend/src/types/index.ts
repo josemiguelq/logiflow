@@ -6,6 +6,9 @@ export type OrderStatus =
   | 'DELIVERED'
   | 'CANCELLED'
 
+// Nível de atraso calculado no backend (fonte única). Ver backend domain/delay.ts.
+export type DelayLevel = 'none' | 'yellow' | 'red'
+
 export interface CustomerAddress {
   id: string
   label: string
@@ -54,6 +57,8 @@ export interface Order {
   createdAt: string
   pickedUpAt?: string
   deliveredAt?: string
+  delayLevel?: DelayLevel
+  delayMinutes?: number
   customer: {
     id: string
     name: string
@@ -93,6 +98,8 @@ export interface RouteOrderItem {
   status: string
   routePosition?: number
   deliveredAt?: string
+  delayLevel?: DelayLevel
+  delayMinutes?: number
   paymentMethod: 'prepaid' | 'cash' | 'card'
   cashAmount?: number
   cashCollected: boolean

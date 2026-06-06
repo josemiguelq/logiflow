@@ -36,6 +36,9 @@ export interface Order {
 }
 
 export interface OrderWithDetails extends Order {
+  // Nível de atraso calculado no backend (fonte única). Ver domain/delay.ts.
+  delayLevel?: 'none' | 'yellow' | 'red'
+  delayMinutes?: number
   customer: {
     id: string
     name: string

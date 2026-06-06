@@ -1,6 +1,7 @@
 import { DB } from '../../../../shared/db/client'
 import { Order, OrderStatus, OrderWithDetails } from '../../domain/entities'
 import { IOrderRepository, OrderFilters, PublicOrderView, InTransitOrder } from '../../application/ports'
+import { delayLevelSql, delayMinutesSql, DelayLevel } from '../../domain/delay'
 
 function mapOrderRow(row: Record<string, unknown>): Order {
   return {
@@ -58,6 +59,8 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     rating:          row.rating as number | undefined,
     ratingComment:   row.rating_comment as string | undefined,
     ratedAt:         row.rated_at as Date | undefined,
+    delayLevel:      (row.delay_level as DelayLevel | undefined) ?? 'none',
+    delayMinutes:    row.delay_minutes != null ? Number(row.delay_minutes) : undefined,
     customer: {
       id:         row.customer_id as string,
       name:       row.customer_name as string,
@@ -91,6 +94,8 @@ const WITH_JOINS = `
     COALESCE(o.delivery_lng,  ca.lng)               AS customer_lng,
     d.name       AS deliverer_name,
     d.status     AS deliverer_status,
+    ${delayLevelSql('o')}   AS delay_level,
+    ${delayMinutesSql('o')} AS delay_minutes,
     (SELECT COALESCE(
        json_agg(
          json_build_object('photoUrl', p.photo_url, 'lat', p.lat, 'lng', p.lng)
@@ -312,8 +317,8 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     },
 
     async findInTransit() {
-      // Pedidos em rota (já retirados) com os minutos desde a retirada e os
-      // limiares de atraso resolvidos por loja (override → default do catálogo).
+      // Pedidos em rota (já retirados). O nível de atraso usa a mesma lógica
+      // central (delayLevelSql), respeitando os limiares de cada loja.
       const { rows } = await db.query(
         `SELECT
            o.id,
@@ -322,20 +327,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
            c.name AS customer_name,
            d.name AS deliverer_name,
            EXTRACT(EPOCH FROM (now() - o.picked_up_at)) / 60 AS minutes,
-           COALESCE(
-             (SELECT ssv.value FROM store_setting_values ssv
-                JOIN settings s ON s.id = ssv.setting_id
-              WHERE s.name = 'delay_transit_yellow_min' AND ssv.store_id = o.store_id),
-             (SELECT default_value FROM settings WHERE name = 'delay_transit_yellow_min'),
-             '50'
-           ) AS transit_yellow_min,
-           COALESCE(
-             (SELECT ssv.value FROM store_setting_values ssv
-                JOIN settings s ON s.id = ssv.setting_id
-              WHERE s.name = 'delay_transit_red_min' AND ssv.store_id = o.store_id),
-             (SELECT default_value FROM settings WHERE name = 'delay_transit_red_min'),
-             '60'
-           ) AS transit_red_min
+           ${delayLevelSql('o')} AS delay_level
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
          LEFT JOIN deliverers d ON d.id = o.deliverer_id
@@ -344,14 +336,13 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         []
       )
       return rows.map((r): InTransitOrder => ({
-        id:               r.id as string,
-        storeId:          r.store_id as string,
-        delivererId:      (r.deliverer_id as string | null) ?? undefined,
-        customerName:     r.customer_name as string,
-        delivererName:    (r.deliverer_name as string | null) ?? undefined,
-        minutes:          Number(r.minutes),
-        transitYellowMin: parseInt(r.transit_yellow_min as string, 10),
-        transitRedMin:    parseInt(r.transit_red_min as string, 10),
+        id:            r.id as string,
+        storeId:       r.store_id as string,
+        delivererId:   (r.deliverer_id as string | null) ?? undefined,
+        customerName:  r.customer_name as string,
+        delivererName: (r.deliverer_name as string | null) ?? undefined,
+        minutes:       Number(r.minutes),
+        delayLevel:    (r.delay_level as DelayLevel) ?? 'none',
       }))
     },
   }

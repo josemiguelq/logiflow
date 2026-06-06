@@ -45,9 +45,10 @@ export async function scanDelayedOrders({ orderRepo, notificationQueue, log }: D
     const already = sentAlerts.get(o.id)
     let level: PushLevel | null = null
 
-    if (o.minutes >= o.transitRedMin && already !== 'RED') {
+    // o.delayLevel já reflete os limiares da loja (lógica central em domain/delay.ts).
+    if (o.delayLevel === 'red' && already !== 'RED') {
       level = 'RED'
-    } else if (o.minutes >= o.transitYellowMin && already === undefined) {
+    } else if (o.delayLevel === 'yellow' && already === undefined) {
       level = 'YELLOW'
     }
 

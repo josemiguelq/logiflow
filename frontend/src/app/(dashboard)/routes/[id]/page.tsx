@@ -210,14 +210,22 @@ export default function RouteDetailPage({ params }: Props) {
         <p className="text-sm text-gray-400 py-4">Nenhum pedido vinculado.</p>
       ) : (
         <div className="space-y-3">
-          {route.orders.map((order, i) => (
+          {route.orders.map((order, i) => {
+            const delayLevel = order.delayLevel ?? 'none'
+            const rowTone =
+              delayLevel === 'red'
+                ? 'border-red-300 bg-red-50 hover:border-red-400'
+                : delayLevel === 'yellow'
+                  ? 'border-yellow-300 bg-yellow-50 hover:border-yellow-400'
+                  : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+            return (
             <div
               key={order.id}
-              className="overflow-hidden rounded-xl border border-gray-200 bg-white transition-all hover:border-gray-300 hover:shadow-sm"
+              className={`overflow-hidden rounded-xl border transition-all ${rowTone}`}
             >
             <Link
               href={`/orders/${order.id}`}
-              className="flex items-start gap-4 p-4 transition-colors hover:bg-gray-50"
+              className="flex items-start gap-4 p-4 transition-colors hover:bg-black/[0.02]"
             >
               {/* Position */}
               <div
@@ -233,6 +241,14 @@ export default function RouteDetailPage({ params }: Props) {
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ORDER_STATUS_COLOR[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
                     {ORDER_STATUS_LABEL[order.status] ?? order.status}
                   </span>
+                  {delayLevel !== 'none' && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      delayLevel === 'red' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      <Flag className="h-3 w-3" fill="currentColor" />
+                      {order.delayMinutes != null ? `Atrasado · ${Math.floor(order.delayMinutes)}min` : 'Atrasado'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
                   <MapPin className="h-3 w-3 shrink-0" />

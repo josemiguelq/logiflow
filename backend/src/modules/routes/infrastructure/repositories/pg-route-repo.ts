@@ -1,5 +1,6 @@
 import { DB } from '../../../../shared/db/client'
 import { DeliveryRoute, RouteStatus, RouteWithDetails, RouteOrderItem } from '../../domain/entities'
+import { delayLevelSql, delayMinutesSql, DelayLevel } from '../../../orders/domain/delay'
 
 function mapRoute(r: Record<string, unknown>): DeliveryRoute {
   return {
@@ -72,7 +73,9 @@ export function createPgRouteRepo(db: DB) {
                 o.delivery_code,
                 o.status,
                 o.route_position,
-                o.delivered_at
+                o.delivered_at,
+                ${delayLevelSql('o')}   AS delay_level,
+                ${delayMinutesSql('o')} AS delay_minutes
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
          WHERE o.route_id = $1
@@ -96,6 +99,9 @@ export function createPgRouteRepo(db: DB) {
           status:          (o as Record<string, unknown>).status as string,
           routePosition:   (o as Record<string, unknown>).route_position as number | undefined,
           deliveredAt:     (o as Record<string, unknown>).delivered_at as Date | undefined,
+          delayLevel:      ((o as Record<string, unknown>).delay_level as DelayLevel | undefined) ?? 'none',
+          delayMinutes:    (o as Record<string, unknown>).delay_minutes != null
+            ? Number((o as Record<string, unknown>).delay_minutes) : undefined,
         } as RouteOrderItem)),
       }
     },

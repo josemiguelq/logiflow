@@ -7,13 +7,11 @@ import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera } from 'lucide-
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
-import { formatDate, getDelayInfo } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 import { DelayFlag } from '@/components/orders/delay-flag'
-import { useNow } from '@/hooks/useNow'
-import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 
 const COMPLETED_STATUSES = ['DELIVERED', 'CANCELLED']
 
@@ -24,8 +22,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     (url: string) => api.get<Order>(url)
   )
   const [adjusting, setAdjusting] = useState(false)
-  const now        = useNow()
-  const thresholds = useDelayThresholds()
 
   if (isLoading) {
     return (
@@ -37,7 +33,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   if (!order) return <div className="p-6 text-gray-500">Pedido não encontrado</div>
 
-  const delay = getDelayInfo(order, thresholds, now)
+  const delayLevel = order.delayLevel ?? 'none'
+  const delayPhase = order.status === 'PREPARING' ? 'preparing' : 'transit'
 
   return (
     <div className="mx-auto max-w-2xl p-6">
@@ -49,25 +46,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         Voltar para pedidos
       </Link>
 
-      {delay.level !== 'none' && (
+      {delayLevel !== 'none' && (
         <div
           className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
-            delay.level === 'red'
+            delayLevel === 'red'
               ? 'border-red-300 bg-red-50 text-red-700'
               : 'border-yellow-300 bg-yellow-50 text-yellow-800'
           }`}
         >
           <Clock className="h-4 w-4 shrink-0" />
           <span>
-            Pedido atrasado há <strong>{Math.floor(delay.minutes)} min</strong>{' '}
-            {delay.phase === 'preparing' ? 'em preparação' : 'em rota'}.
+            Pedido atrasado
+            {order.delayMinutes != null && <> há <strong>{Math.floor(order.delayMinutes)} min</strong></>}{' '}
+            {delayPhase === 'preparing' ? 'em preparação' : 'em rota'}.
           </span>
         </div>
       )}
 
       <div
         className={`rounded-2xl border p-6 shadow-sm ${
-          delay.level === 'red' ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
+          delayLevel === 'red' ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
         }`}
       >
         <div className="flex items-start justify-between">
@@ -79,7 +77,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
-            {delay.level !== 'none' && <DelayFlag delay={delay} />}
+            <DelayFlag level={delayLevel} minutes={order.delayMinutes} phase={delayPhase} />
           </div>
         </div>
 
