@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight, Trash2, Loader2, List, Map as MapIcon } from 'lucide-react'
 import { Customer } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAccess } from '@/hooks/useAccess'
+import { LiveMap, type MapDestination } from '@/components/map'
 
 interface PagedCustomers { items: Customer[]; total: number; page: number; pages: number }
 
@@ -66,8 +67,18 @@ function DeleteModal({ count, customerName, loading, onConfirm, onClose }: Delet
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [page,   setPage]   = useState(1)
+  const [view,   setView]   = useState<'list' | 'map'>('list')
   const { can } = useAccess()
   const canDelete = can({ scope: 'customers:delete' })
+
+  // Fetch every customer (no pagination) only when the map view is active.
+  const { data: allData } = useSWR(view === 'map' ? '/customers?all=true' : null, fetcher)
+  const mapCustomers = allData?.items ?? []
+  const mapDestinations: MapDestination[] = mapCustomers.flatMap((c) => {
+    const addr = c.addresses.find(a => a.isDefault) ?? c.addresses[0]
+    if (!addr || addr.lat == null || addr.lng == null) return []
+    return [{ lat: addr.lat, lng: addr.lng, label: c.name, status: formatPhone(c.phone) }]
+  })
 
   // Batch selection
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -148,14 +159,46 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
           <p className="text-sm text-gray-500">{total} cliente{total !== 1 ? 's' : ''}</p>
         </div>
-        <Link href="/customers/new">
-          <Button>
-            <Plus className="h-4 w-4" />
-            Novo Cliente
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
+            <button
+              onClick={() => setView('list')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === 'list' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              <List className="h-4 w-4" />
+              Lista
+            </button>
+            <button
+              onClick={() => setView('map')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === 'map' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              <MapIcon className="h-4 w-4" />
+              Mapa
+            </button>
+          </div>
+          <Link href="/customers/new">
+            <Button>
+              <Plus className="h-4 w-4" />
+              Novo Cliente
+            </Button>
+          </Link>
+        </div>
       </div>
 
+      {view === 'map' ? (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="h-[calc(100vh-220px)] min-h-[400px] w-full">
+            <LiveMap destinations={mapDestinations} height="100%" autoFitBounds />
+          </div>
+          <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+            {mapDestinations.length} cliente{mapDestinations.length !== 1 ? 's' : ''} no mapa
+            {mapCustomers.length > mapDestinations.length && (
+              <span className="text-gray-400"> · {mapCustomers.length - mapDestinations.length} sem localização</span>
+            )}
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <Input
@@ -275,6 +318,8 @@ export default function CustomersPage() {
             </button>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Batch delete sticky bar */}

@@ -35,7 +35,11 @@ export async function customerRoutes(app: FastifyInstance) {
     '/customers',
     { preHandler: requireStoreUser },
     async (req) => {
-      const { search, page } = req.query as { search?: string; page?: string }
+      const { search, page, all } = req.query as { search?: string; page?: string; all?: string }
+      if (all === 'true') {
+        const { items, total } = await repo.findAllByStore(req.actor.storeId)
+        return { items, total, page: 1, pages: 1 }
+      }
       const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
       const { items, total } = await repo.findByStore(req.actor.storeId, search, pageNum)
       const pages = Math.max(1, Math.ceil(total / 15))

@@ -81,6 +81,18 @@ export function createPgCustomerRepo(db: DB) {
       return { items: rows.map(mapRow), total }
     },
 
+    async findAllByStore(storeId: string): Promise<{ items: Customer[]; total: number }> {
+      const { rows } = await db.query(
+        `${WITH_ADDRESSES}
+         WHERE c.store_id = $1
+         GROUP BY c.id
+         ORDER BY c.created_at DESC`,
+        [storeId]
+      )
+      const items = rows.map(mapRow)
+      return { items, total: items.length }
+    },
+
     async findById(id: string, storeId: string): Promise<Customer | null> {
       const { rows } = await db.query(
         `${WITH_ADDRESSES}
