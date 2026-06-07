@@ -190,10 +190,26 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     },
 
     async findByDeliverer(delivererId) {
+      // Active stops (ON_ROUTE / OUT_FOR_DELIVERY) plus DELIVERED stops whose
+      // route still has at least one active stop — so completed stops stay
+      // visible (faded, read-only) on the deliverer app until the whole route
+      // is finished.
       const { rows } = await db.query(
         `${WITH_JOINS}
          WHERE o.deliverer_id = $1
-           AND o.status NOT IN ('DELIVERED','CANCELLED')
+           AND (
+             o.status IN ('ON_ROUTE','OUT_FOR_DELIVERY')
+             OR (
+               o.status = 'DELIVERED'
+               AND o.route_id IS NOT NULL
+               AND o.route_id IN (
+                 SELECT route_id FROM orders
+                 WHERE deliverer_id = $1
+                   AND status IN ('ON_ROUTE','OUT_FOR_DELIVERY')
+                   AND route_id IS NOT NULL
+               )
+             )
+           )
          ORDER BY o.route_position ASC`,
         [delivererId]
       )
