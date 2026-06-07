@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/api/api_client.dart';
+import '../../core/map_tiles.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
@@ -157,8 +158,8 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final brandName =
-        ref.watch(storeSettingsProvider).value?.brandName ?? 'LogiFlow';
+    final settings = ref.watch(storeSettingsProvider).value;
+    final brandName = settings?.brandName ?? 'LogiFlow';
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -216,6 +217,7 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
 
   // ── Plan mode (reorder + "+" card) ─────────────────────────────────────────
   Widget _buildPlanMode() {
+    final settings = ref.watch(storeSettingsProvider).value;
     return Column(
       children: [
         Container(
@@ -256,6 +258,9 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
                           position: i + 1,
                           order: o,
                           isNew: _newIds.contains(o.id),
+                          delay: settings != null
+                              ? waitingSinceCreated(o, settings)
+                              : null,
                         );
                       },
                     ),
@@ -387,6 +392,7 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
   }
 
   Widget _buildAddMap() {
+    final settings = ref.read(storeSettingsProvider).value;
     final currentWithCoords = _orders
         .where((o) => o.customerLat != null && o.customerLng != null)
         .toList();
@@ -419,22 +425,22 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
     return FlutterMap(
       options: MapOptions(initialCenter: center, initialZoom: 12.5),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.logiflow.mobile',
-        ),
+        appTileLayer(),
         // Current route orders — numbered (primary)
         MarkerLayer(
           markers: currentWithCoords.asMap().entries.map((entry) {
             final o = entry.value;
+            final delay = settings != null ? waitingSinceCreated(o, settings) : null;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
               width: 160,
-              height: 80,
+              height: 96,
               alignment: Alignment.topCenter,
               child: _RouteMapPin(
                   position: _orders.indexWhere((x) => x.id == o.id) + 1,
-                  name: o.customerName),
+                  name: o.customerName,
+                  waitingMinutes: delay?.minutes,
+                  delayLevel: delay?.level),
             );
           }).toList(),
         ),
@@ -442,14 +448,20 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
         MarkerLayer(
           markers: availWithCoords.map((o) {
             final selected = _selectedNew.contains(o.id);
+            final delay = settings != null ? waitingSinceCreated(o, settings) : null;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
               width: 160,
-              height: 80,
+              height: 96,
               alignment: Alignment.topCenter,
               child: GestureDetector(
                 onTap: () => _toggleAvailable(o),
-                child: _AvailablePin(selected: selected, name: o.customerName),
+                child: _AvailablePin(
+                  selected: selected,
+                  name: o.customerName,
+                  waitingMinutes: delay?.minutes,
+                  delayLevel: delay?.level,
+                ),
               ),
             );
           }).toList(),
@@ -459,6 +471,7 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
   }
 
   Widget _buildMap() {
+    final settings = ref.read(storeSettingsProvider).value;
     final withCoords = _orders
         .where((o) => o.customerLat != null && o.customerLng != null)
         .toList();
@@ -492,22 +505,22 @@ class _RoutePlanningScreenState extends ConsumerState<RoutePlanningScreen> {
         initialZoom: 13.0,
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.logiflow.mobile',
-        ),
+        appTileLayer(),
         MarkerLayer(
           markers: withCoords.asMap().entries.map((entry) {
             final position = entry.key + 1;
             final o = entry.value;
+            final delay = settings != null ? waitingSinceCreated(o, settings) : null;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
               width: 160,
-              height: 80,
+              height: 96,
               alignment: Alignment.topCenter,
               child: _RouteMapPin(
                 position: position,
                 name: o.customerName,
+                waitingMinutes: delay?.minutes,
+                delayLevel: delay?.level,
               ),
             );
           }).toList(),
@@ -565,21 +578,40 @@ class _RouteOrderTile extends StatelessWidget {
   final int position;
   final Order order;
   final bool isNew;
+  final OrderDelay? delay;
   const _RouteOrderTile({
     super.key,
     required this.position,
     required this.order,
     this.isNew = false,
+    this.delay,
   });
 
   @override
   Widget build(BuildContext context) {
+    // A cor do atraso (tempo de espera) tem prioridade; senão, verde se recém-adicionado.
+    final level = delay?.level ?? DelayLevel.none;
+    final Color bgColor = level == DelayLevel.red
+        ? const Color(0xFFFEF2F2)
+        : level == DelayLevel.yellow
+            ? const Color(0xFFFEFCE8)
+            : isNew
+                ? const Color(0xFFECFDF5)
+                : Colors.white;
+    final Color borderColor = level == DelayLevel.red
+        ? const Color(0xFFFCA5A5)
+        : level == DelayLevel.yellow
+            ? const Color(0xFFFDE68A)
+            : isNew
+                ? _newColor
+                : const Color(0xFFE5E7EB);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: isNew ? const Color(0xFFECFDF5) : Colors.white,
+        color: bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isNew ? _newColor : const Color(0xFFE5E7EB)),
+        border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.03),
@@ -623,16 +655,25 @@ class _RouteOrderTile extends StatelessWidget {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.location_on_outlined,
-                  size: 13, color: Colors.grey.shade500),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(order.customerAddress,
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                    overflow: TextOverflow.ellipsis),
+              Row(
+                children: [
+                  Icon(Icons.location_on_outlined,
+                      size: 13, color: Colors.grey.shade500),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(order.customerAddress,
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ],
               ),
+              if (delay?.minutes != null) ...[
+                const SizedBox(height: 4),
+                _WaitChip(minutes: delay!.minutes!, level: level),
+              ],
             ],
           ),
         ),
@@ -645,7 +686,14 @@ class _RouteOrderTile extends StatelessWidget {
 class _RouteMapPin extends StatelessWidget {
   final int position;
   final String name;
-  const _RouteMapPin({required this.position, required this.name});
+  final int? waitingMinutes;
+  final DelayLevel? delayLevel;
+  const _RouteMapPin({
+    required this.position,
+    required this.name,
+    this.waitingMinutes,
+    this.delayLevel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -666,16 +714,23 @@ class _RouteMapPin extends StatelessWidget {
               ),
             ],
           ),
-          child: Text(
-            name,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1E293B),
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (waitingMinutes != null)
+                _WaitChip(minutes: waitingMinutes!, level: delayLevel ?? DelayLevel.none),
+            ],
           ),
         ),
         const SizedBox(height: 2),
@@ -723,7 +778,14 @@ class _RouteMapPin extends StatelessWidget {
 class _AvailablePin extends StatelessWidget {
   final bool selected;
   final String name;
-  const _AvailablePin({required this.selected, required this.name});
+  final int? waitingMinutes;
+  final DelayLevel? delayLevel;
+  const _AvailablePin({
+    required this.selected,
+    required this.name,
+    this.waitingMinutes,
+    this.delayLevel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -745,16 +807,23 @@ class _AvailablePin extends StatelessWidget {
               ),
             ],
           ),
-          child: Text(
-            name,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: selected ? _newColor : const Color(0xFF1E293B),
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? _newColor : const Color(0xFF1E293B),
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (waitingMinutes != null)
+                _WaitChip(minutes: waitingMinutes!, level: delayLevel ?? DelayLevel.none),
+            ],
           ),
         ),
         const SizedBox(height: 2),
@@ -775,6 +844,33 @@ class _AvailablePin extends StatelessWidget {
           ),
           child: Icon(selected ? Icons.check : Icons.add,
               color: Colors.white, size: 18),
+        ),
+      ],
+    );
+  }
+}
+
+// Tempo de espera ("há X min") exibido no balão do pin, colorido pelo nível de atraso.
+class _WaitChip extends StatelessWidget {
+  final int minutes;
+  final DelayLevel level;
+  const _WaitChip({required this.minutes, required this.level});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = switch (level) {
+      DelayLevel.red    => const Color(0xFFB91C1C),
+      DelayLevel.yellow => const Color(0xFF92400E),
+      DelayLevel.none   => const Color(0xFF64748B),
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.schedule, size: 9, color: fg),
+        const SizedBox(width: 2),
+        Text(
+          'há ${formatWaitDuration(minutes)}',
+          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: fg),
         ),
       ],
     );

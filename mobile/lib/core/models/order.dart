@@ -13,6 +13,8 @@ class Order {
   final String paymentMethod;   // 'prepaid' | 'cash' | 'card'
   final double? cashAmount;
   final bool cashCollected;
+  final DateTime? createdAt;    // criação do pedido (base do tempo em "Preparando")
+  final DateTime? pickedUpAt;   // retirada (base do tempo "em rota")
 
   const Order({
     required this.id,
@@ -29,6 +31,8 @@ class Order {
     this.paymentMethod = 'prepaid',
     this.cashAmount,
     this.cashCollected = false,
+    this.createdAt,
+    this.pickedUpAt,
   });
 
   bool get isCash => paymentMethod == 'cash' && cashAmount != null && cashAmount! > 0;
@@ -52,6 +56,8 @@ class Order {
       paymentMethod:   j['paymentMethod'] as String? ?? 'prepaid',
       cashAmount:      (j['cashAmount'] as num?)?.toDouble(),
       cashCollected:   j['cashCollected'] as bool? ?? false,
+      createdAt:       DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal(),
+      pickedUpAt:      DateTime.tryParse(j['pickedUpAt'] as String? ?? '')?.toLocal(),
     );
   }
 
@@ -70,6 +76,8 @@ class Order {
         paymentMethod:   paymentMethod,
         cashAmount:      cashAmount,
         cashCollected:   cashCollected,
+        createdAt:       createdAt,
+        pickedUpAt:      pickedUpAt,
       );
 }
 

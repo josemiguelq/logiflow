@@ -11,8 +11,10 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
+import '../../core/map_tiles.dart';
 import '../../core/models/order.dart';
 import '../../core/models/route.dart';
+import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
 import '../tracking/location_service.dart';
@@ -90,10 +92,15 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   bool _reserving      = false;
 
   StreamSubscription<WsMessage>? _wsSub;
+  Timer? _delayTicker;
 
   @override
   void initState() {
     super.initState();
+    // Atualiza periodicamente para o tempo de espera dos pedidos avançar na tela.
+    _delayTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
     try {
       final locationService = ref.read(locationServiceProvider);
       _wsSub = locationService.messageStream.listen(
@@ -139,6 +146,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
   @override
   void dispose() {
+    _delayTicker?.cancel();
     _wsSub?.cancel();
     // Release all reservations held by this screen session
     for (final id in List<String>.from(_sel.selected)) {
@@ -261,6 +269,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     final activeOrders = ref.watch(_activeOrdersProvider);
     final storeLoc     = ref.watch(_storeLocationProvider);
     final session      = ref.watch(authProvider);
+    final settings     = ref.watch(storeSettingsProvider).value;
 
     final routeList     = routes.value ?? [];
     final preparingList = preparing.value ?? [];
@@ -414,6 +423,9 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                                           distance:       dist,
                                           selected:       sel,
                                           selectionOrder: selOrder,
+                                          delay: settings != null
+                                              ? computeOrderDelay(o, settings)
+                                              : null,
                                           onTap: () => _toggleSelect(o.id),
                                         ),
                                       );
@@ -502,6 +514,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
   }
 
   Widget _buildMapView(List<Order> orders) {
+    final settings = ref.read(storeSettingsProvider).value;
     final withCoords = orders
         .where((o) => o.customerLat != null && o.customerLng != null && !_sel.isHidden(o.id))
         .toList();
@@ -529,18 +542,16 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
         initialZoom: 13.5,
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.logiflow.mobile',
-        ),
+        appTileLayer(),
         MarkerLayer(
           markers: withCoords.map((o) {
             final sel      = _sel.isSelected(o.id);
             final selOrder = sel ? _sel.selected.indexOf(o.id) + 1 : null;
+            final delay    = settings != null ? computeOrderDelay(o, settings) : null;
             return Marker(
               point: LatLng(o.customerLat!, o.customerLng!),
               width: 160,
-              height: 80,
+              height: 96,
               alignment: Alignment.topCenter,
               child: GestureDetector(
                 onTap: () => _toggleSelect(o.id),
@@ -548,6 +559,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                   name:           o.customerName,
                   selected:       sel,
                   selectionOrder: selOrder,
+                  waitingMinutes: delay?.minutes,
+                  delayLevel:     delay?.level,
                 ),
               ),
             );
@@ -615,10 +628,24 @@ class _OrderPin extends StatelessWidget {
   final String name;
   final bool selected;
   final int? selectionOrder;
-  const _OrderPin({required this.name, required this.selected, this.selectionOrder});
+  final int? waitingMinutes;
+  final DelayLevel? delayLevel;
+  const _OrderPin({
+    required this.name,
+    required this.selected,
+    this.selectionOrder,
+    this.waitingMinutes,
+    this.delayLevel,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Cor do tempo de espera conforme o nível de atraso (settings da loja).
+    final Color waitColor = switch (delayLevel) {
+      DelayLevel.red    => const Color(0xFFB91C1C),
+      DelayLevel.yellow => const Color(0xFF92400E),
+      _                 => const Color(0xFF64748B),
+    };
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -635,14 +662,35 @@ class _OrderPin extends StatelessWidget {
               ),
             ],
           ),
-          child: Text(
-            name,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1E293B),
-            ),
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (waitingMinutes != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.schedule, size: 9, color: waitColor),
+                    const SizedBox(width: 2),
+                    Text(
+                      'há ${formatWaitDuration(waitingMinutes!)}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: waitColor,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 2),
@@ -841,6 +889,7 @@ class _OrderSelectionTile extends StatelessWidget {
   final double? distance;
   final bool selected;
   final int? selectionOrder;
+  final OrderDelay? delay;
   final VoidCallback onTap;
 
   const _OrderSelectionTile({
@@ -849,19 +898,40 @@ class _OrderSelectionTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.selectionOrder,
+    this.delay,
   });
 
   @override
   Widget build(BuildContext context) {
+    final level = delay?.level ?? DelayLevel.none;
+    final isRed    = level == DelayLevel.red;
+    final isYellow = level == DelayLevel.yellow;
+
+    // Seleção tem prioridade visual; senão, colore conforme o atraso.
+    final Color bgColor = selected
+        ? AppTheme.primary.withOpacity(0.06)
+        : isRed
+            ? const Color(0xFFFEF2F2)
+            : isYellow
+                ? const Color(0xFFFEFCE8)
+                : Colors.white;
+    final Color borderColor = selected
+        ? AppTheme.primary
+        : isRed
+            ? const Color(0xFFFCA5A5)
+            : isYellow
+                ? const Color(0xFFFDE68A)
+                : const Color(0xFFE5E7EB);
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.primary.withOpacity(0.06) : Colors.white,
+          color: bgColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? AppTheme.primary : const Color(0xFFE5E7EB),
+            color: borderColor,
             width: selected ? 2 : 1,
           ),
         ),
@@ -920,6 +990,10 @@ class _OrderSelectionTile extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (delay?.minutes != null) ...[
+                      const SizedBox(height: 6),
+                      _WaitingBadge(minutes: delay!.minutes!, level: level),
+                    ],
                   ],
                 ),
               ),
@@ -943,6 +1017,41 @@ class _OrderSelectionTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Mostra há quanto tempo o pedido está aguardando retirada (fase "Preparando"),
+/// para o entregador priorizar os mais antigos. Fica amarelo/vermelho ao atrasar.
+class _WaitingBadge extends StatelessWidget {
+  final int minutes;
+  final DelayLevel level;
+  const _WaitingBadge({required this.minutes, required this.level});
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color bg, Color fg) = switch (level) {
+      DelayLevel.red    => (const Color(0xFFFEE2E2), const Color(0xFFB91C1C)),
+      DelayLevel.yellow => (const Color(0xFFFEF3C7), const Color(0xFF92400E)),
+      DelayLevel.none   => (const Color(0xFFF3F4F6), const Color(0xFF4B5563)),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule, size: 13, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            'Aguardando há ${formatWaitDuration(minutes)}',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
+          ),
+        ],
       ),
     );
   }

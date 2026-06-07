@@ -57,18 +57,29 @@ class DeliveryScreen extends ConsumerWidget {
           if (list.isEmpty) {
             return _EmptyDeliveryState(onGoOrders: () => context.go('/orders'));
           }
+          final enforceOrder = settings.value?.enforceDeliveryOrder ?? false;
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(_activeDeliveryProvider),
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: list.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (_, i) => _DeliveryCard(
-                order: list[i],
-                position: i + 1,
-                total: list.length,
-                onDelivered: () => ref.invalidate(_activeDeliveryProvider),
-              ),
+              itemBuilder: (_, i) {
+                final order = list[i];
+                // Bloqueia se a loja exige ordem e há outra parada anterior da mesma rota.
+                final blocked = enforceOrder &&
+                    order.routeId != null &&
+                    list.any((o) =>
+                        o.routeId == order.routeId &&
+                        (o.routePosition ?? 9999) < (order.routePosition ?? 9999));
+                return _DeliveryCard(
+                  order: order,
+                  position: i + 1,
+                  total: list.length,
+                  deliverBlocked: blocked,
+                  onDelivered: () => ref.invalidate(_activeDeliveryProvider),
+                );
+              },
             ),
           );
         },
@@ -81,6 +92,7 @@ class _DeliveryCard extends ConsumerStatefulWidget {
   final Order order;
   final int position;
   final int total;
+  final bool deliverBlocked;
   final VoidCallback onDelivered;
 
   const _DeliveryCard({
@@ -88,6 +100,7 @@ class _DeliveryCard extends ConsumerStatefulWidget {
     required this.position,
     required this.total,
     required this.onDelivered,
+    this.deliverBlocked = false,
   });
 
   @override
@@ -285,7 +298,9 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                 // Confirm delivery
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _showDeliveryDialog(context),
+                    onPressed: widget.deliverBlocked
+                        ? null
+                        : () => _showDeliveryDialog(context),
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: const Text('Entregar'),
                     style: ElevatedButton.styleFrom(
@@ -297,6 +312,22 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
               ],
             ),
           ),
+          if (widget.deliverBlocked)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.lock_outline, size: 14, color: Color(0xFF92400E)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Conclua a entrega anterior da rota primeiro.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
             child: Row(
@@ -425,6 +456,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         requireDeliveryCode: settings.requireDeliveryCode,
         requireDeliveryPhoto: settings.requireDeliveryPhoto,
         maxProofPhotos: settings.maxProofPhotos,
+        requireProximity: settings.deliveryRequireProximity,
+        proximityMeters: settings.delayProximityMeters,
         onDelivered: widget.onDelivered,
       ),
     );
@@ -531,12 +564,16 @@ class _DeliveryConfirmSheet extends StatefulWidget {
   final bool requireDeliveryCode;
   final bool requireDeliveryPhoto;
   final int maxProofPhotos;
+  final bool requireProximity;
+  final int proximityMeters;
   final VoidCallback onDelivered;
   const _DeliveryConfirmSheet({
     required this.order,
     required this.requireDeliveryCode,
     required this.requireDeliveryPhoto,
     this.maxProofPhotos = 2,
+    this.requireProximity = false,
+    this.proximityMeters = 100,
     required this.onDelivered,
   });
 
@@ -569,6 +606,34 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     setState(() => _photos.removeAt(index));
   }
 
+  // Aviso quando o entregador está longe (regra de proximidade só avisa, não bloqueia).
+  Future<bool?> _confirmFarAway(int meters) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        icon: const Icon(Icons.location_off_outlined,
+            size: 36, color: Color(0xFFEA580C)),
+        title: const Text('Você está longe do endereço'),
+        content: Text(
+          'Você está a aproximadamente $meters m do endereço de entrega '
+          '(recomendado até ${widget.proximityMeters} m). Deseja marcar como entregue mesmo assim?',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEA580C)),
+            child: const Text('Estou ciente'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirm() async {
     final code = _codeCtrl.text.trim().toUpperCase();
     if (widget.requireDeliveryCode && code.length != 4) {
@@ -579,18 +644,42 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       setState(() => _error = 'Foto de comprovante é obrigatória');
       return;
     }
+    // Proximidade: valida a distância até o endereço antes de concluir.
+    Position? pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+    } catch (_) {}
+
+    final destLat = widget.order.customerLat;
+    final destLng = widget.order.customerLng;
+    if (destLat != null && destLng != null) {
+      if (widget.requireProximity && pos == null) {
+        setState(() => _error =
+            'Não foi possível confirmar sua localização. Ative o GPS e tente novamente.');
+        return;
+      }
+      if (pos != null) {
+        final dist = Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, destLat, destLng);
+        if (dist > widget.proximityMeters) {
+          if (widget.requireProximity) {
+            setState(() => _error =
+                'Você está a ${dist.round()} m do endereço; é necessário estar a até ${widget.proximityMeters} m para concluir a entrega.');
+            return;
+          }
+          final proceed = await _confirmFarAway(dist.round());
+          if (proceed != true || !mounted) return;
+        }
+      }
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      Position? pos;
-      try {
-        pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high);
-      } catch (_) {}
-
       final List<String> photoUrls = [];
       const maxBytes = 10 * 1024 * 1024;
       for (final photo in _photos) {

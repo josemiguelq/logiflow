@@ -67,8 +67,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         if (pos != null) 'lng': pos.longitude,
       });
       ref.invalidate(orderDetailProvider(widget.orderId));
-    } catch (_) {
-      setState(() => _error = 'Código inválido ou erro na confirmação');
+    } catch (e) {
+      final msg = (e as dynamic).response?.data?['error'] as String?;
+      setState(() => _error = msg ?? 'Código inválido ou erro na confirmação');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

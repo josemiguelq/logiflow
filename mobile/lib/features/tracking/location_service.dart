@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
 
 typedef WsMessage = Map<String, dynamic>;
@@ -16,25 +17,87 @@ class _PendingPoint {
   final double   lng;
   final DateTime recordedAt;
   const _PendingPoint(this.lat, this.lng, this.recordedAt);
+
   Map<String, dynamic> toJson() => {
     'lat':        lat,
     'lng':        lng,
     'recordedAt': recordedAt.toUtc().toIso8601String(),
   };
+
+  static _PendingPoint? fromJson(Map<String, dynamic> j) {
+    final lat = (j['lat'] as num?)?.toDouble();
+    final lng = (j['lng'] as num?)?.toDouble();
+    final at  = DateTime.tryParse(j['recordedAt'] as String? ?? '');
+    if (lat == null || lng == null || at == null) return null;
+    return _PendingPoint(lat, lng, at);
+  }
 }
 
 class LocationService {
+  // Limite máximo de pontos guardados offline (descarta os mais antigos).
+  static const _maxQueueSize = 1000;
+  static const _queueKey     = 'pending_location_points';
+
   WebSocket?                    _socket;
   bool                          _connecting  = false;
   bool                          _started     = false;
   bool                          _flushing    = false;
+  bool                          _queueLoaded = false;
   String?                       _delivererId;
-  StreamSubscription<Position>? _positionSub;
+  StreamSubscription<Position>?      _positionSub;
+  StreamSubscription<ServiceStatus>? _serviceStatusSub;
   final _api   = ApiClient();
   final _queue = <_PendingPoint>[];
 
   final _messageController = StreamController<WsMessage>.broadcast();
   Stream<WsMessage> get messageStream => _messageController.stream;
+
+  // Emite o estado do GPS do aparelho (true = ligado, false = desligado).
+  final _gpsController = StreamController<bool>.broadcast();
+  Stream<bool> get gpsEnabledStream => _gpsController.stream;
+
+  // ── Persistência da fila offline ─────────────────────────────────────────
+  Future<void> _loadQueue() async {
+    if (_queueLoaded) return;
+    _queueLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_queueKey);
+      if (raw == null || raw.isEmpty) return;
+      for (final s in raw) {
+        try {
+          final p = _PendingPoint.fromJson(jsonDecode(s) as Map<String, dynamic>);
+          if (p != null) _queue.add(p);
+        } catch (_) {}
+      }
+      debugPrint('[Location] Fila restaurada do storage: ${_queue.length} pontos');
+    } catch (e) {
+      debugPrint('[Location] Falha ao restaurar fila: $e');
+    }
+  }
+
+  Future<void> _persistQueue() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_queue.isEmpty) {
+        await prefs.remove(_queueKey);
+        return;
+      }
+      final raw = _queue.map((p) => jsonEncode(p.toJson())).toList();
+      await prefs.setStringList(_queueKey, raw);
+    } catch (e) {
+      debugPrint('[Location] Falha ao persistir fila: $e');
+    }
+  }
+
+  void _enqueue(_PendingPoint point) {
+    _queue.add(point);
+    // Mantém a fila limitada — descarta os pontos mais antigos.
+    if (_queue.length > _maxQueueSize) {
+      _queue.removeRange(0, _queue.length - _maxQueueSize);
+    }
+    _persistQueue();
+  }
 
   Future<LocationPermissionIssue?> _requestPermission() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
@@ -74,7 +137,22 @@ class LocationService {
     _started = true;
     debugPrint('[Location] Iniciando rastreamento — delivererId=$_delivererId');
 
+    // Restaura pontos guardados offline e tenta enviá-los assim que possível.
+    await _loadQueue();
+
     await _connect();
+
+    // Monitora o GPS do aparelho para avisar caso o entregador o desligue.
+    _gpsController.add(true);
+    _serviceStatusSub ??= Geolocator.getServiceStatusStream().listen((status) {
+      final enabled = status == ServiceStatus.enabled;
+      debugPrint('[Location] GPS ${enabled ? 'ligado' : 'desligado'}');
+      _gpsController.add(enabled);
+      if (enabled) _flushQueue();   // GPS voltou — aproveita para esvaziar a fila
+    });
+
+    // Há pontos pendentes do storage? Tenta enviar agora.
+    if (_queue.isNotEmpty) unawaited(_flushQueue());
 
     // Foreground service mantém o processo vivo com tela bloqueada / app em background
     final locationSettings = AndroidSettings(
@@ -200,7 +278,7 @@ class LocationService {
         .catchError((Object e) {
           debugPrint('[Location] HTTP falhou — guardando na fila '
               '(fila=${_queue.length + 1})');
-          _queue.add(_PendingPoint(lat, lng, recordedAt));
+          _enqueue(_PendingPoint(lat, lng, recordedAt));
           Sentry.captureException(e,
               withScope: (s) {
                 s.setTag('delivererId', _delivererId ?? 'unknown');
@@ -221,6 +299,7 @@ class LocationService {
         'points': snapshot.map((p) => p.toJson()).toList(),
       });
       _queue.removeRange(0, snapshot.length);
+      await _persistQueue();
       debugPrint('[Location] Fila enviada e limpa');
     } catch (e) {
       debugPrint('[Location] Batch falhou — fila mantida: $e');
@@ -235,6 +314,8 @@ class LocationService {
     _started = false;
     _positionSub?.cancel();
     _positionSub = null;
+    _serviceStatusSub?.cancel();
+    _serviceStatusSub = null;
     _socket?.close();
     _socket = null;
   }

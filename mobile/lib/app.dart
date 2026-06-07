@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -62,9 +63,22 @@ class LogiFlowApp extends ConsumerStatefulWidget {
 }
 
 class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
+  StreamSubscription<bool>? _gpsSub;
+  bool _locationDialogOpen = false;
+
   @override
   void initState() {
     super.initState();
+
+    // Avisa em popup quando o GPS é desligado durante o uso e fecha quando volta.
+    _gpsSub = ref.read(locationServiceProvider).gpsEnabledStream.listen((enabled) {
+      if (!enabled) {
+        _showLocationDialog(LocationPermissionIssue.serviceDisabled);
+      } else if (_locationDialogOpen) {
+        // GPS voltou — fecha o popup de aviso.
+        _navigatorKey.currentState?.pop();
+      }
+    });
 
     // Inicia rastreamento caso já haja sessão ao abrir o app
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -91,9 +105,18 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
   }
 
   void _showLocationDialog(LocationPermissionIssue issue) {
+    if (_locationDialogOpen) return;   // evita empilhar popups
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) return;
-    showLocationPermissionDialog(ctx, issue);
+    _locationDialogOpen = true;
+    showLocationPermissionDialog(ctx, issue)
+        .whenComplete(() => _locationDialogOpen = false);
+  }
+
+  @override
+  void dispose() {
+    _gpsSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -105,7 +128,7 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
       );
 }
 
-void showLocationPermissionDialog(
+Future<void> showLocationPermissionDialog(
     BuildContext context, LocationPermissionIssue issue) {
   final (title, message, openSettings) = switch (issue) {
     LocationPermissionIssue.serviceDisabled => (
@@ -125,7 +148,7 @@ void showLocationPermissionDialog(
       ),
   };
 
-  showDialog<void>(
+  return showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (dialogCtx) => AlertDialog(
