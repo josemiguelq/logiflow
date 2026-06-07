@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight, Trash2, Loader2, List, Map as MapIcon, Download } from 'lucide-react'
@@ -84,9 +84,16 @@ export default function CustomersPage() {
     .filter((x): x is { customer: Customer; addr: NonNullable<typeof x.addr> } =>
       !!x.addr && x.addr.lat != null && x.addr.lng != null)
 
-  const mapDestinations: MapDestination[] = locatable.map(({ customer, addr }) => ({
-    lat: addr.lat!, lng: addr.lng!, label: customer.name, status: formatPhone(customer.phone),
-  }))
+  // Memoized so its reference stays stable across re-renders (e.g. when the map
+  // reports new bounds). Otherwise LiveMap would treat every render as a fresh
+  // destination list, refit the bounds and snap the user's zoom/pan back.
+  const mapDestinations: MapDestination[] = useMemo(
+    () => locatable.map(({ customer, addr }) => ({
+      lat: addr.lat!, lng: addr.lng!, label: customer.name, status: formatPhone(customer.phone),
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapCustomers],
+  )
 
   // Only the customers whose pin falls inside the current viewport.
   const visible = locatable.filter(({ addr }) =>
