@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight, Trash2, Loader2, List, Map as MapIcon } from 'lucide-react'
-import { Customer } from '@/types'
+import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight, Trash2, Loader2, List, Map as MapIcon, Download } from 'lucide-react'
+import { Customer, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAccess } from '@/hooks/useAccess'
-import { LiveMap, type MapDestination } from '@/components/map'
+import { LiveMap, type MapDestination, type MapBounds } from '@/components/map'
 
 interface PagedCustomers { items: Customer[]; total: number; page: number; pages: number }
 
@@ -74,11 +74,42 @@ export default function CustomersPage() {
   // Fetch every customer (no pagination) only when the map view is active.
   const { data: allData } = useSWR(view === 'map' ? '/customers?all=true' : null, fetcher)
   const mapCustomers = allData?.items ?? []
-  const mapDestinations: MapDestination[] = mapCustomers.flatMap((c) => {
-    const addr = c.addresses.find(a => a.isDefault) ?? c.addresses[0]
-    if (!addr || addr.lat == null || addr.lng == null) return []
-    return [{ lat: addr.lat, lng: addr.lng, label: c.name, status: formatPhone(c.phone) }]
-  })
+
+  // Current visible region of the map; null until the map first reports bounds.
+  const [bounds, setBounds] = useState<MapBounds | null>(null)
+
+  // Customers that have a usable coordinate (default address with lat/lng).
+  const locatable = mapCustomers
+    .map((c) => ({ customer: c, addr: c.addresses.find(a => a.isDefault) ?? c.addresses[0] }))
+    .filter((x): x is { customer: Customer; addr: NonNullable<typeof x.addr> } =>
+      !!x.addr && x.addr.lat != null && x.addr.lng != null)
+
+  const mapDestinations: MapDestination[] = locatable.map(({ customer, addr }) => ({
+    lat: addr.lat!, lng: addr.lng!, label: customer.name, status: formatPhone(customer.phone),
+  }))
+
+  // Only the customers whose pin falls inside the current viewport.
+  const visible = locatable.filter(({ addr }) =>
+    !bounds || (
+      addr.lat! <= bounds.north && addr.lat! >= bounds.south &&
+      addr.lng! <= bounds.east  && addr.lng! >= bounds.west
+    ))
+
+  function exportVisible() {
+    const header = ['Nome', 'Telefone', 'Endereço', 'Latitude', 'Longitude']
+    const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const lines = visible.map(({ customer, addr }) =>
+      [customer.name, formatPhone(customer.phone), fullAddress(addr), addr.lat!, addr.lng!].map(cell).join(','))
+    const csv = '﻿' + [header.map(cell).join(','), ...lines].join('\r\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `clientes-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   // Batch selection
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -188,13 +219,23 @@ export default function CustomersPage() {
       {view === 'map' ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="h-[calc(100vh-220px)] min-h-[400px] w-full">
-            <LiveMap destinations={mapDestinations} height="100%" autoFitBounds />
+            <LiveMap destinations={mapDestinations} height="100%" autoFitBounds onBoundsChange={setBounds} />
           </div>
-          <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
-            {mapDestinations.length} cliente{mapDestinations.length !== 1 ? 's' : ''} no mapa
-            {mapCustomers.length > mapDestinations.length && (
-              <span className="text-gray-400"> · {mapCustomers.length - mapDestinations.length} sem localização</span>
-            )}
+          <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+            <span>
+              {visible.length} cliente{visible.length !== 1 ? 's' : ''} nesta região
+              {mapCustomers.length > mapDestinations.length && (
+                <span className="text-gray-400"> · {mapCustomers.length - mapDestinations.length} sem localização</span>
+              )}
+            </span>
+            <button
+              onClick={exportVisible}
+              disabled={visible.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Exportar {visible.length > 0 ? `(${visible.length})` : ''}
+            </button>
           </div>
         </div>
       ) : (

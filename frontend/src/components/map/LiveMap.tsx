@@ -67,6 +67,13 @@ export interface TrailPoint {
   recorded_at?: string
 }
 
+export interface MapBounds {
+  north: number
+  south: number
+  east: number
+  west: number
+}
+
 interface Props {
   delivererLat?: number | null
   delivererLng?: number | null
@@ -77,6 +84,7 @@ interface Props {
   height?: string
   autoFitBounds?: boolean
   onDestinationClick?: (id: string) => void
+  onBoundsChange?: (bounds: MapBounds) => void
 }
 
 const DEFAULT_CENTER: L.LatLngTuple = [-20.4697, -54.6201]
@@ -91,6 +99,7 @@ export function LiveMap({
   height = '100%',
   autoFitBounds = false,
   onDestinationClick,
+  onBoundsChange,
 }: Props) {
   const divRef              = useRef<HTMLDivElement>(null)
   const mapRef              = useRef<L.Map | null>(null)
@@ -98,6 +107,8 @@ export function LiveMap({
   const destMarkersRef      = useRef<L.Marker[]>([])
   const proofMarkersRef     = useRef<L.Marker[]>([])
   const trailLayersRef      = useRef<L.Layer[]>([])
+  const boundsCbRef         = useRef(onBoundsChange)
+  useEffect(() => { boundsCbRef.current = onBoundsChange })
 
   // Initialize and destroy the Leaflet map.
   // Vanilla Leaflet (no react-leaflet) gives us explicit cleanup control,
@@ -111,6 +122,18 @@ export function LiveMap({
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map)
+
+    // Notify consumers of the visible region whenever the map is panned/zoomed
+    // ('moveend' fires after both pan and zoom, including programmatic fitBounds).
+    map.on('moveend', () => {
+      const b = map.getBounds()
+      boundsCbRef.current?.({
+        north: b.getNorth(),
+        south: b.getSouth(),
+        east:  b.getEast(),
+        west:  b.getWest(),
+      })
+    })
 
     mapRef.current = map
 
