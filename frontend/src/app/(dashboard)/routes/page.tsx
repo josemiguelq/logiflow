@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Download, Eye, Loader2, X, Calendar, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
-import { DeliveryRoute, RouteStatus } from '@/types'
+import { Download, Eye, Loader2, ChevronLeft, ChevronRight, ChevronDown, Trash2 } from 'lucide-react'
+import { DeliveryRoute, RouteStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { useAccess } from '@/hooks/useAccess'
@@ -98,99 +98,6 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function thirtyDaysAgoStr() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
-}
-
-interface ExportModalProps {
-  onClose: () => void
-}
-
-function ExportModal({ onClose }: ExportModalProps) {
-  const [from, setFrom] = useState(thirtyDaysAgoStr())
-  const [to,   setTo]   = useState(todayStr())
-  const [loading, setLoading] = useState(false)
-
-  async function handleExport() {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ from, to })
-      const rows = await api.get<ExportRow[]>(`/routes/export?${params}`)
-      const csv  = buildCsv(rows)
-      downloadCsv(csv, `rotas-${from}-${to}.csv`)
-      onClose()
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-gray-500" />
-            <h2 className="text-base font-semibold text-gray-900">Exportar CSV</h2>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <p className="mb-4 text-sm text-gray-500">
-          Selecione o período das rotas que deseja exportar.
-        </p>
-
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">De</label>
-            <input
-              type="date"
-              value={from}
-              max={to}
-              onChange={e => setFrom(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Até</label>
-            <input
-              type="date"
-              value={to}
-              min={from}
-              max={todayStr()}
-              onChange={e => setTo(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        <div className="mt-5 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={loading || !from || !to}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40 transition-colors"
-          >
-            {loading
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Download className="h-4 w-4" />
-            }
-            {loading ? 'Exportando…' : 'Baixar CSV'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 interface PagedRoutes { items: DeliveryRoute[]; total: number; page: number; pages: number }
 
 interface DeleteRouteModalProps {
@@ -258,8 +165,23 @@ function DeleteRouteModal({ route, onClose, onDeleted }: DeleteRouteModalProps) 
 
 export default function RoutesPage() {
   const [page, setPage] = useState(1)
+
+  // Filters — applied to both the list and the CSV export.
+  const [delivererId, setDelivererId] = useState('')
+  const [from,        setFrom]        = useState('')
+  const [to,          setTo]          = useState('')
+  const hasFilters = !!(delivererId || from || to)
+
+  // Reset to the first page whenever a filter changes.
+  useEffect(() => { setPage(1) }, [delivererId, from, to])
+
+  const listParams = new URLSearchParams({ page: String(page) })
+  if (delivererId) listParams.set('delivererId', delivererId)
+  if (from)        listParams.set('from', from)
+  if (to)          listParams.set('to', to)
+
   const { data, isLoading, mutate } = useSWR<PagedRoutes>(
-    `/routes?page=${page}`,
+    `/routes?${listParams}`,
     (url: string) => api.get<PagedRoutes>(url)
   )
   const routes   = data?.items ?? []
@@ -267,23 +189,100 @@ export default function RoutesPage() {
   const pages    = data?.pages ?? 1
   const features = useStoreFeatures()
   const { can }  = useAccess()
-  const [showExportModal, setShowExportModal] = useState(false)
-  const [deletingRoute, setDeletingRoute]     = useState<DeliveryRoute | null>(null)
+  const { data: deliverers = [] } = useSWR('/deliverers', (u: string) => api.get<Deliverer[]>(u))
+  const [exporting,     setExporting]     = useState(false)
+  const [deletingRoute, setDeletingRoute] = useState<DeliveryRoute | null>(null)
+
+  function clearFilters() {
+    setDelivererId('')
+    setFrom('')
+    setTo('')
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (delivererId) params.set('delivererId', delivererId)
+      if (from)        params.set('from', from)
+      if (to)          params.set('to', to)
+      const rows = await api.get<ExportRow[]>(`/routes/export${params.size ? `?${params}` : ''}`)
+      const csv  = buildCsv(rows)
+      const suffix = from || to ? `${from || 'inicio'}-${to || todayStr()}` : todayStr()
+      downloadCsv(csv, `rotas-${suffix}.csv`)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="p-6">
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rotas</h1>
-          <p className="text-sm text-gray-500 mt-1">{total} rota{total !== 1 ? 's' : ''} no total</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {total} rota{total !== 1 ? 's' : ''} {hasFilters ? 'encontrada' + (total !== 1 ? 's' : '') : 'no total'}
+          </p>
         </div>
         {features.csvExportEnabled && can({ scope: 'routes:export' }) && (
           <button
-            onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
           >
-            <Download className="h-4 w-4" />
-            Baixar CSV
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {exporting ? 'Exportando…' : 'Baixar CSV'}
+          </button>
+        )}
+      </div>
+
+      {/* Filtros — aplicam-se à lista e à exportação */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        {deliverers.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Entregador</label>
+            <div className="relative">
+              <select
+                value={delivererId}
+                onChange={e => setDelivererId(e.target.value)}
+                className="h-9 w-full appearance-none rounded-lg border border-gray-300 bg-white pl-3 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-56"
+              >
+                <option value="">Todos os entregadores</option>
+                {deliverers.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+        )}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">De</label>
+          <input
+            type="date"
+            value={from}
+            max={to || todayStr()}
+            onChange={e => setFrom(e.target.value)}
+            className="h-9 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Até</label>
+          <input
+            type="date"
+            value={to}
+            min={from}
+            max={todayStr()}
+            onChange={e => setTo(e.target.value)}
+            className="h-9 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        {hasFilters && (
+          <button
+            onClick={clearFilters}
+            className="h-9 text-sm font-medium text-gray-500 underline hover:text-gray-700"
+          >
+            Limpar filtros
           </button>
         )}
       </div>
@@ -295,8 +294,19 @@ export default function RoutesPage() {
         </div>
       ) : total === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <p className="text-lg font-medium">Nenhuma rota ainda</p>
-          <p className="text-sm mt-1">Rotas aparecem quando pedidos são atribuídos em lote</p>
+          {hasFilters ? (
+            <>
+              <p className="text-lg font-medium">Nenhuma rota para os filtros</p>
+              <button onClick={clearFilters} className="mt-1 text-sm text-gray-500 underline hover:text-gray-700">
+                Limpar filtros
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-medium">Nenhuma rota ainda</p>
+              <p className="text-sm mt-1">Rotas aparecem quando pedidos são atribuídos em lote</p>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -433,10 +443,6 @@ export default function RoutesPage() {
           </div>
         )}
         </>
-      )}
-
-      {showExportModal && (
-        <ExportModal onClose={() => setShowExportModal(false)} />
       )}
 
       {deletingRoute && (

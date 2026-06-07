@@ -24,9 +24,11 @@ export async function routeRoutes(app: FastifyInstance) {
 
   // ── Store routes ──────────────────────────────────────────────────────────
   app.get('/routes', { preHandler: requireStoreUser }, async (req) => {
-    const { page } = req.query as { page?: string }
+    const { page, delivererId, from, to } = req.query as {
+      page?: string; delivererId?: string; from?: string; to?: string
+    }
     const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
-    const { items, total } = await routeRepo.findByStore(req.actor.storeId, pageNum)
+    const { items, total } = await routeRepo.findByStore(req.actor.storeId, pageNum, 15, { delivererId, from, to })
     const pages = Math.max(1, Math.ceil(total / 15))
     return { items, total, page: pageNum, pages }
   })
@@ -40,12 +42,13 @@ export async function routeRoutes(app: FastifyInstance) {
     `, [req.actor.storeId])
     if (!feat.length) return reply.code(403).send({ error: 'Feature csv_export não habilitada' })
 
-    const { from, to } = req.query as { from?: string; to?: string }
+    const { from, to, delivererId } = req.query as { from?: string; to?: string; delivererId?: string }
 
     const params: unknown[] = [req.actor.storeId]
     const dateFilters: string[] = []
-    if (from) { params.push(from); dateFilters.push(`r.created_at >= $${params.length}::date`) }
-    if (to)   { params.push(to);   dateFilters.push(`r.created_at <  ($${params.length}::date + interval '1 day')`) }
+    if (delivererId) { params.push(delivererId); dateFilters.push(`r.deliverer_id = $${params.length}`) }
+    if (from)        { params.push(from);        dateFilters.push(`r.created_at >= $${params.length}::date`) }
+    if (to)          { params.push(to);          dateFilters.push(`r.created_at <  ($${params.length}::date + interval '1 day')`) }
     const where = dateFilters.length ? `AND ${dateFilters.join(' AND ')}` : ''
 
     const { rows } = await db.query(`

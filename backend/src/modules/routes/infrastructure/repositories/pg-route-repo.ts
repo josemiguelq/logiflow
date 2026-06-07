@@ -26,18 +26,36 @@ const LIST_JOIN = `
 
 export function createPgRouteRepo(db: DB) {
   return {
-    async findByStore(storeId: string, page = 1, limit = 15): Promise<{ items: RouteWithDetails[]; total: number }> {
+    async findByStore(
+      storeId: string,
+      page = 1,
+      limit = 15,
+      filters: { delivererId?: string; from?: string; to?: string } = {}
+    ): Promise<{ items: RouteWithDetails[]; total: number }> {
       const offset = (page - 1) * limit
+
+      // Dynamic filters, parametrized — same pattern as /routes/export.
+      const params: unknown[] = [storeId]
+      const conds: string[] = ['r.store_id = $1']
+      if (filters.delivererId) { params.push(filters.delivererId); conds.push(`r.deliverer_id = $${params.length}`) }
+      if (filters.from)        { params.push(filters.from);        conds.push(`r.created_at >= $${params.length}::date`) }
+      if (filters.to)          { params.push(filters.to);          conds.push(`r.created_at <  ($${params.length}::date + interval '1 day')`) }
+
+      params.push(limit)
+      const limitIdx = params.length
+      params.push(offset)
+      const offsetIdx = params.length
+
       const { rows } = await db.query(
         `SELECT sub.*, COUNT(*) OVER() AS total_count
          FROM (
            ${LIST_JOIN}
-           WHERE r.store_id = $1
+           WHERE ${conds.join(' AND ')}
            GROUP BY r.id, d.name, d.username
            ORDER BY r.created_at DESC
          ) sub
-         LIMIT $2 OFFSET $3`,
-        [storeId, limit, offset]
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        params
       )
       const total = rows.length > 0 ? Number((rows[0] as Record<string, unknown>).total_count) : 0
       return {
