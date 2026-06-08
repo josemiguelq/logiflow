@@ -31,12 +31,32 @@ const FEATURES = [
   {
     icon: '🔗',
     title: 'Link de rastreamento para o cliente',
-    desc: 'Cada pedido gera um link único. O cliente acompanha a entrega em tempo real direto no navegador, sem instalar nada.',
+    desc: 'Cada pedido gera um link único, protegido por senha (os 4 últimos dígitos do telefone), com o entregador e o endereço de entrega no mapa em tempo real.',
   },
   {
     icon: '📊',
     title: 'Métricas e relatórios',
-    desc: 'Histórico completo de entregas, tempo médio por rota, avaliações de entregadores e relatórios exportáveis em CSV.',
+    desc: 'Histórico completo de entregas, tempo médio por rota e avaliações. Filtre as rotas por entregador e período e exporte exatamente o que está vendo em CSV.',
+  },
+  {
+    icon: '📍',
+    title: 'Mapa de clientes',
+    desc: 'Veja todos os seus clientes no mapa, identifique a concentração de entregas por região e exporte a lista da área visível com um clique.',
+  },
+  {
+    icon: '🚨',
+    title: 'Alertas de pedidos atrasados',
+    desc: 'Seja avisado quando houver pedidos parados além do limite — para retirar ou entregar — e notifique com um toque os entregadores livres para buscarem os pedidos na loja.',
+  },
+  {
+    icon: '🕓',
+    title: 'Linha do tempo e auditoria',
+    desc: 'Cada pedido registra quem fez o quê e quando, e o tempo gasto em cada etapa — da criação à entrega. Rastreabilidade total da operação.',
+  },
+  {
+    icon: '📈',
+    title: 'Painel do entregador no app',
+    desc: 'No próprio app, o entregador acompanha quantas entregas fez hoje e o resumo do mês: entregas, cancelamentos e viagens realizadas.',
   },
   {
     icon: '⭐',
@@ -79,26 +99,35 @@ const BENEFITS = [
   {
     icon: '🔒',
     title: 'Controle e segurança',
-    desc: 'Permissões por papel (proprietário, gerente, assistente), histórico de ações e acesso restrito por função garantem que cada um veja só o que precisa.',
+    desc: 'Permissões por papel (proprietário, gerente, assistente), trilha de auditoria por pedido e link de rastreamento protegido por senha garantem que cada um veja só o que precisa.',
   },
 ]
 
+// Incluído em TODOS os planos — destacado uma vez, fora dos cards (sem duplicar).
+const INCLUDED_IN_ALL = [
+  'App do entregador — grátis e ilimitado',
+  'Painel de pedidos',
+  'Link de rastreamento para o cliente',
+  'Confirmação com foto e código',
+]
+
+// Cada card lista apenas o que é EXCLUSIVO daquele plano (além do que todos têm).
 const PLANS = [
   {
     name: 'Starter',
     price: 50,
-    deliverers: 1,
-    deliveries: 50,
-    features: ['1 entregador', 'Até 50 entregas/mês', 'App do entregador', 'Painel de pedidos', 'Link de rastreamento', 'Confirmação com foto e código'],
+    deliverers: 2,
+    deliveries: 'Até 1.000 entregas/mês',
+    features: [],
     highlight: false,
     badge: null,
   },
   {
     name: 'Starter + WhatsApp',
     price: 60,
-    deliverers: 1,
-    deliveries: 50,
-    features: ['1 entregador', 'Até 50 entregas/mês', 'App do entregador', 'Painel de pedidos', 'Link de rastreamento', 'Confirmação com foto e código', 'Notificações WhatsApp automáticas'],
+    deliverers: 2,
+    deliveries: 'Até 1.000 entregas/mês',
+    features: ['Notificações WhatsApp automáticas'],
     highlight: false,
     badge: null,
   },
@@ -106,8 +135,8 @@ const PLANS = [
     name: 'Pro',
     price: 80,
     deliverers: 2,
-    deliveries: 100,
-    features: ['Até 2 entregadores', 'Até 100 entregas/mês', 'App do entregador', 'Painel de pedidos', 'Link de rastreamento', 'Confirmação com foto e código', 'Avaliação de entregadores', 'Exportação CSV'],
+    deliveries: 'Sem limite de entregas',
+    features: ['Avaliação de entregadores', 'Exportação CSV com filtros'],
     highlight: false,
     badge: null,
   },
@@ -115,8 +144,8 @@ const PLANS = [
     name: 'Pro + WhatsApp',
     price: 100,
     deliverers: 2,
-    deliveries: 100,
-    features: ['Até 2 entregadores', 'Até 100 entregas/mês', 'App do entregador', 'Painel de pedidos', 'Link de rastreamento', 'Confirmação com foto e código', 'Avaliação de entregadores', 'Exportação CSV', 'Notificações WhatsApp automáticas'],
+    deliveries: 'Sem limite de entregas',
+    features: ['Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
     highlight: true,
     badge: 'Mais popular',
   },
@@ -124,8 +153,8 @@ const PLANS = [
     name: 'Pro Premium',
     price: 120,
     deliverers: 2,
-    deliveries: 100,
-    features: ['Até 2 entregadores', 'Até 100 entregas/mês', 'App do entregador', 'Painel de pedidos', 'Link de rastreamento', 'Confirmação com foto e código', 'Avaliação de entregadores', 'Exportação CSV', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
+    deliveries: 'Sem limite de entregas',
+    features: ['Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
     highlight: false,
     badge: null,
   },
@@ -267,7 +296,7 @@ export default function LandingPage() {
       {/* ── Social proof strip ── */}
       <section className="border-y border-gray-100 bg-gray-50 py-5 px-6">
         <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-sm text-gray-500">
-          {['App nativo para entregadores', 'Painel web completo', 'Rastreamento GPS em tempo real', 'Notificações WhatsApp', 'Sem limite de entregas', 'Sem custo de setup'].map(item => (
+          {['App nativo para entregadores', 'Rastreamento GPS em tempo real', 'Mapa de clientes', 'Alertas de atraso', 'Notificações WhatsApp', 'Sem limite de entregas'].map(item => (
             <span key={item} className="flex items-center gap-1.5">
               <CheckIcon />
               {item}

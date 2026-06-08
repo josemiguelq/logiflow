@@ -51,12 +51,25 @@ export async function trackingRoutes(app: FastifyInstance) {
     }
   )
 
+  // Garante que o entregador pertence à loja do solicitante antes de expor
+  // qualquer dado de localização (isolamento entre lojas).
+  async function assertDelivererInStore(delivererId: string, storeId: string): Promise<boolean> {
+    const { rows } = await db.query(
+      'SELECT 1 FROM deliverers WHERE id = $1 AND store_id = $2',
+      [delivererId, storeId]
+    )
+    return rows.length > 0
+  }
+
   // Store user gets latest position of a deliverer
   app.get(
     '/tracking/deliverer/:delivererId/latest',
     { preHandler: requireStoreUser },
-    async (req) => {
+    async (req, reply) => {
       const { delivererId } = req.params as { delivererId: string }
+      if (!await assertDelivererInStore(delivererId, req.actor.storeId)) {
+        return reply.code(404).send({ error: 'Entregador não encontrado' })
+      }
       return repo.getLatest(delivererId)
     }
   )
@@ -64,8 +77,11 @@ export async function trackingRoutes(app: FastifyInstance) {
   app.get(
     '/tracking/deliverer/:delivererId/history',
     { preHandler: requireStoreUser },
-    async (req) => {
+    async (req, reply) => {
       const { delivererId } = req.params as { delivererId: string }
+      if (!await assertDelivererInStore(delivererId, req.actor.storeId)) {
+        return reply.code(404).send({ error: 'Entregador não encontrado' })
+      }
       const { from, to } = z.object({
         from: z.string().optional(),
         to:   z.string().optional(),
