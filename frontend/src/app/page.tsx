@@ -107,7 +107,6 @@ const BENEFITS = [
 const INCLUDED_IN_ALL = [
   'App do entregador — grátis e ilimitado',
   'Painel de pedidos',
-  'Link de rastreamento para o cliente',
   'Confirmação com foto e código',
 ]
 
@@ -116,7 +115,7 @@ const PLANS = [
   {
     name: 'Starter',
     price: 50,
-    deliverers: 2,
+    deliverers: 'Até 2 entregadores',
     deliveries: 'Até 1.000 entregas/mês',
     features: [],
     highlight: false,
@@ -125,7 +124,7 @@ const PLANS = [
   {
     name: 'Starter + WhatsApp',
     price: 60,
-    deliverers: 2,
+    deliverers: 'Até 2 entregadores',
     deliveries: 'Até 1.000 entregas/mês',
     features: ['Notificações WhatsApp automáticas'],
     highlight: false,
@@ -134,27 +133,27 @@ const PLANS = [
   {
     name: 'Pro',
     price: 80,
-    deliverers: 2,
+    deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
-    features: ['Avaliação de entregadores', 'Exportação CSV com filtros'],
+    features: ['Link de rastreamento para o cliente', 'Avaliação de entregadores', 'Exportação CSV com filtros'],
     highlight: false,
     badge: null,
   },
   {
     name: 'Pro + WhatsApp',
     price: 100,
-    deliverers: 2,
+    deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
-    features: ['Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
+    features: ['Link de rastreamento para o cliente', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
     highlight: true,
     badge: 'Mais popular',
   },
   {
     name: 'Pro Premium',
     price: 120,
-    deliverers: 2,
+    deliverers: 'Entregadores ilimitados',
     deliveries: 'Sem limite de entregas',
-    features: ['Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
+    features: ['Link de rastreamento para o cliente', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
     highlight: false,
     badge: null,
   },
@@ -410,7 +409,7 @@ export default function LandingPage() {
                   </div>
                   <div className={`mt-2 flex flex-wrap gap-2 text-xs ${plan.highlight ? 'text-blue-100' : 'text-gray-500'}`}>
                     <span className={`rounded-full px-2 py-0.5 ${plan.highlight ? 'bg-blue-500' : 'bg-gray-100'}`}>
-                      {plan.deliverers} entregador{plan.deliverers > 1 ? 'es' : ''}
+                      {plan.deliverers}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 ${plan.highlight ? 'bg-blue-500' : 'bg-gray-100'}`}>
                       {plan.deliveries}
