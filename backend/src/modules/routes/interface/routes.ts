@@ -250,6 +250,12 @@ export async function routeRoutes(app: FastifyInstance) {
       }
       for (const oid of newIds) {
         queueNotif(req.actor.storeId, oid, 'ASSIGNED')
+        orderRepo.appendLog(oid, {
+          at: new Date().toISOString(),
+          by: { type: 'store_user', id: req.actor.sub, name: req.actor.name },
+          action: 'ASSIGNED',
+          details: { delivererId, routeId: id },
+        }).catch(() => { /* non-fatal */ })
       }
 
       // Notify the deliverer (push) that the route changed
@@ -361,11 +367,19 @@ export async function routeRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Código inválido' })
       }
 
-      await db.query(
+      const { rows: pickedRows } = await db.query(
         `UPDATE orders SET status = 'ON_ROUTE', picked_up_at = now()
-         WHERE route_id = $1 AND status = 'ASSIGNED'`,
+         WHERE route_id = $1 AND status = 'ASSIGNED'
+         RETURNING id`,
         [id]
       )
+
+      // Auditoria: registra a retirada de cada pedido efetivamente movido.
+      const pickedBy = { type: 'deliverer' as const, id: req.actor.sub, name: req.actor.name }
+      for (const r of pickedRows as { id: string }[]) {
+        orderRepo.appendLog(r.id, { at: new Date().toISOString(), by: pickedBy, action: 'PICKED_UP' })
+          .catch(() => { /* non-fatal */ })
+      }
 
       await routeRepo.updateStatus(id, route.store_id as string, 'STARTED')
 
