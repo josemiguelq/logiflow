@@ -43,6 +43,14 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
   CANCELLED:        'bg-red-50 text-red-700',
 }
 
+const fmtDateTime = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : null
+
 interface MapPin {
   id: string
   customerName: string
@@ -247,22 +255,21 @@ export default function RouteDetailPage({ params }: Props) {
                     </span>
                   </span>
                 </div>
+
+                {/* Datas/horas: criação, retirada e entrega */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <span>Criação: <span className="text-gray-700">{fmtDateTime(order.createdAt) ?? '—'}</span></span>
+                  <span>Retirada: <span className="text-gray-700">{fmtDateTime(order.pickedUpAt) ?? '—'}</span></span>
+                  <span>Entrega: <span className="text-gray-700">{fmtDateTime(order.deliveredAt) ?? '—'}</span></span>
+                </div>
               </div>
 
-              {/* Status icon + delivery time */}
-              <div className="shrink-0 flex flex-col items-end gap-1">
+              {/* Status icon */}
+              <div className="shrink-0">
                 {order.status === 'DELIVERED' ? (
                   <CheckCircle2 className="h-5 w-5 text-green-500" />
                 ) : (
                   <Clock className="h-5 w-5 text-gray-300" />
-                )}
-                {order.deliveredAt && (
-                  <span className="text-xs text-gray-400 whitespace-nowrap">
-                    {new Date(order.deliveredAt).toLocaleString('pt-BR', {
-                      day: '2-digit', month: '2-digit',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </span>
                 )}
               </div>
             </Link>
