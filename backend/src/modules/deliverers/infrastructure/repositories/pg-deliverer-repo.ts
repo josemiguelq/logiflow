@@ -44,6 +44,29 @@ export function createPgDelivererRepo(db: DB) {
       return rows.map(r => r.id)
     },
 
+    // Contagem de entregadores ativos: total, em rota ativa e sem rota ativa.
+    async routeStatusCounts(storeId: string): Promise<{ active: number; inRoute: number; idle: number }> {
+      const { rows } = await db.query<{ active: string; in_route: string; idle: string }>(
+        `SELECT
+           COUNT(*) FILTER (WHERE d.is_active) AS active,
+           COUNT(*) FILTER (WHERE d.is_active AND EXISTS (
+             SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+           )) AS in_route,
+           COUNT(*) FILTER (WHERE d.is_active AND NOT EXISTS (
+             SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+           )) AS idle
+         FROM deliverers d
+         WHERE d.store_id = $1`,
+        [storeId]
+      )
+      const r = rows[0]
+      return {
+        active:  Number(r?.active ?? 0),
+        inRoute: Number(r?.in_route ?? 0),
+        idle:    Number(r?.idle ?? 0),
+      }
+    },
+
     async findById(id: string, storeId: string): Promise<Deliverer | null> {
       const { rows } = await db.query(
         'SELECT * FROM deliverers WHERE id = $1 AND store_id = $2',

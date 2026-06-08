@@ -496,9 +496,14 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
-  // Resumo de pedidos atrasados (limiar vermelho) — alimenta o alerta em /orders.
+  // Resumo de pedidos atrasados (limiar vermelho) + contagem de entregadores —
+  // alimenta o alerta e o popup de detalhes em /orders.
   app.get('/orders/pickup-alert', { preHandler: requireStoreUser }, async (req) => {
-    return orderRepo.findDelayedSummary(req.actor.storeId)
+    const [summary, deliverers] = await Promise.all([
+      orderRepo.findDelayedSummary(req.actor.storeId),
+      delivererRepo.routeStatusCounts(req.actor.storeId),
+    ])
+    return { ...summary, deliverers }
   })
 
   // Dispara um push para os entregadores livres avisando sobre pedidos atrasados

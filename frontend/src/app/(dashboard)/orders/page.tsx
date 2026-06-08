@@ -52,8 +52,13 @@ export default function OrdersPage() {
   })
   const { data: deliverers = [] } = useSWR('/deliverers', (u: string) => api.get<Deliverer[]>(u))
 
-  // Resumo de atrasos (limiar vermelho) para o alerta no topo da lista.
-  interface PickupAlert { pickupDelayed: number; deliveryDelayed: number; prepRedMin: number }
+  // Resumo de atrasos (limiar vermelho) + contagem de entregadores para o alerta.
+  interface PickupAlert {
+    pickupDelayed: number
+    deliveryDelayed: number
+    prepRedMin: number
+    deliverers: { active: number; inRoute: number; idle: number }
+  }
   const { data: pickupAlert } = useSWR<PickupAlert>(
     '/orders/pickup-alert',
     (u: string) => api.get<PickupAlert>(u),
@@ -62,7 +67,9 @@ export default function OrdersPage() {
   const pickupDelayed   = pickupAlert?.pickupDelayed ?? 0
   const deliveryDelayed = pickupAlert?.deliveryDelayed ?? 0
   const totalDelayed    = pickupDelayed + deliveryDelayed
+  const delivererCounts = pickupAlert?.deliverers ?? { active: 0, inRoute: 0, idle: 0 }
 
+  const [showDetails,  setShowDetails]  = useState(false)
   const [notifying,    setNotifying]    = useState(false)
   const [notifyResult, setNotifyResult] = useState<string | null>(null)
 
@@ -73,10 +80,9 @@ export default function OrdersPage() {
       const res = await api.post<{ notified: number; count: number }>('/orders/notify-pickup', {})
       setNotifyResult(
         res.notified > 0
-          ? `Enviado a ${res.notified} entregador${res.notified !== 1 ? 'es' : ''} ✓`
-          : 'Nenhum entregador livre no momento',
+          ? `Push enviado a ${res.notified} entregador${res.notified !== 1 ? 'es' : ''} ✓`
+          : 'Nenhum entregador sem rota no momento',
       )
-      setTimeout(() => setNotifyResult(null), 4000)
     } finally {
       setNotifying(false)
     }
@@ -343,19 +349,12 @@ export default function OrdersPage() {
                   {' '}({pickupDelayed} para retirar · {deliveryDelayed} para entregar)
                 </span>
               </div>
-              {pickupDelayed > 0 && (
-                <div className="flex items-center gap-3">
-                  {notifyResult && <span className="text-xs font-medium text-red-700">{notifyResult}</span>}
-                  <button
-                    onClick={handleNotifyPickup}
-                    disabled={notifying}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                  >
-                    {notifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
-                    Notificar para retirar
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={() => { setNotifyResult(null); setShowDetails(true) }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
+              >
+                Detalhes
+              </button>
             </div>
           )}
 
@@ -554,6 +553,64 @@ export default function OrdersPage() {
           onClose={() => setAssigning(null)}
           onAssigned={(routeId) => { setAssigning(null); router.push(`/routes/${routeId}`) }}
         />
+      )}
+
+      {/* Popup de detalhes do alerta de atrasos */}
+      {showDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">Pedidos atrasados</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {totalDelayed} pedido{totalDelayed !== 1 ? 's' : ''} atrasado{totalDelayed !== 1 ? 's' : ''} ·{' '}
+                  {pickupDelayed} para retirar · {deliveryDelayed} para entregar.
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5 divide-y divide-gray-100 rounded-xl border border-gray-200">
+              <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <span className="text-gray-600">Entregadores ativos</span>
+                <span className="font-semibold text-gray-900">{delivererCounts.active}</span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <span className="text-gray-600">Em rota ativa</span>
+                <span className="font-semibold text-gray-900">{delivererCounts.inRoute}</span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <span className="text-gray-600">Sem rota ativa</span>
+                <span className="font-semibold text-gray-900">{delivererCounts.idle}</span>
+              </div>
+            </div>
+
+            {notifyResult && (
+              <p className="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-center text-sm font-medium text-gray-700">
+                {notifyResult}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleNotifyPickup}
+                disabled={notifying}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {notifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+                Notificar entregadores para retirar
+              </button>
+              <button
+                onClick={() => setShowDetails(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {deletingOrder && (
