@@ -24,5 +24,7 @@ export interface RouteOrderItem {
   deliveryCode: string
   status: string
   routePosition?: number
+  createdAt?: Date
+  pickedUpAt?: Date
   deliveredAt?: Date
 }

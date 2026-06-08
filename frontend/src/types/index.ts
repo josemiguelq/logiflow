@@ -92,6 +92,8 @@ export interface RouteOrderItem {
   deliveryCode: string
   status: string
   routePosition?: number
+  createdAt?: string
+  pickedUpAt?: string
   deliveredAt?: string
   paymentMethod: 'prepaid' | 'cash' | 'card'
   cashAmount?: number

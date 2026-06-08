@@ -90,6 +90,8 @@ export function createPgRouteRepo(db: DB) {
                 o.delivery_code,
                 o.status,
                 o.route_position,
+                o.created_at,
+                o.picked_up_at,
                 o.delivered_at
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
@@ -113,6 +115,8 @@ export function createPgRouteRepo(db: DB) {
           deliveryCode:    (o as Record<string, unknown>).delivery_code as string,
           status:          (o as Record<string, unknown>).status as string,
           routePosition:   (o as Record<string, unknown>).route_position as number | undefined,
+          createdAt:       (o as Record<string, unknown>).created_at as Date | undefined,
+          pickedUpAt:      (o as Record<string, unknown>).picked_up_at as Date | undefined,
           deliveredAt:     (o as Record<string, unknown>).delivered_at as Date | undefined,
         } as RouteOrderItem)),
       }
