@@ -367,7 +367,22 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* Incluído em todos os planos — destaque do app (sem repetir nos cards) */}
+          <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-blue-100 bg-blue-50 px-6 py-5">
+            <p className="text-center text-sm font-semibold text-blue-900">
+              📱 Todos os planos incluem o <span className="font-bold">app do entregador — grátis e ilimitado</span> e o painel de pedidos completo
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-blue-800">
+              {INCLUDED_IN_ALL.map(item => (
+                <span key={item} className="flex items-center gap-1.5">
+                  <CheckIcon />
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {PLANS.map(plan => (
               <div
                 key={plan.name}
@@ -398,25 +413,38 @@ export default function LandingPage() {
                       {plan.deliverers} entregador{plan.deliverers > 1 ? 'es' : ''}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 ${plan.highlight ? 'bg-blue-500' : 'bg-gray-100'}`}>
-                      {plan.deliveries} entregas/mês
+                      {plan.deliveries}
                     </span>
                   </div>
                 </div>
 
-                <ul className="mb-6 flex-1 space-y-2.5">
-                  {plan.features.map(feat => (
-                    <li key={feat} className="flex items-start gap-2 text-sm">
-                      {plan.highlight ? (
-                        <svg className="h-4 w-4 shrink-0 mt-0.5 text-blue-200" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      ) : (
-                        <CheckIcon />
-                      )}
-                      <span className={plan.highlight ? 'text-blue-50' : 'text-gray-600'}>{feat}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mb-6 flex-1">
+                  {plan.features.length > 0 ? (
+                    <>
+                      <p className={`mb-2.5 text-xs font-medium ${plan.highlight ? 'text-blue-100' : 'text-gray-400'}`}>
+                        Além de tudo que todo plano tem:
+                      </p>
+                      <ul className="space-y-2.5">
+                        {plan.features.map(feat => (
+                          <li key={feat} className="flex items-start gap-2 text-sm">
+                            {plan.highlight ? (
+                              <svg className="h-4 w-4 shrink-0 mt-0.5 text-blue-200" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            ) : (
+                              <CheckIcon />
+                            )}
+                            <span className={plan.highlight ? 'text-blue-50' : 'text-gray-600'}>{feat}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      Tudo o que sua operação precisa para começar.
+                    </p>
+                  )}
+                </div>
 
                 <Link
                   href="/cadastro"
