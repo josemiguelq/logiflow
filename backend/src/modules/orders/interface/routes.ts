@@ -898,25 +898,19 @@ export async function orderRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: 'Pedido não pode ser devolvido neste status' })
       }
 
-      await db.transaction(async (client) => {
-        const { rows: [{ route_id }] } = await client.query(
-          `UPDATE orders
-           SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
-           WHERE id = $1
-           RETURNING route_id`,
-          [id]
-        )
-        if (route_id) {
-          await client.query(
-            `UPDATE routes
-             SET status = 'FINISHED', finished_at = COALESCE(finished_at, now())
-             WHERE id = $1
-               AND status != 'FINISHED'
-               AND NOT EXISTS (SELECT 1 FROM orders WHERE route_id = $1)`,
-            [route_id]
-          )
-        }
-      })
+      const { rows: [{ route_id: returnedRouteId }] } = await db.query(
+        `UPDATE orders
+         SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
+         WHERE id = $1
+         RETURNING route_id`,
+        [id]
+      )
+      // Finaliza a rota se, após sair este pedido, os restantes já estiverem todos
+      // entregues/cancelados (ou a rota tiver ficado vazia). checkAndFinish cobre
+      // ambos os casos (route_id sem pedidos pendentes → FINISHED).
+      if (returnedRouteId) {
+        await routeRepo.checkAndFinish(returnedRouteId as string, req.actor.storeId)
+      }
 
       const updated = await orderRepo.findById(id, req.actor.storeId)
       if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
@@ -997,14 +991,10 @@ export async function orderRoutes(app: FastifyInstance) {
       const o = order as Record<string, unknown>
       await db.query(`DELETE FROM orders WHERE id = $1`, [id])
 
+      // Finaliza a rota se os pedidos restantes já estiverem todos concluídos
+      // (ou a rota tiver ficado vazia) — não apenas quando fica vazia.
       if (o.route_id) {
-        await db.query(
-          `UPDATE routes
-           SET status = 'FINISHED', finished_at = COALESCE(finished_at, now())
-           WHERE id = $1 AND status != 'FINISHED'
-             AND NOT EXISTS (SELECT 1 FROM orders WHERE route_id = $1)`,
-          [o.route_id]
-        )
+        await routeRepo.checkAndFinish(o.route_id as string, req.actor.storeId)
       }
 
       await invalidateStoreOrders(req.actor.storeId)
