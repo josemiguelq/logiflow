@@ -237,7 +237,7 @@ export default function LandingPage() {
             </svg>
             Entregador?{' '}
             <a
-              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.0.0/app-release.apk"
+              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.0.9%2B1/app-release.apk"
               download
               className="font-medium text-blue-600 underline underline-offset-2 hover:text-blue-800"
             >
