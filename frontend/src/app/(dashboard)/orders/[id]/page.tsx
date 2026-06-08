@@ -17,6 +17,41 @@ import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 
 const COMPLETED_STATUSES = ['DELIVERED', 'CANCELLED']
 
+const LOG_ACTION_LABEL: Record<string, string> = {
+  CREATED:           'Pedido criado',
+  ASSIGNED:          'Atribuído a entregador',
+  PICKED_UP:         'Retirado (em rota)',
+  OUT_FOR_DELIVERY:  'Saiu para entrega',
+  DELIVERED:         'Entregue',
+  CANCELLED:         'Cancelado',
+  RETURNED_TO_QUEUE: 'Devolvido à fila',
+  NOTE_CHANGED:      'Observação alterada',
+  ADDRESS_CHANGED:   'Endereço alterado',
+}
+
+const STATUS_STEP_LABEL: Record<string, string> = {
+  CREATED:          'Criação',
+  ASSIGNED:         'Atribuição',
+  PICKED_UP:        'Retirada',
+  OUT_FOR_DELIVERY: 'Saída p/ entrega',
+  DELIVERED:        'Entrega',
+}
+
+function formatSeconds(total: number): string {
+  if (total < 60) return `${total}s`
+  const m = Math.round(total / 60)
+  if (m < 60) return `${m}min`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  return rem ? `${h}h ${rem}min` : `${h}h`
+}
+
+function actorLabel(by: { type: string; name?: string }): string {
+  const who = by.name || (by.type === 'deliverer' ? 'Entregador' : by.type === 'store_user' ? 'Operador' : 'Sistema')
+  const kind = by.type === 'deliverer' ? 'entregador' : by.type === 'store_user' ? 'operador' : 'sistema'
+  return `${who} · ${kind}`
+}
+
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { data: order, isLoading, mutate } = useSWR<Order>(
@@ -226,6 +261,65 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+
+          {order.summary && order.summary.segments.length > 0 && (
+            <section className="border-t border-gray-100 pt-4">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Tempos por etapa
+              </h2>
+              <div className="space-y-1.5">
+                {order.summary.segments.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">
+                      {STATUS_STEP_LABEL[s.from] ?? s.from} → {STATUS_STEP_LABEL[s.to] ?? s.to}
+                    </span>
+                    <span className="font-medium text-gray-900">{formatSeconds(s.seconds)}</span>
+                  </div>
+                ))}
+                <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
+                  <span className="font-semibold text-gray-700">Total</span>
+                  <span className="font-bold text-gray-900">{formatSeconds(order.summary.totalSeconds)}</span>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {order.log && order.log.length > 0 && (
+            <section className="border-t border-gray-100 pt-4">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Histórico / Auditoria
+              </h2>
+              <ol className="space-y-3">
+                {[...order.log]
+                  .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+                  .map((e, i) => (
+                    <li key={i} className="flex gap-3">
+                      <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-gray-300" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                          <p className="text-sm font-medium text-gray-900">
+                            {LOG_ACTION_LABEL[e.action] ?? e.action}
+                          </p>
+                          <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
+                        </div>
+                        <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
+                        {e.action === 'NOTE_CHANGED' && e.details && (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {(e.details.from as string) || '(vazio)'} → {(e.details.to as string) || '(vazio)'}
+                          </p>
+                        )}
+                        {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
+                          <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
+                        )}
+                        {e.action === 'CANCELLED' && e.details?.reason != null && (
+                          <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+              </ol>
             </section>
           )}
         </div>

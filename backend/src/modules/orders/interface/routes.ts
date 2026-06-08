@@ -12,6 +12,7 @@ import { createOrder } from '../application/use-cases/create-order'
 import { assignDeliverer } from '../application/use-cases/assign-deliverer'
 import { confirmPickup } from '../application/use-cases/confirm-pickup'
 import { confirmDelivery } from '../application/use-cases/confirm-delivery'
+import { computeSummary } from '../application/order-summary'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
@@ -75,6 +76,21 @@ export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
   const routeRepo = createPgRouteRepo(db)
   const delivererRepo = createPgDelivererRepo(db)
+
+  // Auditoria: anexa uma entrada ao log do pedido com o autor (req.actor).
+  // Best-effort — nunca derruba a request principal.
+  const logEvent = (
+    orderId: string,
+    actor: { type: string; sub: string; name: string },
+    action: string,
+    details?: Record<string, unknown>,
+  ) =>
+    orderRepo.appendLog(orderId, {
+      at:     new Date().toISOString(),
+      by:     { type: actor.type as 'store_user' | 'deliverer' | 'system', id: actor.sub, name: actor.name },
+      action,
+      ...(details ? { details } : {}),
+    }).catch(() => { /* non-fatal */ })
 
   // ── Public tracking (no auth) ────────────────────────────────────────────
   app.get('/tracking/:orderId', async (req, reply) => {
@@ -370,6 +386,7 @@ export async function orderRoutes(app: FastifyInstance) {
         { orderRepo }
       )
 
+      logEvent(order.id, actor, 'CREATED')
       wsHub.broadcastOrderUpdate(storeId, order)
       queueNotif(storeId, order.id, 'PREPARING')
       queuePush(storeId, order.id, 'PREPARING')
@@ -416,6 +433,7 @@ export async function orderRoutes(app: FastifyInstance) {
       })
       await routeRepo.linkOrders(route.id, [order.id])
 
+      logEvent(order.id, req.actor, 'ASSIGNED', { delivererId: body.delivererId })
       wsHub.broadcastOrderUpdate(req.actor.storeId, order)
       queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
       invalidateStoreOrders(req.actor.storeId)
@@ -432,6 +450,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await orderRepo.findById(id, req.actor.storeId)
       if (!order) return reply.code(404).send({ error: 'Not found' })
       const updated = await orderRepo.updateStatus(id, 'CANCELLED')
+      logEvent(id, req.actor, 'CANCELLED')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'CANCELLED')
       invalidateStoreOrders(req.actor.storeId)
@@ -456,10 +475,12 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await orderRepo.findById(id, req.actor.storeId)
       if (!order) return reply.code(404).send({ error: 'Not found' })
 
+      const previousNote = order.notes ?? null
       await db.query(
         `UPDATE orders SET notes = $1 WHERE id = $2`,
         [note.trim() || null, id]
       )
+      logEvent(id, req.actor, 'NOTE_CHANGED', { from: previousNote, to: note.trim() || null })
       const updated = (await orderRepo.findById(id, req.actor.storeId))!
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       invalidateStoreOrders(req.actor.storeId)
@@ -498,6 +519,7 @@ export async function orderRoutes(app: FastifyInstance) {
         `UPDATE orders SET delivery_address = $1, delivery_lat = $2, delivery_lng = $3 WHERE id = $4`,
         [fullAddress, addr.lat ?? null, addr.lng ?? null, id]
       )
+      logEvent(id, req.actor, 'ADDRESS_CHANGED', { from: order.customer.address, to: fullAddress })
 
       const updated = (await orderRepo.findById(id, req.actor.storeId))!
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
@@ -596,6 +618,7 @@ export async function orderRoutes(app: FastifyInstance) {
       })
 
       for (const order of assigned) {
+        logEvent(order.id, req.actor, 'ASSIGNED', { delivererId, routeId: route.id })
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         queueNotif(req.actor.storeId, order.id, 'ASSIGNED')
       }
@@ -633,6 +656,46 @@ export async function orderRoutes(app: FastifyInstance) {
       }))
     }
   )
+
+  // Analítico do entregador: entregas de hoje + resumo do mês (entregas,
+  // canceladas por ele, viagens/rotas finalizadas). Fronteiras em America/Sao_Paulo.
+  app.get('/deliverer/analytics', { preHandler: requireDeliverer }, async (req) => {
+    const raw = (req.query as { month?: string }).month
+    const month = raw && /^\d{4}-\d{2}$/.test(raw) ? raw : new Date().toISOString().slice(0, 7)
+    const monthStart = `${month}-01`
+
+    const { rows: [r] } = await db.query(
+      `WITH bounds AS (
+         SELECT ($2::date)::timestamp AT TIME ZONE 'America/Sao_Paulo'                       AS start_ts,
+                (($2::date) + interval '1 month')::timestamp AT TIME ZONE 'America/Sao_Paulo' AS end_ts
+       )
+       SELECT
+         (SELECT count(*) FROM orders
+            WHERE deliverer_id = $1 AND status = 'DELIVERED'
+              AND (delivered_at AT TIME ZONE 'America/Sao_Paulo')::date
+                = (now() AT TIME ZONE 'America/Sao_Paulo')::date)                  AS today_deliveries,
+         (SELECT count(*) FROM orders, bounds
+            WHERE deliverer_id = $1 AND status = 'DELIVERED'
+              AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_deliveries,
+         (SELECT count(*) FROM orders, bounds
+            WHERE cancelled_by_deliverer_id = $1
+              AND cancelled_at >= bounds.start_ts AND cancelled_at < bounds.end_ts) AS month_cancelled,
+         (SELECT count(*) FROM routes, bounds
+            WHERE deliverer_id = $1 AND status = 'FINISHED'
+              AND finished_at >= bounds.start_ts AND finished_at < bounds.end_ts)   AS month_routes`,
+      [req.actor.sub, monthStart]
+    )
+    const row = r as Record<string, unknown>
+    return {
+      month,
+      today: { deliveries: Number(row.today_deliveries ?? 0) },
+      monthSummary: {
+        deliveries: Number(row.month_deliveries ?? 0),
+        cancelled:  Number(row.month_cancelled ?? 0),
+        routes:     Number(row.month_routes ?? 0),
+      },
+    }
+  })
 
   // PREPARING orders available for any deliverer in this store to claim
   app.get(
@@ -780,6 +843,7 @@ export async function orderRoutes(app: FastifyInstance) {
           { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub, code },
           { orderRepo }
         )
+        logEvent(id, req.actor, 'PICKED_UP')
         wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         invalidateDelivererOrders(req.actor.sub)
         invalidateStoreOrders(req.actor.storeId)
@@ -860,7 +924,13 @@ export async function orderRoutes(app: FastifyInstance) {
           )
         }
 
+        // Auditoria + resumo de tempos: registra a entrega e calcula os
+        // segmentos entre cada mudança de status a partir do log completo.
+        await logEvent(id, req.actor, 'DELIVERED')
         const fullOrder = await orderRepo.findById(id, req.actor.storeId)
+        if (fullOrder?.log) {
+          await orderRepo.setSummary(id, computeSummary(fullOrder.log)).catch(() => { /* non-fatal */ })
+        }
         wsHub.broadcastOrderUpdate(req.actor.storeId, fullOrder ?? order)
         queueNotif(req.actor.storeId, id, 'DELIVERED')
         invalidateDelivererOrders(req.actor.sub)
@@ -918,6 +988,7 @@ export async function orderRoutes(app: FastifyInstance) {
         }
       })
 
+      logEvent(id, req.actor, 'RETURNED_TO_QUEUE')
       const updated = await orderRepo.findById(id, req.actor.storeId)
       if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       invalidateDelivererOrders(req.actor.sub)
@@ -964,6 +1035,7 @@ export async function orderRoutes(app: FastifyInstance) {
         [id, note, lat ?? null, lng ?? null, req.actor.sub]
       )
 
+      logEvent(id, req.actor, 'CANCELLED', { reason: note })
       const updated = await orderRepo.findById(id, req.actor.storeId)
       if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'CANCELLED')
@@ -1106,7 +1178,8 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!order || order.delivererId !== req.actor.sub) {
         return reply.code(404).send({ error: 'Not found' })
       }
-      const updated = await orderRepo.updateStatus(id, 'OUT_FOR_DELIVERY')
+      const updated = await orderRepo.updateStatus(id, 'OUT_FOR_DELIVERY', { outForDeliveryAt: new Date() })
+      logEvent(id, req.actor, 'OUT_FOR_DELIVERY')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'OUT_FOR_DELIVERY')
       invalidateDelivererOrders(req.actor.sub)

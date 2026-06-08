@@ -170,7 +170,7 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
       <div className="mt-auto border-t border-gray-100 p-3 flex gap-2">
         {canTrack && (
           <Link
-            href={`/tracking/${order.id}`}
+            href={`/rastreio/${order.id}`}
             target="_blank"
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
           >

@@ -42,6 +42,18 @@ export interface Deliverer {
   createdAt: string
 }
 
+export interface OrderLogEntry {
+  at: string
+  by: { type: string; id?: string; name?: string }
+  action: string
+  details?: Record<string, unknown>
+}
+
+export interface OrderSummary {
+  totalSeconds: number
+  segments: { from: string; to: string; seconds: number }[]
+}
+
 export interface Order {
   id: string
   storeId: string
@@ -53,7 +65,10 @@ export interface Order {
   deliveryNote?: string
   createdAt: string
   pickedUpAt?: string
+  outForDeliveryAt?: string
   deliveredAt?: string
+  log?: OrderLogEntry[]
+  summary?: OrderSummary
   customer: {
     id: string
     name: string
