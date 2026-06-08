@@ -1,4 +1,4 @@
-import { Order, OrderWithDetails, OrderStatus } from '../domain/entities'
+import { Order, OrderWithDetails, OrderStatus, OrderLogEntry, OrderSummary } from '../domain/entities'
 
 export interface IOrderRepository {
   findById(id: string, storeId: string): Promise<OrderWithDetails | null>
@@ -14,6 +14,10 @@ export interface IOrderRepository {
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
   findInTransit(): Promise<InTransitOrder[]>
+  // Auditoria: anexa uma entrada ao log JSONB do pedido.
+  appendLog(orderId: string, entry: OrderLogEntry): Promise<void>
+  // Grava o resumo de tempos do pedido (na entrega).
+  setSummary(orderId: string, summary: OrderSummary): Promise<void>
   // Contagem de pedidos atrasados (limiar vermelho) por fase + limiar de retirada.
   findDelayedSummary(storeId: string): Promise<DelayedSummary>
   // Menor route_position ainda pendente (não entregue/cancelada) de uma rota.

@@ -1,5 +1,5 @@
 import { DB } from '../../../../shared/db/client'
-import { Order, OrderStatus, OrderWithDetails } from '../../domain/entities'
+import { Order, OrderStatus, OrderWithDetails, OrderLogEntry, OrderSummary } from '../../domain/entities'
 import { IOrderRepository, OrderFilters, PublicOrderView, InTransitOrder } from '../../application/ports'
 
 function mapOrderRow(row: Record<string, unknown>): Order {
@@ -53,11 +53,14 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     lng:             row.lng as number | undefined,
     createdAt:       row.created_at as Date,
     pickedUpAt:      row.picked_up_at as Date | undefined,
+    outForDeliveryAt: row.out_for_delivery_at as Date | undefined,
     deliveredAt:     row.delivered_at as Date | undefined,
     deliveryNote:    row.delivery_note as string | undefined,
     rating:          row.rating as number | undefined,
     ratingComment:   row.rating_comment as string | undefined,
     ratedAt:         row.rated_at as Date | undefined,
+    log:             (row.log as OrderLogEntry[] | null) ?? [],
+    summary:         (row.summary as OrderSummary | null) ?? undefined,
     customer: {
       id:         row.customer_id as string,
       name:       row.customer_name as string,
@@ -268,6 +271,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       let idx = 3
 
       if (extra.pickedUpAt)                  { sets.push(`picked_up_at = $${idx++}`);  params.push(extra.pickedUpAt) }
+      if (extra.outForDeliveryAt)            { sets.push(`out_for_delivery_at = $${idx++}`); params.push(extra.outForDeliveryAt) }
       if (extra.deliveredAt)                 { sets.push(`delivered_at = $${idx++}`);  params.push(extra.deliveredAt) }
       if (extra.deliveryNote !== undefined)  { sets.push(`delivery_note = $${idx++}`); params.push(extra.deliveryNote) }
 
@@ -276,6 +280,20 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         params
       )
       return mapOrderRow(rows[0] as Record<string, unknown>)
+    },
+
+    async appendLog(orderId, entry) {
+      await db.query(
+        `UPDATE orders SET log = COALESCE(log, '[]'::jsonb) || $2::jsonb WHERE id = $1`,
+        [orderId, JSON.stringify([entry])]
+      )
+    },
+
+    async setSummary(orderId, summary) {
+      await db.query(
+        `UPDATE orders SET summary = $2::jsonb WHERE id = $1`,
+        [orderId, JSON.stringify(summary)]
+      )
     },
 
     async assignDeliverer(id, delivererId, routePosition) {
