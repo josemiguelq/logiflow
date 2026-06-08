@@ -87,6 +87,32 @@ async function start() {
 
   // ── Notification worker ──────────────────────────────────────────────────
   createNotificationWorker(async (job) => {
+    // ── Pickup reminder push (fan-out para vários entregadores livres) ──
+    if (job.data.type === 'pickup_reminder') {
+      const { storeId, delivererIds, count, minutes } = job.data
+      app.log.info({ storeId, delivererCount: delivererIds.length, count, minutes }, '[push] pickup_reminder received')
+
+      const tokens = await deviceTokenRepo.findByDeliverers(delivererIds)
+      app.log.info({ storeId, tokenCount: tokens.length }, '[push] pickup_reminder tokens found')
+      if (tokens.length === 0) {
+        app.log.warn({ storeId }, '[push] pickup_reminder no tokens — skipping')
+        return
+      }
+
+      const payload = {
+        title: 'Pedidos aguardando retirada 📦',
+        body:  `${count} pedido${count !== 1 ? 's' : ''} atrasado${count !== 1 ? 's' : ''} aguardando retirada há mais de ${minutes} min`,
+        data:  { event: 'PICKUP_REMINDER' },
+      }
+      try {
+        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        app.log.info({ storeId, successCount, failureCount }, '[push] pickup_reminder FCM result')
+      } catch (err) {
+        app.log.error({ err, storeId }, '[push] pickup_reminder FCM send error')
+      }
+      return
+    }
+
     // ── Push notification ──
     if (job.data.type === 'push') {
       const { delivererId, orderId, storeId, statusEvent } = job.data

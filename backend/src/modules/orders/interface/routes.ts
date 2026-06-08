@@ -6,6 +6,7 @@ import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/a
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgOrderRepo } from '../infrastructure/repositories/pg-order-repo'
 import { createPgRouteRepo } from '../../routes/infrastructure/repositories/pg-route-repo'
+import { createPgDelivererRepo } from '../../deliverers/infrastructure/repositories/pg-deliverer-repo'
 import { generateCode } from '../../../shared/utils/code-generator'
 import { createOrder } from '../application/use-cases/create-order'
 import { assignDeliverer } from '../application/use-cases/assign-deliverer'
@@ -73,6 +74,7 @@ async function signOrdersProof<T extends { proof?: ProofPhoto; proofs: ProofPhot
 export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
   const routeRepo = createPgRouteRepo(db)
+  const delivererRepo = createPgDelivererRepo(db)
 
   // ── Public tracking (no auth) ────────────────────────────────────────────
   app.get('/tracking/:orderId', async (req, reply) => {
@@ -493,6 +495,31 @@ export async function orderRoutes(app: FastifyInstance) {
       return updated
     }
   )
+
+  // Resumo de pedidos atrasados (limiar vermelho) — alimenta o alerta em /orders.
+  app.get('/orders/pickup-alert', { preHandler: requireStoreUser }, async (req) => {
+    return orderRepo.findDelayedSummary(req.actor.storeId)
+  })
+
+  // Dispara um push para os entregadores livres avisando sobre pedidos atrasados
+  // aguardando retirada (apenas pedidos ainda NÃO retirados são contabilizados).
+  app.post('/orders/notify-pickup', { preHandler: requireStoreUser }, async (req) => {
+    const { pickupDelayed, prepRedMin } = await orderRepo.findDelayedSummary(req.actor.storeId)
+    if (pickupDelayed === 0) return { notified: 0, count: 0, minutes: prepRedMin }
+
+    const delivererIds = await delivererRepo.findIdleIds(req.actor.storeId)
+    if (delivererIds.length === 0) return { notified: 0, count: pickupDelayed, minutes: prepRedMin }
+
+    await notificationQueue.add('pickup_reminder', {
+      type:         'pickup_reminder',
+      storeId:      req.actor.storeId,
+      delivererIds,
+      count:        pickupDelayed,
+      minutes:      prepRedMin,
+    }).catch(() => { /* non-fatal */ })
+
+    return { notified: delivererIds.length, count: pickupDelayed, minutes: prepRedMin }
+  })
 
   app.post(
     '/orders/batch-assign',

@@ -371,6 +371,55 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       }))
     },
 
+    async findDelayedSummary(storeId) {
+      // Conta pedidos atrasados (limiar VERMELHO) desta loja, separados por fase:
+      // - pickup: PREPARING e ainda não retirado, parado desde created_at.
+      // - delivery: em rota (já retirado), parado desde picked_up_at.
+      // Os limiares são resolvidos por loja (override → default do catálogo), no
+      // mesmo padrão de findInTransit.
+      const { rows } = await db.query(
+        `WITH thresholds AS (
+           SELECT
+             COALESCE(
+               (SELECT ssv.value FROM store_setting_values ssv
+                  JOIN settings s ON s.id = ssv.setting_id
+                WHERE s.name = 'delay_prep_red_min' AND ssv.store_id = $1),
+               (SELECT default_value FROM settings WHERE name = 'delay_prep_red_min'),
+               '30'
+             )::int AS prep_red_min,
+             COALESCE(
+               (SELECT ssv.value FROM store_setting_values ssv
+                  JOIN settings s ON s.id = ssv.setting_id
+                WHERE s.name = 'delay_transit_red_min' AND ssv.store_id = $1),
+               (SELECT default_value FROM settings WHERE name = 'delay_transit_red_min'),
+               '60'
+             )::int AS transit_red_min
+         )
+         SELECT
+           t.prep_red_min AS prep_red_min,
+           (SELECT COUNT(*) FROM orders o
+             WHERE o.store_id = $1
+               AND o.status = 'PREPARING'
+               AND o.picked_up_at IS NULL
+               AND EXTRACT(EPOCH FROM (now() - o.created_at)) / 60 >= t.prep_red_min
+           ) AS pickup_delayed,
+           (SELECT COUNT(*) FROM orders o
+             WHERE o.store_id = $1
+               AND o.status IN ('ON_ROUTE', 'OUT_FOR_DELIVERY')
+               AND o.picked_up_at IS NOT NULL
+               AND EXTRACT(EPOCH FROM (now() - o.picked_up_at)) / 60 >= t.transit_red_min
+           ) AS delivery_delayed
+         FROM thresholds t`,
+        [storeId]
+      )
+      const r = rows[0] as Record<string, unknown>
+      return {
+        pickupDelayed:   Number(r.pickup_delayed ?? 0),
+        deliveryDelayed: Number(r.delivery_delayed ?? 0),
+        prepRedMin:      Number(r.prep_red_min ?? 30),
+      }
+    },
+
     async getMinPendingRoutePosition(routeId) {
       const { rows } = await db.query<{ pos: number | null }>(
         `SELECT MIN(route_position) AS pos

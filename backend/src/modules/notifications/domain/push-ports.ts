@@ -13,6 +13,7 @@ export interface IPushNotificationProvider {
 export interface IDeviceTokenRepository {
   upsert(delivererId: string, token: string, platform: 'android' | 'ios'): Promise<void>
   findByDeliverer(delivererId: string): Promise<string[]>
+  findByDeliverers(delivererIds: string[]): Promise<string[]>
   findByStore(storeId: string): Promise<string[]>
   delete(token: string): Promise<void>
 }

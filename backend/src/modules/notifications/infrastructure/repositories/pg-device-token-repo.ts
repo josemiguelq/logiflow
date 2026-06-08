@@ -20,6 +20,15 @@ export function createPgDeviceTokenRepo(db: DB): IDeviceTokenRepository {
       return rows.map((r) => r.token)
     },
 
+    async findByDeliverers(delivererIds) {
+      if (delivererIds.length === 0) return []
+      const { rows } = await db.query<{ token: string }>(
+        'SELECT token FROM device_tokens WHERE deliverer_id = ANY($1)',
+        [delivererIds],
+      )
+      return rows.map((r) => r.token)
+    },
+
     async findByStore(storeId) {
       const { rows } = await db.query<{ token: string }>(
         `SELECT dt.token

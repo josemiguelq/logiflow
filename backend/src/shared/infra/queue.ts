@@ -30,6 +30,13 @@ export type NotificationJob =
       storeId:      string
       statusEvent:  string
     }
+  | {
+      type:         'pickup_reminder'
+      storeId:      string
+      delivererIds: string[]
+      count:        number
+      minutes:      number
+    }
 
 export function createNotificationWorker(
   handler: (job: Job<NotificationJob>) => Promise<void>

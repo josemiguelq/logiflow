@@ -19,7 +19,10 @@ final _activeDeliveryProvider =
       .map((e) => Order.fromJson(e as Map<String, dynamic>))
       .toList();
   return all
-      .where((o) => o.status == 'ON_ROUTE' || o.status == 'OUT_FOR_DELIVERY')
+      .where((o) =>
+          o.status == 'ON_ROUTE' ||
+          o.status == 'OUT_FOR_DELIVERY' ||
+          o.status == 'DELIVERED')
       .toList()
     ..sort((a, b) => (a.routePosition ?? 99).compareTo(b.routePosition ?? 99));
 });
@@ -66,12 +69,15 @@ class DeliveryScreen extends ConsumerWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (_, i) {
                 final order = list[i];
-                // Bloqueia se a loja exige ordem e há outra parada anterior da mesma rota.
+                // Bloqueia se a loja exige ordem e há outra parada anterior da
+                // mesma rota AINDA PENDENTE (paradas já entregues não bloqueiam).
                 final blocked = enforceOrder &&
                     order.routeId != null &&
                     list.any((o) =>
                         o.routeId == order.routeId &&
-                        (o.routePosition ?? 9999) < (order.routePosition ?? 9999));
+                        o.status != 'DELIVERED' &&
+                        (o.routePosition ?? 9999) <
+                            (order.routePosition ?? 9999));
                 return _DeliveryCard(
                   order: order,
                   position: i + 1,
@@ -144,233 +150,256 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   @override
   Widget build(BuildContext context) {
     final order = widget.order;
+    final isDelivered = order.status == 'DELIVERED';
     final isOutForDelivery = order.status == 'OUT_FOR_DELIVERY';
-    final statusColor =
-        isOutForDelivery ? const Color(0xFFFFEDD5) : const Color(0xFFE0E7FF);
-    final statusText = isOutForDelivery ? 'Saiu p/ entrega' : 'Em rota';
-    final statusTextColor =
-        isOutForDelivery ? const Color(0xFFEA580C) : const Color(0xFF4F46E5);
+    final statusColor = isDelivered
+        ? const Color(0xFFDCFCE7)
+        : isOutForDelivery
+            ? const Color(0xFFFFEDD5)
+            : const Color(0xFFE0E7FF);
+    final statusText = isDelivered
+        ? 'Entregue'
+        : isOutForDelivery
+            ? 'Saiu p/ entrega'
+            : 'Em rota';
+    final statusTextColor = isDelivered
+        ? const Color(0xFF16A34A)
+        : isOutForDelivery
+            ? const Color(0xFFEA580C)
+            : const Color(0xFF4F46E5);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border:
-            const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: AppTheme.primary,
-                  radius: 16,
-                  child: Text('${widget.position}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(order.customerName,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 15),
-                          overflow: TextOverflow.ellipsis),
-                      Text('#${order.shortId}',
-                          style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 12,
-                              fontFamily: 'monospace')),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Text(statusText,
-                      style: TextStyle(
-                          color: statusTextColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500)),
-                ),
-              ],
-            ),
-          ),
-
-          // Address
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Row(
-              children: [
-                Icon(Icons.location_on_outlined,
-                    size: 16, color: Colors.grey.shade500),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(order.customerAddress,
-                      style:
-                          TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                ),
-              ],
-            ),
-          ),
-
-          // Notes row
-          if (order.notes != null && order.notes!.isNotEmpty)
-            GestureDetector(
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('Observações'),
-                  content: Text(order.notes!),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(_),
-                      child: const Text('Fechar'),
-                    ),
-                  ],
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline,
-                        size: 15, color: Color(0xFFD97706)),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Observações',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFFD97706),
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Divider(height: 1),
-          ),
-
-          // Action buttons
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-            child: Row(
-              children: [
-                // Navigate → sets OUT_FOR_DELIVERY
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _navigating ? null : _navigateTo,
-                    icon: _navigating
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.navigation_outlined, size: 18),
-                    label: const Text('Navegar'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primary,
-                      side: const BorderSide(color: AppTheme.primary),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Confirm delivery
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: widget.deliverBlocked
-                        ? null
-                        : () => _showDeliveryDialog(context),
-                    icon: const Icon(Icons.check_circle_outline, size: 18),
-                    label: const Text('Entregar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF16A34A),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (widget.deliverBlocked)
+    // Pedidos entregues permanecem na lista, porém opacos e sem ações.
+    return Opacity(
+      opacity: isDelivered ? 0.55 : 1.0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border:
+              const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: Row(
                 children: [
-                  const Icon(Icons.lock_outline, size: 14, color: Color(0xFF92400E)),
-                  const SizedBox(width: 6),
+                  CircleAvatar(
+                    backgroundColor: AppTheme.primary,
+                    radius: 16,
+                    child: Text('${widget.position}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      'Conclua a entrega anterior da rota primeiro.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(order.customerName,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 15),
+                            overflow: TextOverflow.ellipsis),
+                        Text('#${order.shortId}',
+                            style: TextStyle(
+                                color: Colors.grey.shade500,
+                                fontSize: 12,
+                                fontFamily: 'monospace')),
+                      ],
                     ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Text(statusText,
+                        style: TextStyle(
+                            color: statusTextColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500)),
                   ),
                 ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: (_navigating || _returning || _cancelling)
-                        ? null
-                        : () => _returnToQueue(context),
-                    icon: _returning
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : Icon(Icons.undo_rounded,
-                            size: 16, color: Colors.grey.shade500),
-                    label: Text('Devolver à fila',
+
+            // Address
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on_outlined,
+                      size: 16, color: Colors.grey.shade500),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(order.customerAddress,
                         style: TextStyle(
                             color: Colors.grey.shade600, fontSize: 13)),
                   ),
-                ),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: (_navigating || _returning || _cancelling)
-                        ? null
-                        : () => _showCancelSheet(context),
-                    icon: _cancelling
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Color(0xFFDC2626)))
-                        : const Icon(Icons.close,
-                            size: 16, color: Color(0xFFDC2626)),
-                    label: const Text('Cancelar entrega',
-                        style:
-                            TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+                ],
+              ),
+            ),
+
+            // Notes row
+            if (order.notes != null && order.notes!.isNotEmpty)
+              GestureDetector(
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Observações'),
+                    content: Text(order.notes!),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(_),
+                        child: const Text('Fechar'),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        ],
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline,
+                          size: 15, color: Color(0xFFD97706)),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Observações',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFFD97706),
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Entregue: sem divisória e sem ações — apenas um respiro no rodapé.
+            if (isDelivered) const SizedBox(height: 14),
+
+            if (!isDelivered) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Divider(height: 1),
+              ),
+              // Action buttons
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: Row(
+                  children: [
+                    // Navigate → sets OUT_FOR_DELIVERY
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _navigating ? null : _navigateTo,
+                        icon: _navigating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.navigation_outlined, size: 18),
+                        label: const Text('Navegar'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primary,
+                          side: const BorderSide(color: AppTheme.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Confirm delivery
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: widget.deliverBlocked
+                            ? null
+                            : () => _showDeliveryDialog(context),
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text('Entregar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.deliverBlocked)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_outline,
+                          size: 14, color: Color(0xFF92400E)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Conclua a entrega anterior da rota primeiro.',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: (_navigating || _returning || _cancelling)
+                            ? null
+                            : () => _returnToQueue(context),
+                        icon: _returning
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : Icon(Icons.undo_rounded,
+                                size: 16, color: Colors.grey.shade500),
+                        label: Text('Devolver à fila',
+                            style: TextStyle(
+                                color: Colors.grey.shade600, fontSize: 13)),
+                      ),
+                    ),
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: (_navigating || _returning || _cancelling)
+                            ? null
+                            : () => _showCancelSheet(context),
+                        icon: _cancelling
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Color(0xFFDC2626)))
+                            : const Icon(Icons.close,
+                                size: 16, color: Color(0xFFDC2626)),
+                        label: const Text('Cancelar entrega',
+                            style: TextStyle(
+                                color: Color(0xFFDC2626), fontSize: 13)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -626,7 +655,8 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEA580C)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEA580C)),
             child: const Text('Estou ciente'),
           ),
         ],

@@ -14,8 +14,16 @@ export interface IOrderRepository {
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
   findInTransit(): Promise<InTransitOrder[]>
+  // Contagem de pedidos atrasados (limiar vermelho) por fase + limiar de retirada.
+  findDelayedSummary(storeId: string): Promise<DelayedSummary>
   // Menor route_position ainda pendente (não entregue/cancelada) de uma rota.
   getMinPendingRoutePosition(routeId: string): Promise<number | null>
+}
+
+export interface DelayedSummary {
+  pickupDelayed:   number  // PREPARING ainda não retirados, atrasados (vermelho)
+  deliveryDelayed: number  // em rota, atrasados (vermelho)
+  prepRedMin:      number  // limiar de retirada da loja (minutos)
 }
 
 export interface InTransitOrder {

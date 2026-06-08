@@ -29,6 +29,21 @@ export function createPgDelivererRepo(db: DB) {
       return rows.map((r: Record<string, unknown>) => { const { passwordHash: _, ...rest } = mapRow(r); return rest })
     },
 
+    // IDs dos entregadores ativos SEM rota em andamento (nenhuma rota
+    // CREATED/STARTED) — usado para notificar quem está livre para retirar.
+    async findIdleIds(storeId: string): Promise<string[]> {
+      const { rows } = await db.query<{ id: string }>(
+        `SELECT d.id FROM deliverers d
+         WHERE d.store_id = $1 AND d.is_active = true
+           AND NOT EXISTS (
+             SELECT 1 FROM routes r
+             WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+           )`,
+        [storeId]
+      )
+      return rows.map(r => r.id)
+    },
+
     async findById(id: string, storeId: string): Promise<Deliverer | null> {
       const { rows } = await db.query(
         'SELECT * FROM deliverers WHERE id = $1 AND store_id = $2',
