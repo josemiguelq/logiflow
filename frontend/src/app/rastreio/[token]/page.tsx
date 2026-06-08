@@ -19,7 +19,7 @@ interface StoreTheme {
 interface PublicOrder {
   id:            string
   status:        string
-  customer:      { name: string; address: string }
+  customer:      { name: string; address: string; lat?: number | null; lng?: number | null }
   deliverer?:    { name: string }
   routePosition?: number
   isCurrentStop:  boolean
@@ -212,6 +212,9 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
               delivererLat={order.delivererLat!}
               delivererLng={order.delivererLng!}
               delivererName={order.deliverer?.name ?? 'Entregador'}
+              destLat={order.customer.lat ?? undefined}
+              destLng={order.customer.lng ?? undefined}
+              destLabel={order.customer.address}
             />
           </div>
         )}

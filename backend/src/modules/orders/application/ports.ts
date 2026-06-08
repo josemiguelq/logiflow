@@ -52,7 +52,7 @@ export interface PublicOrderView {
   id: string
   status: string
   deliveryCode: string
-  customer: { name: string; address: string }
+  customer: { name: string; address: string; lat?: number; lng?: number }
   deliverer?: { name: string; lat?: number; lng?: number }
   routePosition?: number
   isCurrentStop: boolean

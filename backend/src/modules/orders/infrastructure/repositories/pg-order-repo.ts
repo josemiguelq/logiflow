@@ -317,7 +317,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         id:            o.id,
         status:        o.status,
         deliveryCode:  o.deliveryCode,
-        customer:      { name: o.customer.name, address: o.customer.address },
+        customer:      { name: o.customer.name, address: o.customer.address, lat: o.customer.lat, lng: o.customer.lng },
         deliverer:     o.deliverer ? { name: o.deliverer.name } : undefined,
         routePosition: o.routePosition,
         isCurrentStop: o.routePosition === 1,
