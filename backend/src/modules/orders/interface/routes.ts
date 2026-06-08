@@ -80,12 +80,31 @@ export async function orderRoutes(app: FastifyInstance) {
   app.get('/tracking/:orderId', async (req, reply) => {
     const { orderId } = req.params as { orderId: string }
 
-    // Authenticated users (JWT present and valid) always bypass expiry
+    // Authenticated users (JWT present and valid) always bypass expiry + senha
     let isAuthenticated = false
     try {
       await req.jwtVerify()
       isAuthenticated = true
     } catch { /* public access — ok */ }
+
+    // Gate de senha para acesso público: exige os últimos 4 dígitos do telefone
+    // do cliente ANTES de retornar qualquer dado do pedido.
+    if (!isAuthenticated) {
+      const { rows: [row] } = await db.query(
+        `SELECT c.phone FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
+        [orderId]
+      )
+      if (!row) return reply.code(404).send({ error: 'Not found' })
+      const expected = ((row as Record<string, unknown>).phone as string ?? '').replace(/\D/g, '').slice(-4)
+      const provided = ((req.headers['x-tracking-code'] as string | undefined) ?? '').replace(/\D/g, '').slice(-4)
+      if (!expected || provided !== expected) {
+        reply.header('WWW-Authenticate', 'TrackingCode realm="rastreio"')
+        return reply.code(401).send({
+          error: 'password_required',
+          hint:  'Informe os últimos 4 dígitos do telefone do cliente',
+        })
+      }
+    }
 
     const order = await orderRepo.getPublic(orderId)
     if (!order) return reply.code(404).send({ error: 'Not found' })

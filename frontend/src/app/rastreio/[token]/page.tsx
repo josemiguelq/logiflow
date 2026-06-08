@@ -1,8 +1,8 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { MapPin, Truck, CheckCircle, XCircle, Clock, Star, Package } from 'lucide-react'
+import { MapPin, Truck, CheckCircle, XCircle, Clock, Star, Package, Lock, Loader2 } from 'lucide-react'
 
 const TrackingMap = dynamic(() => import('./_map'), { ssr: false })
 
@@ -59,31 +59,69 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
   const [order,   setOrder]   = useState<PublicOrder | null>(null)
   const [loading, setLoading] = useState(true)
   const [expired, setExpired] = useState(false)
+  const [authed,  setAuthed]  = useState(false)
+  const [needsCode,  setNeedsCode]  = useState(false)
+  const [codeInput,  setCodeInput]  = useState('')
+  const [codeError,  setCodeError]  = useState<string | null>(null)
+  const [verifying,  setVerifying]  = useState(false)
+  // Senha (últimos 4 dígitos do telefone) enviada no header X-Tracking-Code.
+  const codeRef = useRef<string | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch(`${BASE}/tracking/${token}`)
-        if (res.status === 410) { setExpired(true); return }
-        if (res.ok) {
-          const data: PublicOrder = await res.json()
-          setOrder(data)
-          // Apply store custom theme as CSS variables
-          if (data.storeTheme) {
-            const r = document.documentElement
-            r.style.setProperty('--color-primary',   data.storeTheme.primary)
-            r.style.setProperty('--color-secondary', data.storeTheme.secondary)
-            r.style.setProperty('--color-accent',    data.storeTheme.accent)
-          }
-        }
-      } finally {
-        setLoading(false)
+  const load = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = {}
+      if (codeRef.current) headers['X-Tracking-Code'] = codeRef.current
+      const res = await fetch(`${BASE}/tracking/${token}`, { headers })
+
+      if (res.status === 410) { setExpired(true); setNeedsCode(false); setAuthed(false); return }
+
+      if (res.status === 401) {
+        // Senha exigida (ou incorreta, se já havíamos enviado uma).
+        if (codeRef.current) { setCodeError('Senha incorreta. Tente novamente.'); codeRef.current = null }
+        setAuthed(false)
+        setNeedsCode(true)
+        setOrder(null)
+        return
       }
+
+      if (res.ok) {
+        const data: PublicOrder = await res.json()
+        setOrder(data)
+        setNeedsCode(false)
+        setCodeError(null)
+        setAuthed(true)
+        // Apply store custom theme as CSS variables
+        if (data.storeTheme) {
+          const r = document.documentElement
+          r.style.setProperty('--color-primary',   data.storeTheme.primary)
+          r.style.setProperty('--color-secondary', data.storeTheme.secondary)
+          r.style.setProperty('--color-accent',    data.storeTheme.accent)
+        }
+      }
+    } finally {
+      setLoading(false)
     }
-    load()
+  }, [token])
+
+  // Primeira tentativa (sem senha → backend responde 401 e pedimos a senha).
+  useEffect(() => { load() }, [load])
+
+  // Polling só depois de desbloqueado.
+  useEffect(() => {
+    if (!authed) return
     const interval = setInterval(load, 15_000)
     return () => clearInterval(interval)
-  }, [token])
+  }, [authed, load])
+
+  async function submitCode(e: React.FormEvent) {
+    e.preventDefault()
+    if (codeInput.length !== 4) { setCodeError('Informe os 4 dígitos.'); return }
+    setVerifying(true)
+    setCodeError(null)
+    codeRef.current = codeInput
+    await load()
+    setVerifying(false)
+  }
 
   if (loading) {
     return (
@@ -106,6 +144,50 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
             O prazo de 15 minutos após a finalização foi atingido.
           </p>
         </div>
+      </div>
+    )
+  }
+
+  if (needsCode) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <form
+          onSubmit={submitCode}
+          className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm"
+        >
+          <div className="mb-4 flex flex-col items-center text-center">
+            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+              <Lock className="h-7 w-7 text-gray-500" />
+            </div>
+            <h1 className="text-lg font-bold text-gray-900">Rastreamento protegido</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Para acompanhar este pedido, informe os <strong>últimos 4 dígitos do telefone</strong> do cliente.
+            </p>
+          </div>
+
+          <input
+            inputMode="numeric"
+            autoFocus
+            maxLength={4}
+            value={codeInput}
+            onChange={(e) => { setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 4)); setCodeError(null) }}
+            placeholder="0000"
+            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] text-gray-900 focus:border-gray-900 focus:outline-none"
+          />
+
+          {codeError && (
+            <p className="mt-2 text-center text-sm text-red-600">{codeError}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={verifying || codeInput.length !== 4}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-40 transition-colors"
+          >
+            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+            {verifying ? 'Verificando…' : 'Acessar rastreamento'}
+          </button>
+        </form>
       </div>
     )
   }

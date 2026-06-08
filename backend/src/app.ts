@@ -43,7 +43,7 @@ export function buildApp() {
       cb(new Error('Not allowed by CORS'), false)
     },
     credentials:    true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tracking-Code'],
     methods:        ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
 
