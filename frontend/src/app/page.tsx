@@ -20,8 +20,8 @@ const FEATURES = [
   },
   {
     icon: '📸',
-    title: 'Confirmação com foto e código',
-    desc: 'Exija foto da entrega e código de 4 dígitos do destinatário para garantir que o pedido chegou ao lugar certo.',
+    title: 'Confirmação com código e foto',
+    desc: 'Exija o código de 4 dígitos do destinatário (em todos os planos, ativável pela loja) e, nos planos Pro, também a foto da entrega — garantindo que o pedido chegou ao lugar certo.',
   },
   {
     icon: '💬',
@@ -107,7 +107,7 @@ const BENEFITS = [
 const INCLUDED_IN_ALL = [
   'App do entregador — grátis e ilimitado',
   'Painel de pedidos',
-  'Confirmação com foto e código',
+  'Confirmação por código na entrega (ativável pela loja)',
 ]
 
 // Cada card lista apenas o que é EXCLUSIVO daquele plano (além do que todos têm).
@@ -135,7 +135,7 @@ const PLANS = [
     price: 80,
     deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
-    features: ['Link de rastreamento para o cliente', 'Avaliação de entregadores', 'Exportação CSV com filtros'],
+    features: ['Link de rastreamento para o cliente', 'Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros'],
     highlight: false,
     badge: null,
   },
@@ -144,7 +144,7 @@ const PLANS = [
     price: 100,
     deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
-    features: ['Link de rastreamento para o cliente', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
+    features: ['Link de rastreamento para o cliente', 'Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
     highlight: true,
     badge: 'Mais popular',
   },
@@ -153,7 +153,7 @@ const PLANS = [
     price: 120,
     deliverers: 'Entregadores ilimitados',
     deliveries: 'Sem limite de entregas',
-    features: ['Link de rastreamento para o cliente', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
+    features: ['Link de rastreamento para o cliente', 'Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
     highlight: false,
     badge: null,
   },
