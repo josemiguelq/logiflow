@@ -12,7 +12,8 @@ import { useAccess } from '@/hooks/useAccess'
 import { OrderCard } from '@/components/orders/order-card'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/badge'
-import { STATUS_LABELS, formatDate } from '@/lib/utils'
+import { STATUS_LABELS, formatDate, getDelayInfo } from '@/lib/utils'
+import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { NewOrderModal } from '@/components/orders/new-order-modal'
 import { AssignModal } from '@/components/orders/assign-modal'
 import { LiveMap, MapDestination } from '@/components/map'
@@ -99,7 +100,24 @@ export default function OrdersPage() {
 
   // Split active (cards) vs completed (table). Table shows only orders created today.
   const isToday = (d: string) => new Date(d).toDateString() === new Date().toDateString()
-  const activeOrders    = filteredOrders.filter(o => !COMPLETED_STATUSES.includes(o.status))
+
+  // Atrasados primeiro: ordena por severidade (vermelho > amarelo > nenhum) e,
+  // dentro do mesmo nível, pelos mais atrasados. Mesma lógica usada nos cards.
+  // `now` é reavaliado a cada render (a lista recarrega via SWR a cada 30s).
+  const now = Date.now()
+  const delayThresholds = useDelayThresholds()
+  const delayRank = (o: Order) => {
+    const d = getDelayInfo(o, delayThresholds, now)
+    return d.level === 'red' ? 2 : d.level === 'yellow' ? 1 : 0
+  }
+  const activeOrders = filteredOrders
+    .filter(o => !COMPLETED_STATUSES.includes(o.status))
+    .sort((a, b) => {
+      const ra = delayRank(a), rb = delayRank(b)
+      if (ra !== rb) return rb - ra
+      if (ra === 0) return 0 // preserva ordem original entre não-atrasados (sort estável)
+      return getDelayInfo(b, delayThresholds, now).minutes - getDelayInfo(a, delayThresholds, now).minutes
+    })
   const completedOrders = filteredOrders.filter(o =>
     COMPLETED_STATUSES.includes(o.status) && isToday(o.createdAt)
   )

@@ -1,8 +1,13 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
+import { redis } from '../../../shared/infra/redis'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
+
+// Duration buckets só mudam quando entregas são concluídas; 6h de staleness é
+// aceitável para o analítico. Chave inclui o storeId → isolamento por loja.
+const DURATION_BUCKETS_TTL = 6 * 60 * 60 // 6h em segundos
 
 export async function analyticsRoutes(app: FastifyInstance) {
   const guard = [requireStoreUser, requireScope('analytics:view')]
@@ -178,6 +183,13 @@ export async function analyticsRoutes(app: FastifyInstance) {
       to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     }).parse(req.query)
 
+    const storeId = req.actor.storeId
+    const cacheKey = `analytics:duration-buckets:store:${storeId}:${from}:${to}`
+    try {
+      const cached = await redis.get(cacheKey)
+      if (cached) return JSON.parse(cached)
+    } catch { /* fall through to DB */ }
+
     const { rows } = await db.query(
       `SELECT
          TO_CHAR(gs.day::date, 'YYYY-MM-DD') AS date,
@@ -201,10 +213,10 @@ export async function analyticsRoutes(app: FastifyInstance) {
        ) o ON o.day = DATE_TRUNC('day', gs.day AT TIME ZONE 'UTC')
        GROUP BY gs.day
        ORDER BY gs.day ASC`,
-      [req.actor.storeId, from, to]
+      [storeId, from, to]
     )
 
-    return rows.map((r: Record<string, unknown>) => ({
+    const result = rows.map((r: Record<string, unknown>) => ({
       date:        r.date as string,
       prepLt30:    r.prep_lt30 as number,
       prep30to45:  r.prep_30to45 as number,
@@ -213,6 +225,9 @@ export async function analyticsRoutes(app: FastifyInstance) {
       route30to45: r.route_30to45 as number,
       routeGt45:   r.route_gt45 as number,
     }))
+
+    redis.setex(cacheKey, DURATION_BUCKETS_TTL, JSON.stringify(result)).catch(() => {})
+    return result
   })
 
   // GET /analytics/deliverers/summary
