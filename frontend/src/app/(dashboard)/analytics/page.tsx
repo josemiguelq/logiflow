@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
+  ResponsiveContainer, Legend,
 } from 'recharts'
 import {
   Package, Clock, Truck, CheckCircle, XCircle, Navigation,
@@ -47,6 +47,16 @@ interface OrderDurations {
   avgRouteMin: number
   avgTotalMin: number
   count:       number
+}
+
+interface DurationBucketDay {
+  date:        string
+  prepLt30:    number
+  prep30to45:  number
+  prepGt45:    number
+  routeLt30:   number
+  route30to45: number
+  routeGt45:   number
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -138,6 +148,65 @@ function CustomTooltip({ active, payload, label }: {
   )
 }
 
+// ── Stacked duration-bucket chart ───────────────────────────────────────────────
+
+interface BucketPoint { label: string; lt30: number; mid: number; gt45: number }
+
+function DurationBucketChart({
+  title, subtitle, data, loading,
+}: {
+  title: string
+  subtitle: string
+  data: BucketPoint[]
+  loading: boolean
+}) {
+  const empty = data.every(d => d.lt30 + d.mid + d.gt45 === 0)
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+        <p className="text-xs text-gray-400">{subtitle}</p>
+      </div>
+
+      {loading ? (
+        <div className="flex h-52 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+        </div>
+      ) : empty ? (
+        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <Clock className="mb-2 h-8 w-8" />
+          <p className="text-sm">Nenhuma entrega concluída no período</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={data} barSize={data.length > 20 ? 10 : 18}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: '#9CA3AF' }}
+              axisLine={false}
+              tickLine={false}
+              interval={data.length > 20 ? 4 : 0}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: '#9CA3AF' }}
+              axisLine={false}
+              tickLine={false}
+              allowDecimals={false}
+              width={28}
+            />
+            <Tooltip cursor={{ fill: '#F9FAFB' }} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="lt30" stackId="a" name="< 30 min"  fill="#16A34A" />
+            <Bar dataKey="mid"  stackId="a" name="30–45 min" fill="#F59E0B" />
+            <Bar dataKey="gt45" stackId="a" name="> 45 min"  fill="#DC2626" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const ACCESS = { scope: 'analytics:view' } as const
@@ -189,6 +258,27 @@ export default function AnalyticsPage() {
     `/analytics/orders/durations?${durParams}`,
     fetcher
   )
+
+  const [bucketRange, setBucketRange] = useState(thisMonthRange)
+  const bucketParams = new URLSearchParams({ from: bucketRange.from, to: bucketRange.to })
+  const { data: buckets = [], isLoading: bucketsLoading } = useSWR<DurationBucketDay[]>(
+    `/analytics/orders/duration-buckets?${bucketParams}`,
+    fetcher,
+    { keepPreviousData: true }
+  )
+
+  const prepBucketData: BucketPoint[] = buckets.map(b => ({
+    label: fmtDay(b.date),
+    lt30:  b.prepLt30,
+    mid:   b.prep30to45,
+    gt45:  b.prepGt45,
+  }))
+  const routeBucketData: BucketPoint[] = buckets.map(b => ({
+    label: fmtDay(b.date),
+    lt30:  b.routeLt30,
+    mid:   b.route30to45,
+    gt45:  b.routeGt45,
+  }))
 
   const chartData = (timeseries ?? []).map(p => ({
     label: scale === 'day' ? fmtDay(p.date) : fmtMonth(p.date),
@@ -457,6 +547,72 @@ export default function AnalyticsPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Order duration distribution (stacked by time bucket, per day) */}
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center gap-2 mr-auto">
+            <Clock className="h-4 w-4 text-blue-500" />
+            <span className="text-sm font-semibold text-gray-800">Pedidos por faixa de tempo</span>
+          </div>
+
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            {([
+              { label: 'Hoje',        range: todayRange()     },
+              { label: 'Este mês',    range: thisMonthRange() },
+              { label: 'Mês passado', range: lastMonthRange() },
+            ] as const).map(({ label, range }, i) => {
+              const active = bucketRange.from === range.from && bucketRange.to === range.to
+              return (
+                <button
+                  key={label}
+                  onClick={() => setBucketRange(range)}
+                  className={`px-3 py-1.5 transition-colors ${i > 0 ? 'border-l border-gray-200' : ''} ${
+                    active ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600">
+            <Calendar className="h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="date"
+              value={bucketRange.from}
+              max={bucketRange.to}
+              onChange={e => setBucketRange(r => ({ ...r, from: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="date"
+              value={bucketRange.to}
+              min={bucketRange.from}
+              max={toDateStr(new Date())}
+              onChange={e => setBucketRange(r => ({ ...r, to: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+          <DurationBucketChart
+            title="Tempo de preparação"
+            subtitle="criação → coleta"
+            data={prepBucketData}
+            loading={bucketsLoading && buckets.length === 0}
+          />
+          <DurationBucketChart
+            title="Tempo em rota"
+            subtitle="coleta → entrega"
+            data={routeBucketData}
+            loading={bucketsLoading && buckets.length === 0}
+          />
+        </div>
       </div>
 
       {/* Delivered orders per deliverer */}

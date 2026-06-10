@@ -12,6 +12,7 @@ import 'features/orders/order_selection_screen.dart';
 import 'features/orders/route_planning_screen.dart';
 import 'features/orders/pickup_confirmation_screen.dart';
 import 'features/delivery/delivery_screen.dart';
+import 'features/analytics/analytics_screen.dart';
 import 'features/tracking/location_service.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
@@ -52,6 +53,7 @@ final _router = GoRouter(
       ),
     ),
     GoRoute(path: '/delivery', builder: (_, __) => const DeliveryScreen()),
+    GoRoute(path: '/analitico', builder: (_, __) => const AnalyticsScreen()),
   ],
 );
 

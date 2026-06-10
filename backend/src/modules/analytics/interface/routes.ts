@@ -171,6 +171,50 @@ export async function analyticsRoutes(app: FastifyInstance) {
     }
   })
 
+  // GET /analytics/orders/duration-buckets?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get('/analytics/orders/duration-buckets', { preHandler: guard }, async (req) => {
+    const { from, to } = z.object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).parse(req.query)
+
+    const { rows } = await db.query(
+      `SELECT
+         TO_CHAR(gs.day::date, 'YYYY-MM-DD') AS date,
+         COALESCE(SUM((o.prep_min  IS NOT NULL AND o.prep_min  <  30)::int), 0)::int AS prep_lt30,
+         COALESCE(SUM((o.prep_min  >= 30 AND o.prep_min  < 45)::int), 0)::int        AS prep_30to45,
+         COALESCE(SUM((o.prep_min  >= 45)::int), 0)::int                             AS prep_gt45,
+         COALESCE(SUM((o.route_min IS NOT NULL AND o.route_min <  30)::int), 0)::int AS route_lt30,
+         COALESCE(SUM((o.route_min >= 30 AND o.route_min < 45)::int), 0)::int        AS route_30to45,
+         COALESCE(SUM((o.route_min >= 45)::int), 0)::int                             AS route_gt45
+       FROM generate_series($2::date, $3::date, '1 day'::interval) AS gs(day)
+       LEFT JOIN (
+         SELECT
+           DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')        AS day,
+           EXTRACT(EPOCH FROM (picked_up_at - created_at))  / 60   AS prep_min,
+           EXTRACT(EPOCH FROM (delivered_at - picked_up_at)) / 60  AS route_min
+         FROM orders
+         WHERE store_id = $1
+           AND status = 'DELIVERED'
+           AND created_at >= $2::date
+           AND created_at <  $3::date + INTERVAL '1 day'
+       ) o ON o.day = DATE_TRUNC('day', gs.day AT TIME ZONE 'UTC')
+       GROUP BY gs.day
+       ORDER BY gs.day ASC`,
+      [req.actor.storeId, from, to]
+    )
+
+    return rows.map((r: Record<string, unknown>) => ({
+      date:        r.date as string,
+      prepLt30:    r.prep_lt30 as number,
+      prep30to45:  r.prep_30to45 as number,
+      prepGt45:    r.prep_gt45 as number,
+      routeLt30:   r.route_lt30 as number,
+      route30to45: r.route_30to45 as number,
+      routeGt45:   r.route_gt45 as number,
+    }))
+  })
+
   // GET /analytics/deliverers/summary
   app.get('/analytics/deliverers/summary', { preHandler: guard }, async (req) => {
     const { rows } = await db.query(

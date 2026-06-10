@@ -132,6 +132,14 @@ class AppDrawer extends ConsumerWidget {
                   },
                 ),
                 _DrawerTile(
+                  icon: LucideIcons.barChart3,
+                  label: 'Analítico',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    context.go('/analitico');
+                  },
+                ),
+                _DrawerTile(
                   icon: Icons.logout,
                   label: 'Sair',
                   color: const Color(0xFFDC2626),
