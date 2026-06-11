@@ -113,6 +113,31 @@ async function start() {
       return
     }
 
+    // ── Entregador concluiu a rota e há pedidos prontos esperando ──
+    if (job.data.type === 'route_done_waiting') {
+      const { storeId, delivererId, count } = job.data
+      app.log.info({ storeId, delivererId, count }, '[push] route_done_waiting received')
+
+      const tokens = await deviceTokenRepo.findByDeliverer(delivererId)
+      if (tokens.length === 0) {
+        app.log.warn({ storeId, delivererId }, '[push] route_done_waiting no tokens — skipping')
+        return
+      }
+
+      const payload = {
+        title: 'Rota concluída ✅',
+        body:  `Há ${count} pedido${count !== 1 ? 's' : ''} pronto${count !== 1 ? 's' : ''} esperando — volte para retirada.`,
+        data:  { event: 'ROUTE_DONE_WAITING' },
+      }
+      try {
+        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        app.log.info({ storeId, delivererId, successCount, failureCount }, '[push] route_done_waiting FCM result')
+      } catch (err) {
+        app.log.error({ err, storeId, delivererId }, '[push] route_done_waiting FCM send error')
+      }
+      return
+    }
+
     // ── Push notification ──
     if (job.data.type === 'push') {
       const { delivererId, orderId, storeId, statusEvent } = job.data

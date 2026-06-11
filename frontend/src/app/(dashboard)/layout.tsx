@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { WsProvider, useWs } from '@/hooks/WsContext'
 import { formatDelayDuration } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { OperatorAlerts } from '@/components/alerts/operator-alerts'
 
 interface DeliveryNotif {
   id:            string
@@ -154,6 +155,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      <OperatorAlerts />
 
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
         {children}

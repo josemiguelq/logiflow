@@ -70,6 +70,15 @@ export const wsHub = {
     this.broadcastToStore(storeId, 'order_delayed', payload)
   },
 
+  // Entregador ficou livre (rota concluída) e há pedidos prontos esperando —
+  // o painel do operador mostra um aviso para organizar/atribuir.
+  broadcastDelivererIdleWaiting(
+    storeId: string,
+    payload: { delivererId: string; delivererName?: string; waitingCount: number }
+  ) {
+    this.broadcastToStore(storeId, 'deliverer_idle_waiting', payload)
+  },
+
   broadcastOrderReservation(storeId: string, orderId: string, delivererId: string | null) {
     if (delivererId) {
       this.broadcastToStore(storeId, 'order_reserved', { orderId, delivererId })

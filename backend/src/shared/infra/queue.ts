@@ -37,6 +37,13 @@ export type NotificationJob =
       count:        number
       minutes:      number
     }
+  | {
+      // Entregador acabou de concluir a rota e há pedidos prontos esperando.
+      type:        'route_done_waiting'
+      storeId:     string
+      delivererId: string
+      count:       number
+    }
 
 export function createNotificationWorker(
   handler: (job: Job<NotificationJob>) => Promise<void>

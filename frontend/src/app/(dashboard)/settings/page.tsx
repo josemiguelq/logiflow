@@ -23,6 +23,7 @@ interface StoreSettings {
   delayTransitYellowMin: number
   delayTransitRedMin:    number
   deliveryProximityMeters:  number
+  notifyOperatorDelayedThreshold: number
   deliveryRequireProximity: boolean
   enforceDeliveryOrder:     boolean
 }
@@ -191,6 +192,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [proximityMeters,    setProximityMeters]    = useState(100)
   const [requireProximity,   setRequireProximity]   = useState(false)
   const [enforceOrder,       setEnforceOrder]       = useState(false)
+  const [delayedThreshold,   setDelayedThreshold]   = useState(3)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -211,6 +213,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setProximityMeters(data.deliveryProximityMeters ?? 100)
       setRequireProximity(data.deliveryRequireProximity ?? false)
       setEnforceOrder(data.enforceDeliveryOrder ?? false)
+      setDelayedThreshold(data.notifyOperatorDelayedThreshold ?? 3)
     }
   }, [data])
 
@@ -233,6 +236,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         deliveryProximityMeters:  proximityMeters,
         deliveryRequireProximity: requireProximity,
         enforceDeliveryOrder:     enforceOrder,
+        notifyOperatorDelayedThreshold: delayedThreshold,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
@@ -375,6 +379,27 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
               <div className="grid grid-cols-2 gap-3">
                 <DelayField label="Amarela + alerta" value={delayTransitYellow} onChange={setDelayTransitYellow} />
                 <DelayField label="Vermelha" value={delayTransitRed} onChange={setDelayTransitRed} />
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Alerta sonoro do operador</p>
+              <p className="mb-2 text-xs text-gray-500">
+                Nº de pedidos atrasados aguardando retirada que dispara o som de alerta no painel.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-600">Pedidos atrasados</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={delayedThreshold}
+                      onChange={(e) => setDelayedThreshold(Math.max(1, Math.min(100, Number(e.target.value) || 0)))}
+                    />
+                    <span className="text-xs text-gray-500">pedidos</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

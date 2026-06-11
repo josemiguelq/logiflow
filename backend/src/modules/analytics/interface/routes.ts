@@ -251,4 +251,90 @@ export async function analyticsRoutes(app: FastifyInstance) {
       total:     summary['AVAILABLE']! + summary['ON_ROUTE']! + summary['OFFLINE']!,
     }
   })
+
+  // GET /analytics/idle-time?days=14
+  // Por dia: tempo ocioso dos entregadores (AVAILABLE sem rota) x espera média
+  // dos pedidos (created_at→picked_up_at). O cruzamento evita falso positivo de
+  // um dia tranquilo: ocioso só conta como "desperdício" quando havia demanda
+  // esperando (espera acima do limiar saudável da loja).
+  app.get('/analytics/idle-time', { preHandler: guard }, async (req) => {
+    const { days } = z.object({
+      days: z.coerce.number().int().min(1).max(90).default(14),
+    }).parse(req.query)
+    const storeId = req.actor.storeId
+
+    // Limiar "saudável" de espera (min) — reusa o limiar vermelho de preparo.
+    const { rows: [refRow] } = await db.query(
+      `SELECT COALESCE(ssv.value, s.default_value) AS value
+       FROM settings s
+       LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
+       WHERE s.name = 'delay_prep_red_min'`,
+      [storeId]
+    )
+    const referenceLagMin = parseInt((refRow as { value?: string } | undefined)?.value ?? '30', 10) || 30
+
+    // Tempo ocioso por dia: soma da sobreposição dos segmentos AVAILABLE de cada
+    // entregador com cada dia. Segmentos abertos são fechados em now() e limitados
+    // a 10h para não inflar caso o app não registre OFFLINE.
+    const { rows: idleRows } = await db.query(
+      `WITH segs AS (
+         SELECT status, changed_at AS s,
+           LEAST(
+             COALESCE(LEAD(changed_at) OVER (PARTITION BY deliverer_id ORDER BY changed_at), now()),
+             changed_at + interval '10 hours'
+           ) AS e
+         FROM deliverer_status_history
+         WHERE store_id = $1
+       ),
+       days AS (
+         SELECT generate_series((now()::date - ($2::int - 1)), now()::date, interval '1 day')::date AS day
+       )
+       SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
+         COALESCE(SUM(
+           EXTRACT(EPOCH FROM (
+             LEAST(segs.e, (d.day + interval '1 day')) - GREATEST(segs.s, d.day::timestamptz)
+           ))
+         ), 0) / 60.0 AS idle_minutes
+       FROM days d
+       LEFT JOIN segs
+         ON segs.status = 'AVAILABLE'
+        AND segs.e > d.day::timestamptz
+        AND segs.s < (d.day + interval '1 day')
+       GROUP BY d.day
+       ORDER BY d.day`,
+      [storeId, days]
+    )
+
+    // Espera média (created→picked_up) dos pedidos retirados em cada dia.
+    const { rows: lagRows } = await db.query(
+      `SELECT to_char(date_trunc('day', picked_up_at), 'YYYY-MM-DD') AS date,
+              AVG(EXTRACT(EPOCH FROM (picked_up_at - created_at))) / 60.0 AS avg_lag_minutes,
+              COUNT(*)::int AS picked_count
+       FROM orders
+       WHERE store_id = $1 AND picked_up_at IS NOT NULL
+         AND picked_up_at >= (now()::date - ($2::int - 1))
+       GROUP BY 1`,
+      [storeId, days]
+    )
+    const lagByDate = new Map(
+      (lagRows as { date: string; avg_lag_minutes: string; picked_count: number }[])
+        .map(r => [r.date, { avgLag: Number(r.avg_lag_minutes), picked: r.picked_count }])
+    )
+
+    const series = (idleRows as { date: string; idle_minutes: string }[]).map(r => {
+      const idleMinutes = Math.round(Number(r.idle_minutes))
+      const lag = lagByDate.get(r.date)
+      const avgPickupLagMinutes = lag ? Math.round(lag.avgLag) : 0
+      const pickedCount = lag?.picked ?? 0
+      // Fator de pressão: 0 quando a espera está saudável, cresce até 1 conforme
+      // a espera passa do limiar. Ocioso só "pesa" quando havia fila esperando.
+      const pressure = Math.max(0, Math.min(1, (avgPickupLagMinutes - referenceLagMin) / referenceLagMin))
+      const wastedCapacityMinutes = Math.round(idleMinutes * pressure)
+      return { date: r.date, idleMinutes, avgPickupLagMinutes, pickedCount, wastedCapacityMinutes }
+    })
+
+    const totalWasted = series.reduce((a, s) => a + s.wastedCapacityMinutes, 0)
+    const totalIdle   = series.reduce((a, s) => a + s.idleMinutes, 0)
+    return { referenceLagMin, totalIdleMinutes: totalIdle, totalWastedMinutes: totalWasted, series }
+  })
 }

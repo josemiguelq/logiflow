@@ -938,7 +938,30 @@ export async function orderRoutes(app: FastifyInstance) {
 
         // Auto-finish route when all its orders are delivered/cancelled
         if (order.routeId) {
-          await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
+          const finished = await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
+          // Rota fechou → entregador ficou livre. Se há pedidos prontos esperando,
+          // avisa o entregador (push) e o operador (WS) para organizar logo.
+          if (finished) {
+            const { rows: [waiting] } = await db.query(
+              `SELECT COUNT(*)::int AS count FROM orders
+               WHERE store_id = $1 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+              [req.actor.storeId]
+            )
+            const waitingCount = (waiting as { count: number } | undefined)?.count ?? 0
+            if (waitingCount > 0) {
+              notificationQueue.add('route_done_waiting', {
+                type:        'route_done_waiting',
+                storeId:     req.actor.storeId,
+                delivererId: req.actor.sub,
+                count:       waitingCount,
+              }).catch(() => { /* non-fatal */ })
+              wsHub.broadcastDelivererIdleWaiting(req.actor.storeId, {
+                delivererId:   req.actor.sub,
+                delivererName: req.actor.name,
+                waitingCount,
+              })
+            }
+          }
         }
 
         return order

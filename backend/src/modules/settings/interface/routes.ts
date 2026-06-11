@@ -188,6 +188,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       deliveryProximityMeters:  parseInt(s.delivery_proximity_meters ?? '100'),
       deliveryRequireProximity: s.delivery_require_proximity === 'true',
       enforceDeliveryOrder:     s.enforce_delivery_order     === 'true',
+      notifyOperatorDelayedThreshold: parseInt(s.notify_operator_delayed_threshold ?? '3'),
     }
   })
 
@@ -208,6 +209,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     deliveryProximityMeters:  z.number().int().min(10).max(5000).optional(),
     deliveryRequireProximity: z.boolean().optional(),
     enforceDeliveryOrder:     z.boolean().optional(),
+    notifyOperatorDelayedThreshold: z.number().int().min(1).max(100).optional(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
   })
@@ -241,6 +243,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['deliveryProximityMeters',  'delivery_proximity_meters'],
       ['deliveryRequireProximity', 'delivery_require_proximity'],
       ['enforceDeliveryOrder',     'enforce_delivery_order'],
+      ['notifyOperatorDelayedThreshold', 'notify_operator_delayed_threshold'],
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))
