@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { OrderStatus, canTransition } from '../domain/entities'
+import { OrderStatus, canTransition, CANCEL_REASON_CODES } from '../domain/entities'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
@@ -398,6 +398,11 @@ export async function orderRoutes(app: FastifyInstance) {
   const assignSchema = z.object({
     delivererId:   z.string().uuid(),
     routePosition: z.number().int().min(1).optional(),
+    // Para adicionar a uma rota ativa existente do entregador em vez de criar
+    // uma nova: routeId da rota + orderIds com a ordem final completa dos pedidos
+    // da rota (incluindo o que está sendo atribuído).
+    routeId:       z.string().uuid().optional(),
+    orderIds:      z.array(z.string().uuid()).optional(),
   })
 
   app.patch(
@@ -415,10 +420,81 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
       if (d.status === 'OFFLINE') return reply.code(409).send({ error: 'Entregador está OFFLINE e não pode receber pedidos.' })
 
+      // ── Adicionar a uma rota ativa existente do entregador ────────────────
+      if (body.routeId) {
+        const { rows: [route] } = await db.query(
+          `SELECT id, store_id, status FROM routes WHERE id = $1 AND store_id = $2 AND deliverer_id = $3`,
+          [body.routeId, req.actor.storeId, body.delivererId]
+        )
+        if (!route) return reply.code(404).send({ error: 'Rota não encontrada para este entregador' })
+        if (route.status !== 'CREATED' && route.status !== 'STARTED') {
+          return reply.code(409).send({ error: 'A rota não está mais ativa' })
+        }
+
+        // O pedido precisa estar livre (PREPARING, sem entregador) para entrar na rota.
+        const { rows: [target] } = await db.query(
+          `SELECT status, deliverer_id FROM orders WHERE id = $1 AND store_id = $2`,
+          [id, req.actor.storeId]
+        )
+        if (!target) return reply.code(404).send({ error: 'Pedido não encontrado' })
+        if (target.status !== 'PREPARING' || target.deliverer_id) {
+          return reply.code(409).send({ error: 'Pedido não está disponível para atribuição' })
+        }
+
+        // orderIds = ordem final completa; deve conter os pedidos atuais da rota + este pedido.
+        const { rows: currentRows } = await db.query(
+          `SELECT id FROM orders WHERE route_id = $1`, [body.routeId]
+        )
+        const currentIds = (currentRows as Record<string, unknown>[]).map(r => r.id as string)
+        const desiredIds = body.orderIds && body.orderIds.length > 0
+          ? body.orderIds
+          : [...currentIds, id]   // sem ordem informada: novo pedido vai para o fim
+        const desiredSet = new Set(desiredIds)
+        if (!desiredIds.includes(id) || currentIds.some(cid => !desiredSet.has(cid))
+            || desiredIds.length !== currentIds.length + 1) {
+          return reply.code(400).send({ error: 'Lista de ordenação inválida para a rota' })
+        }
+
+        // Rota já iniciada → entregador está na rua; entra como ON_ROUTE (já retirado).
+        // Rota só criada → entra como ASSIGNED (será retirado junto da rota).
+        const newStatus = route.status === 'STARTED' ? 'ON_ROUTE' : 'ASSIGNED'
+        const markPickedUp = newStatus === 'ON_ROUTE'
+        const { rowCount } = await db.query(
+          `UPDATE orders
+              SET status = $1::order_status, deliverer_id = $2, route_id = $3,
+                  picked_up_at = CASE WHEN $6 THEN now() ELSE picked_up_at END,
+                  reserved_by = NULL, reserved_at = NULL
+            WHERE id = $4 AND store_id = $5 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+          [newStatus, body.delivererId, body.routeId, id, req.actor.storeId, markPickedUp]
+        )
+        if ((rowCount ?? 0) === 0) {
+          return reply.code(409).send({ error: 'Pedido já foi atribuído. Atualize a lista.' })
+        }
+
+        // Renumera as posições conforme a ordem final.
+        for (let i = 0; i < desiredIds.length; i++) {
+          await db.query(
+            `UPDATE orders SET route_position = $1 WHERE id = $2 AND route_id = $3`,
+            [i + 1, desiredIds[i], body.routeId]
+          )
+        }
+
+        logEvent(id, req.actor, 'ASSIGNED', { delivererId: body.delivererId, routeId: body.routeId })
+        const fullRoute = await routeRepo.findById(body.routeId, req.actor.storeId)
+        const orders = await orderRepo.findByRoute(body.routeId)
+        for (const o of orders) wsHub.broadcastOrderUpdate(req.actor.storeId, o)
+        queueNotif(req.actor.storeId, id, newStatus)
+        invalidateStoreOrders(req.actor.storeId)
+        invalidateDelivererOrders(body.delivererId)
+        const order = await orderRepo.findById(id, req.actor.storeId)
+        return { route: fullRoute, order }
+      }
+
+      // ── Criar uma nova rota só com este pedido (comportamento padrão) ─────
       let order
       try {
         order = await assignDeliverer(
-          { orderId: id, storeId: req.actor.storeId, ...body },
+          { orderId: id, storeId: req.actor.storeId, delivererId: body.delivererId, routePosition: body.routePosition },
           { orderRepo }
         )
       } catch (err: unknown) {
@@ -993,52 +1069,95 @@ export async function orderRoutes(app: FastifyInstance) {
   )
 
   // Deliverer cancels an order in transit (client refused, problem, etc.)
+  // Lógica comum de cancelamento pelo entregador (v1 e v2). Valida dono/status,
+  // grava o cancelamento e dispara os efeitos colaterais. Retorna um erro de
+  // resposta (statusCode + message) ou null em caso de sucesso.
+  const cancelOrderByDeliverer = async (
+    req: { params: unknown; actor: { sub: string; storeId: string; type: string; name: string } },
+    args: { deliveryNote: string | null; cancelReason: string | null; lat?: number; lng?: number },
+  ): Promise<{ code: number; error: string } | null> => {
+    const { id } = req.params as { id: string }
+
+    const { rows: [order] } = await db.query(
+      `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+      [id, req.actor.storeId]
+    )
+    if (!order) return { code: 404, error: 'Pedido não encontrado' }
+    if ((order as Record<string, unknown>).deliverer_id !== req.actor.sub) {
+      return { code: 403, error: 'Você não é o entregador deste pedido' }
+    }
+    const status = (order as Record<string, unknown>).status as string
+    if (!['ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY'].includes(status)) {
+      return { code: 409, error: 'Pedido não pode ser cancelado neste status' }
+    }
+
+    await db.query(
+      `UPDATE orders
+       SET status                     = 'CANCELLED',
+           delivery_note              = $2,
+           cancel_reason              = $3,
+           cancel_lat                 = $4,
+           cancel_lng                 = $5,
+           cancelled_by_deliverer_id  = $6,
+           cancelled_at               = now()
+       WHERE id = $1`,
+      [id, args.deliveryNote, args.cancelReason, args.lat ?? null, args.lng ?? null, req.actor.sub]
+    )
+
+    logEvent(id, req.actor, 'CANCELLED', { reasonCode: args.cancelReason, note: args.deliveryNote })
+    const updated = await orderRepo.findById(id, req.actor.storeId)
+    if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+    queueNotif(req.actor.storeId, id, 'CANCELLED')
+    invalidateDelivererOrders(req.actor.sub)
+    invalidateStoreOrders(req.actor.storeId)
+
+    const routeId = (order as Record<string, unknown>).route_id as string | undefined
+    if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+
+    return null
+  }
+
+  // v1 (legado): motivo livre obrigatório em `note`, sem código. Mantido para
+  // apps antigos já publicados.
   app.post(
     '/deliverer/orders/:id/cancel',
     { preHandler: requireDeliverer },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
       const { note, lat, lng } = z.object({
         note: z.string().min(1),
         lat:  z.number().optional(),
         lng:  z.number().optional(),
       }).parse(req.body)
 
-      const { rows: [order] } = await db.query(
-        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
-        [id, req.actor.storeId]
-      )
-      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
-      if ((order as Record<string, unknown>).deliverer_id !== req.actor.sub) {
-        return reply.code(403).send({ error: 'Você não é o entregador deste pedido' })
-      }
-      const status = (order as Record<string, unknown>).status as string
-      if (!['ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY'].includes(status)) {
-        return reply.code(409).send({ error: 'Pedido não pode ser cancelado neste status' })
-      }
+      const err = await cancelOrderByDeliverer(req, {
+        deliveryNote: note, cancelReason: null, lat, lng,
+      })
+      if (err) return reply.code(err.code).send({ error: err.error })
+      return { ok: true }
+    }
+  )
 
-      await db.query(
-        `UPDATE orders
-         SET status                     = 'CANCELLED',
-             delivery_note              = $2,
-             cancel_lat                 = $3,
-             cancel_lng                 = $4,
-             cancelled_by_deliverer_id  = $5,
-             cancelled_at               = now()
-         WHERE id = $1`,
-        [id, note, lat ?? null, lng ?? null, req.actor.sub]
-      )
+  // v2: motivo estruturado obrigatório (código). Texto livre só quando 'OTHER'.
+  app.post(
+    '/deliverer/orders/:id/cancel-v2',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { reasonCode, note, lat, lng } = z.object({
+        reasonCode: z.enum(CANCEL_REASON_CODES),
+        note:       z.string().optional(),
+        lat:        z.number().optional(),
+        lng:        z.number().optional(),
+      }).parse(req.body)
 
-      logEvent(id, req.actor, 'CANCELLED', { reason: note })
-      const updated = await orderRepo.findById(id, req.actor.storeId)
-      if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
-      queueNotif(req.actor.storeId, id, 'CANCELLED')
-      invalidateDelivererOrders(req.actor.sub)
-      invalidateStoreOrders(req.actor.storeId)
-
-      const routeId = (order as Record<string, unknown>).route_id as string | undefined
-      if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
-
+      // Texto livre do 'OTHER' é opcional: sem ele o cancelamento ainda agrupa
+      // em OTHER no relatório. Motivos fixos nunca têm texto.
+      const trimmedNote = note?.trim()
+      const err = await cancelOrderByDeliverer(req, {
+        deliveryNote: reasonCode === 'OTHER' ? (trimmedNote || null) : null,
+        cancelReason: reasonCode,
+        lat, lng,
+      })
+      if (err) return reply.code(err.code).send({ error: err.error })
       return { ok: true }
     }
   )
