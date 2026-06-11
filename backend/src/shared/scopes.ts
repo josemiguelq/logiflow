@@ -1,6 +1,7 @@
 export const SCOPES = [
   // Orders
   'orders:view',
+  'orders:view_all',
   'orders:create',
   'orders:cancel',
   'orders:delete',
@@ -48,6 +49,7 @@ export type Scope = typeof SCOPES[number]
 
 export const SCOPE_LABELS: Record<Scope, string> = {
   'orders:view':          'Pedidos — visualizar',
+  'orders:view_all':      'Pedidos — ver todos da loja (não só os próprios)',
   'orders:create':        'Pedidos — criar',
   'orders:cancel':        'Pedidos — cancelar',
   'orders:delete':        'Pedidos — excluir permanentemente',
@@ -76,7 +78,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
 }
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
-  { label: 'Pedidos',        scopes: ['orders:view', 'orders:create', 'orders:cancel', 'orders:delete'] },
+  { label: 'Pedidos',        scopes: ['orders:view', 'orders:view_all', 'orders:create', 'orders:cancel', 'orders:delete'] },
   { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
   { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track'] },
@@ -94,7 +96,7 @@ export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
       'routes:delete', 'orders:delete', 'customers:delete'].includes(s)
   ),
   ASSISTANT: [
-    'orders:view', 'orders:create',
+    'orders:view', 'orders:view_all', 'orders:create',
     'routes:view',
     'customers:view', 'customers:create', 'customers:edit',
     'deliverers:view',

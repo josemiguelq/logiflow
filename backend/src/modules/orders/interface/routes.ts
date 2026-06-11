@@ -288,11 +288,16 @@ export async function orderRoutes(app: FastifyInstance) {
     async (req) => {
       const query = req.query as Record<string, string>
       const { status, delivererId, page, limit } = query
-      const isAssistant = req.actor.type === 'store_user' && req.actor.role === 'ASSISTANT'
+      // Assistants only see orders they created, unless granted the
+      // 'orders:view_all' scope (then they see the whole store, like managers).
+      const restrictToOwn =
+        req.actor.type === 'store_user' &&
+        req.actor.role === 'ASSISTANT' &&
+        !(req.actor.scopes ?? []).includes('orders:view_all')
       const filters = {
         status:          status as OrderStatus | undefined,
         delivererId,
-        createdByUserId: isAssistant ? req.actor.sub : undefined,
+        createdByUserId: restrictToOwn ? req.actor.sub : undefined,
         page:            page ? Number(page) : 1,
         limit:           limit ? Number(limit) : 50,
       }
@@ -315,7 +320,11 @@ export async function orderRoutes(app: FastifyInstance) {
     { preHandler: requireStoreUser },
     async (req) => {
       const { status, customerName, dateFrom, dateTo, page } = req.query as Record<string, string>
-      const isAssistant = req.actor.type === 'store_user' && req.actor.role === 'ASSISTANT'
+      // Assistants only see their own orders unless granted 'orders:view_all'.
+      const restrictToOwn =
+        req.actor.type === 'store_user' &&
+        req.actor.role === 'ASSISTANT' &&
+        !(req.actor.scopes ?? []).includes('orders:view_all')
       const limit   = 20
       const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
 
@@ -324,7 +333,7 @@ export async function orderRoutes(app: FastifyInstance) {
         customerName:    customerName || undefined,
         dateFrom:        dateFrom || undefined,
         dateTo:          dateTo || undefined,
-        createdByUserId: isAssistant ? req.actor.sub : undefined,
+        createdByUserId: restrictToOwn ? req.actor.sub : undefined,
         page:            pageNum,
         limit,
       })
