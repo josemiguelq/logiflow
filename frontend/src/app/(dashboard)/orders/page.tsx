@@ -16,6 +16,7 @@ import { STATUS_LABELS, formatDate, getDelayInfo } from '@/lib/utils'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { NewOrderModal } from '@/components/orders/new-order-modal'
 import { AssignModal } from '@/components/orders/assign-modal'
+import { CancelOrderModal } from '@/components/orders/cancel-order-modal'
 import { LiveMap, MapDestination } from '@/components/map'
 
 const STATUSES: (OrderStatus | '')[] = [
@@ -34,6 +35,7 @@ export default function OrdersPage() {
   const [search,       setSearch]       = useState('')
   const [showNewOrder,    setShowNewOrder]    = useState(false)
   const [assigning,       setAssigning]       = useState<Order | null>(null)
+  const [cancelling,      setCancelling]      = useState<Order | null>(null)
   const [view,            setView]            = useState<'cards' | 'map'>('cards')
   const [deletingOrder,   setDeletingOrder]   = useState<Order | null>(null)
   const [deleteLoading,   setDeleteLoading]   = useState(false)
@@ -146,10 +148,6 @@ export default function OrdersPage() {
       selectionOrder: batchMode && batchSelected.includes(o.id) ? batchSelected.indexOf(o.id) + 1 : undefined,
     }))
 
-  async function handleCancel(orderId: string) {
-    await api.patch(`/orders/${orderId}/cancel`, {})
-    mutate()
-  }
 
   async function handleDelete(order: Order) {
     setDeletingOrder(order)
@@ -419,7 +417,7 @@ export default function OrdersPage() {
                           <OrderCard
                             order={order}
                             onAssign={!batchMode ? () => setAssigning(order) : undefined}
-                            onCancel={!batchMode ? () => handleCancel(order.id) : undefined}
+                            onCancel={!batchMode ? () => setCancelling(order) : undefined}
                             onSaveNote={!batchMode ? (note) => handleSaveNote(order.id, note) : undefined}
                             onDelete={!batchMode && can({ scope: 'orders:delete' }) ? () => handleDelete(order) : undefined}
                           />
@@ -570,6 +568,13 @@ export default function OrdersPage() {
           order={assigning}
           onClose={() => setAssigning(null)}
           onAssigned={(routeId) => { setAssigning(null); router.push(`/routes/${routeId}`) }}
+        />
+      )}
+      {cancelling && (
+        <CancelOrderModal
+          order={cancelling}
+          onClose={() => setCancelling(null)}
+          onCancelled={() => { setCancelling(null); mutate() }}
         />
       )}
 

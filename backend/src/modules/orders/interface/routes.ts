@@ -523,10 +523,23 @@ export async function orderRoutes(app: FastifyInstance) {
     { preHandler: requireStoreUser },
     async (req, reply) => {
       const { id } = req.params as { id: string }
+      const { reasonCode, note } = z.object({
+        reasonCode: z.enum(CANCEL_REASON_CODES).optional(),
+        note:       z.string().optional(),
+      }).parse(req.body ?? {})
+
       const order = await orderRepo.findById(id, req.actor.storeId)
       if (!order) return reply.code(404).send({ error: 'Not found' })
-      const updated = await orderRepo.updateStatus(id, 'CANCELLED')
-      logEvent(id, req.actor, 'CANCELLED')
+
+      // cancel_reason guarda o código; delivery_note só recebe o texto livre do 'OTHER'.
+      const trimmedNote = note?.trim()
+      await db.query(
+        `UPDATE orders SET status = 'CANCELLED', cancel_reason = $2, delivery_note = $3
+         WHERE id = $1 AND store_id = $4`,
+        [id, reasonCode ?? null, reasonCode === 'OTHER' ? (trimmedNote || null) : null, req.actor.storeId]
+      )
+      const updated = await orderRepo.findById(id, req.actor.storeId)
+      logEvent(id, req.actor, 'CANCELLED', { reasonCode, note: trimmedNote })
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'CANCELLED')
       invalidateStoreOrders(req.actor.storeId)
