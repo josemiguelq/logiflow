@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
 import { requireDeliverer, requireStoreUser } from '../../../shared/middleware/auth'
+import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgTrackingRepo } from '../infrastructure/repositories/pg-tracking-repo'
 import { wsHub } from '../../../shared/infra/websocket'
 
@@ -64,7 +65,7 @@ export async function trackingRoutes(app: FastifyInstance) {
   // Store user gets latest position of a deliverer
   app.get(
     '/tracking/deliverer/:delivererId/latest',
-    { preHandler: requireStoreUser },
+    { preHandler: [requireStoreUser, requireScope('deliverers:track')] },
     async (req, reply) => {
       const { delivererId } = req.params as { delivererId: string }
       if (!await assertDelivererInStore(delivererId, req.actor.storeId)) {
@@ -76,7 +77,7 @@ export async function trackingRoutes(app: FastifyInstance) {
 
   app.get(
     '/tracking/deliverer/:delivererId/history',
-    { preHandler: requireStoreUser },
+    { preHandler: [requireStoreUser, requireScope('deliverers:track')] },
     async (req, reply) => {
       const { delivererId } = req.params as { delivererId: string }
       if (!await assertDelivererInStore(delivererId, req.actor.storeId)) {

@@ -21,6 +21,7 @@ export const SCOPES = [
   'deliverers:view',
   'deliverers:manage',
   'deliverers:force_offline',
+  'deliverers:track',
 
   // Users
   'users:view',
@@ -61,6 +62,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'deliverers:view':          'Entregadores — visualizar',
   'deliverers:manage':        'Entregadores — gerenciar',
   'deliverers:force_offline': 'Entregadores — forçar offline',
+  'deliverers:track':         'Entregadores — rastrear localização',
   'users:view':           'Usuários — visualizar',
   'users:create':         'Usuários — criar',
   'users:delete':         'Usuários — remover',
@@ -77,7 +79,7 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Pedidos',        scopes: ['orders:view', 'orders:create', 'orders:cancel', 'orders:delete'] },
   { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
-  { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline'] },
+  { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track'] },
   { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete'] },
   { label: 'WhatsApp',       scopes: ['whatsapp:view', 'whatsapp:connect'] },
   { label: 'Analítico',      scopes: ['analytics:view'] },

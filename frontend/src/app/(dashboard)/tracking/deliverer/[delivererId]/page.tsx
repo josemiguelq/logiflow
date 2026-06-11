@@ -1,12 +1,14 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, MapPin, Package, Navigation, Truck, Route, Table2, X, CheckCircle2, Clock } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
+import { useAccess } from '@/hooks/useAccess'
 import { StatusBadge } from '@/components/ui/badge'
 import { LiveMap, MapDestination, ProofMarker } from '@/components/map'
 import { STATUS_LABELS, formatDate } from '@/lib/utils'
@@ -26,6 +28,14 @@ function yesterdayStr() {
 export default function DelivererTrackingPage({ params }: { params: Promise<{ delivererId: string }> }) {
   const { delivererId } = use(params)
   const { on, onReconnect } = useWs()
+  const router = useRouter()
+
+  // Proteção por scope: bloqueia acesso forçado pela URL sem permissão de rastreio.
+  const { can } = useAccess()
+  const canTrack = can({ scope: 'deliverers:track' })
+  useEffect(() => {
+    if (!canTrack) router.replace('/deliverers')
+  }, [canTrack, router])
 
   const [from, setFrom]           = useState(todayStr)
   const [to,   setTo]             = useState(todayStr)
@@ -93,6 +103,8 @@ export default function DelivererTrackingPage({ params }: { params: Promise<{ de
     ON_ROUTE:  'bg-orange-500',
     OFFLINE:   'bg-gray-300',
   }
+
+  if (!canTrack) return null
 
   return (
     <div className="flex h-full flex-col">

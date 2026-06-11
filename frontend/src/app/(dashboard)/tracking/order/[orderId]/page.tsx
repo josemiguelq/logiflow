@@ -7,6 +7,7 @@ import { ArrowLeft, Truck, MapPin, Navigation } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
+import { useAccess } from '@/hooks/useAccess'
 import { StatusBadge } from '@/components/ui/badge'
 import { LiveMap, MapDestination } from '@/components/map'
 
@@ -15,6 +16,8 @@ interface LocationPoint { lat: number; lng: number; recorded_at: string }
 export default function OrderTrackingPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = use(params)
   const { on, onReconnect } = useWs()
+  const { can } = useAccess()
+  const canTrackDeliverer = can({ scope: 'deliverers:track' })
 
   const { data: order, mutate } = useSWR<Order>(
     `/orders/${orderId}`,
@@ -25,7 +28,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ orderI
   const delivererId = order?.deliverer?.id
 
   const { data: location, mutate: mutateLocation } = useSWR<LocationPoint>(
-    delivererId ? `/tracking/deliverer/${delivererId}/latest` : null,
+    // Só busca a posição ao vivo se o usuário tiver permissão de rastreio.
+    delivererId && canTrackDeliverer ? `/tracking/deliverer/${delivererId}/latest` : null,
     (u: string) => api.get<LocationPoint>(u),
     { refreshInterval: 10_000 }
   )
@@ -116,13 +120,15 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ orderI
                       {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
                     </div>
                   )}
-                  <Link
-                    href={`/tracking/deliverer/${order.deliverer.id}`}
-                    className="mt-2 block text-xs hover:underline"
-                    style={{ color: 'var(--color-primary)' }}
-                  >
-                    Ver todos os pedidos deste entregador
-                  </Link>
+                  {canTrackDeliverer && (
+                    <Link
+                      href={`/tracking/deliverer/${order.deliverer.id}`}
+                      className="mt-2 block text-xs hover:underline"
+                      style={{ color: 'var(--color-primary)' }}
+                    >
+                      Ver todos os pedidos deste entregador
+                    </Link>
+                  )}
                 </section>
               ) : (
                 <section className="rounded-xl border border-dashed border-gray-200 p-3.5 text-center text-sm text-gray-400">

@@ -141,7 +141,7 @@ export default function DeliverersPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Link>
-                        {!inactive && (
+                        {!inactive && can({ scope: 'deliverers:track' }) && (
                           <Link
                             href={`/tracking/deliverer/${d.id}`}
                             className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
