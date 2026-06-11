@@ -15,6 +15,18 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   CANCELLED:        'Cancelado',
 }
 
+// Motivos de cancelamento (código → label). Mesmos códigos do backend/app.
+export const CANCEL_REASON_LABELS: Record<string, string> = {
+  MISSING_ITEM: 'Pedido faltando',
+  WRONG_ORDER:  'Cliente/Pedido errado',
+  OTHER:        'Outro',
+}
+
+export function cancelReasonLabel(code?: string): string | undefined {
+  if (!code) return undefined
+  return CANCEL_REASON_LABELS[code] ?? code
+}
+
 export const STATUS_COLORS: Record<OrderStatus, string> = {
   PREPARING:        'bg-yellow-100 text-yellow-800',
   ASSIGNED:         'bg-blue-100 text-blue-800',

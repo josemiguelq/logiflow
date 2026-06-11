@@ -63,6 +63,7 @@ export interface Order {
   deliveryCode: string
   notes?: string
   deliveryNote?: string
+  cancelReason?: string
   createdAt: string
   pickedUpAt?: string
   outForDeliveryAt?: string

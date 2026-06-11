@@ -1041,8 +1041,16 @@ class _CancelDeliverySheet extends StatefulWidget {
   State<_CancelDeliverySheet> createState() => _CancelDeliverySheetState();
 }
 
+// Motivos de cancelamento (código → label). Mesmos códigos do backend.
+const _cancelReasons = <({String code, String label})>[
+  (code: 'MISSING_ITEM', label: 'Pedido faltando'),
+  (code: 'WRONG_ORDER', label: 'Cliente/Pedido errado'),
+  (code: 'OTHER', label: 'Outro'),
+];
+
 class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
   final _noteCtrl = TextEditingController();
+  String? _reasonCode;
   bool _loading = false;
   String? _error;
 
@@ -1053,11 +1061,12 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
   }
 
   Future<void> _cancel() async {
-    final note = _noteCtrl.text.trim();
-    if (note.isEmpty) {
-      setState(() => _error = 'Descreva o motivo do cancelamento');
+    final reasonCode = _reasonCode;
+    if (reasonCode == null) {
+      setState(() => _error = 'Selecione o motivo do cancelamento');
       return;
     }
+    final note = _noteCtrl.text.trim();
     setState(() {
       _loading = true;
       _error = null;
@@ -1071,9 +1080,10 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
       } catch (_) {}
 
       await ApiClient().dio.post(
-        '/deliverer/orders/${widget.order.id}/cancel',
+        '/deliverer/orders/${widget.order.id}/cancel-v2',
         data: {
-          'note': note,
+          'reasonCode': reasonCode,
+          if (reasonCode == 'OTHER' && note.isNotEmpty) 'note': note,
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
         },
@@ -1127,32 +1137,57 @@ class _CancelDeliverySheetState extends State<_CancelDeliverySheet> {
           Text('#${widget.order.shortId} · ${widget.order.customerAddress}',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 20),
-          TextField(
-            controller: _noteCtrl,
-            maxLines: 3,
-            maxLength: 500,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              labelText: 'Motivo do cancelamento (obrigatório)',
-              hintText: 'Ex: cliente recusou, endereço não encontrado...',
-              alignLabelWithHint: true,
-              counterText: '',
-              prefixIcon:
-                  const Icon(Icons.notes_outlined, color: Color(0xFFDC2626)),
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide:
-                    const BorderSide(color: Color(0xFFDC2626), width: 2),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFFFCDD2)),
+          Text('Motivo do cancelamento',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700)),
+          const SizedBox(height: 8),
+          for (final reason in _cancelReasons)
+            RadioListTile<String>(
+              value: reason.code,
+              groupValue: _reasonCode,
+              onChanged: _loading
+                  ? null
+                  : (v) => setState(() {
+                        _reasonCode = v;
+                        _error = null;
+                      }),
+              title: Text(reason.label, style: const TextStyle(fontSize: 15)),
+              activeColor: const Color(0xFFDC2626),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+            ),
+          if (_reasonCode == 'OTHER') ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _noteCtrl,
+              maxLines: 3,
+              maxLength: 500,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: 'Descreva o motivo (opcional)',
+                hintText: 'Ex: cliente recusou, endereço não encontrado...',
+                alignLabelWithHint: true,
+                counterText: '',
+                prefixIcon:
+                    const Icon(Icons.notes_outlined, color: Color(0xFFDC2626)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: Color(0xFFDC2626), width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFFFCDD2)),
+                ),
               ),
             ),
-          ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!,

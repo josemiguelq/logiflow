@@ -132,16 +132,31 @@ export function createPgDelivererRepo(db: DB) {
     },
 
     async suggestForOrder(storeId: string) {
+      // Além da contagem de pedidos ativos, traz a rota ativa do entregador
+      // (CREATED/STARTED com pedidos pendentes), se houver, para que o operador
+      // possa optar por adicionar o pedido a ela em vez de abrir uma rota nova.
       const { rows } = await db.query(
         `SELECT d.id, d.name, d.status,
-                COUNT(o.id) AS active_orders
+                COUNT(o.id)         AS active_orders,
+                ar.route_id         AS active_route_id,
+                ar.pending_count    AS route_pending_count
          FROM deliverers d
          LEFT JOIN orders o ON o.deliverer_id = d.id
            AND o.status NOT IN ('DELIVERED','CANCELLED')
+         LEFT JOIN LATERAL (
+           SELECT r.id AS route_id,
+                  COUNT(ro.id) FILTER (WHERE ro.status NOT IN ('DELIVERED','CANCELLED')) AS pending_count
+           FROM routes r
+           LEFT JOIN orders ro ON ro.route_id = r.id
+           WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+           GROUP BY r.id
+           HAVING COUNT(ro.id) FILTER (WHERE ro.status NOT IN ('DELIVERED','CANCELLED')) > 0
+           ORDER BY r.created_at DESC
+           LIMIT 1
+         ) ar ON true
          WHERE d.store_id = $1 AND d.status != 'OFFLINE' AND d.is_active = true
-         GROUP BY d.id
-         ORDER BY active_orders ASC, d.name ASC
-         LIMIT 5`,
+         GROUP BY d.id, ar.route_id, ar.pending_count
+         ORDER BY active_orders ASC, d.name ASC`,
         [storeId]
       )
       return rows

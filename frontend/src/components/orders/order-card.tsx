@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { Order } from '@/types'
 import { StatusBadge } from '@/components/ui/badge'
-import { formatDate, getDelayInfo } from '@/lib/utils'
+import { formatDate, getDelayInfo, cancelReasonLabel } from '@/lib/utils'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { DelayFlag } from '@/components/orders/delay-flag'
@@ -108,6 +108,16 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
           <Clock className="h-3.5 w-3.5 shrink-0 text-gray-400" />
           <span>{formatDate(order.createdAt)}</span>
         </div>
+
+        {order.status === 'CANCELLED' && order.cancelReason && (
+          <div className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-800">
+            <span className="font-medium">Cancelado:</span>{' '}
+            {cancelReasonLabel(order.cancelReason)}
+            {order.cancelReason === 'OTHER' && order.deliveryNote
+              ? ` — ${order.deliveryNote}`
+              : ''}
+          </div>
+        )}
 
         {/* Note — editable when onSaveNote is provided */}
         {(order.notes || onSaveNote) && (
