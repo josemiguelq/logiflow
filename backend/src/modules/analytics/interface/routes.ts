@@ -87,6 +87,33 @@ export async function analyticsRoutes(app: FastifyInstance) {
     return base
   })
 
+  // GET /analytics/cancellations/by-reason?period=today|7d|30d
+  // Agrupa cancelamentos por código de motivo, para visibilidade dos erros de
+  // operação. Cancelamentos antigos (sem código) caem em 'LEGACY'.
+  app.get('/analytics/cancellations/by-reason', { preHandler: guard }, async (req) => {
+    const { period } = z.object({
+      period: z.enum(['today', '7d', '30d']).default('30d'),
+    }).parse(req.query)
+
+    const interval = period === 'today' ? '0 days' : period === '7d' ? '6 days' : '29 days'
+
+    const { rows } = await db.query(
+      `SELECT COALESCE(cancel_reason, 'LEGACY') AS code, COUNT(*)::int AS count
+       FROM orders
+       WHERE store_id = $1 AND status = 'CANCELLED'
+         AND cancelled_at >= DATE_TRUNC('day', now()) - $2::interval
+       GROUP BY code
+       ORDER BY count DESC`,
+      [req.actor.storeId, interval]
+    )
+
+    const base: Record<string, number> = { MISSING_ITEM: 0, WRONG_ORDER: 0, OTHER: 0, LEGACY: 0 }
+    for (const r of rows as { code: string; count: number }[]) {
+      base[r.code] = r.count
+    }
+    return base
+  })
+
   // GET /analytics/orders/averages?period=today|7d|30d
   app.get('/analytics/orders/averages', { preHandler: guard }, async (req) => {
     const { period } = z.object({

@@ -7,7 +7,7 @@ import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera } from 'lucide-
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
-import { formatDate, getDelayInfo, formatDelayDuration } from '@/lib/utils'
+import { formatDate, getDelayInfo, formatDelayDuration, cancelReasonLabel } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
@@ -223,7 +223,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {order.deliveryNote && (
+          {order.status === 'CANCELLED' && order.cancelReason && (
+            <section className="border-t border-gray-100 pt-4">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Motivo do cancelamento
+              </h2>
+              <p className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-900">
+                {cancelReasonLabel(order.cancelReason)}
+                {order.cancelReason === 'OTHER' && order.deliveryNote
+                  ? `: ${order.deliveryNote}`
+                  : ''}
+              </p>
+            </section>
+          )}
+
+          {order.deliveryNote && !(order.status === 'CANCELLED' && order.cancelReason === 'OTHER') && (
             <section className="border-t border-gray-100 pt-4">
               <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Nota do entregador

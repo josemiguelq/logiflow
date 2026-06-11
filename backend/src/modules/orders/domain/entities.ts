@@ -31,6 +31,7 @@ export interface Order {
   outForDeliveryAt?: Date
   deliveredAt?: Date
   deliveryNote?: string
+  cancelReason?: string
   rating?: number
   ratingComment?: string
   ratedAt?: Date
@@ -92,3 +93,9 @@ export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
   return validTransitions[from].includes(to)
 }
+
+// Códigos de motivo de cancelamento (entregador). Guardados em orders.cancel_reason
+// para permitir GROUP BY nos relatórios de erros de operação. O texto livre do
+// motivo 'OTHER' vai para delivery_note.
+export const CANCEL_REASON_CODES = ['MISSING_ITEM', 'WRONG_ORDER', 'OTHER'] as const
+export type CancelReasonCode = typeof CANCEL_REASON_CODES[number]

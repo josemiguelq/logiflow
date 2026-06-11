@@ -4,11 +4,11 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, ComposedChart, Line,
 } from 'recharts'
 import {
   Package, Clock, Truck, CheckCircle, XCircle, Navigation,
-  Users, TrendingUp, Calendar,
+  Users, TrendingUp, Calendar, Hourglass,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -18,6 +18,19 @@ import { useEffect } from 'react'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TimePoint { date: string; count: number }
+
+interface IdleTimeResponse {
+  referenceLagMin:    number
+  totalIdleMinutes:   number
+  totalWastedMinutes: number
+  series: {
+    date:                  string
+    idleMinutes:           number
+    avgPickupLagMinutes:   number
+    pickedCount:           number
+    wastedCapacityMinutes: number
+  }[]
+}
 
 interface StatusCounts {
   PREPARING: number
@@ -285,6 +298,14 @@ export default function AnalyticsPage() {
     count: p.count,
   }))
 
+  const { data: idle } = useSWR<IdleTimeResponse>('/analytics/idle-time?days=14', fetcher)
+  const idleData = (idle?.series ?? []).map(s => ({
+    label:   fmtDay(s.date),
+    idle:    s.idleMinutes,
+    wait:    s.avgPickupLagMinutes,
+    wasted:  s.wastedCapacityMinutes,
+  }))
+
   const totalOrders = byStatus
     ? Object.values(byStatus).reduce((a, b) => a + b, 0)
     : 0
@@ -357,6 +378,46 @@ export default function AnalyticsPage() {
             </BarChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      {/* Tempo ocioso x espera (created→pickup) */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-1 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Hourglass className="h-4 w-4 text-gray-400" />
+            <h2 className="text-base font-semibold text-gray-800">Tempo ocioso x espera dos pedidos</h2>
+          </div>
+          <span className="text-xs text-gray-400">últimos 14 dias</span>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          Ocioso alto com espera baixa = dia tranquilo. Ocioso alto com espera acima de{' '}
+          {idle?.referenceLagMin ?? 30} min = capacidade desperdiçada (barras vermelhas).
+        </p>
+
+        <div className="mb-4 flex gap-6">
+          <div>
+            <p className="text-2xl font-bold text-gray-900">{fmtDuration(idle?.totalIdleMinutes ?? 0)}</p>
+            <p className="text-xs text-gray-400">ocioso total</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-red-600">{fmtDuration(idle?.totalWastedMinutes ?? 0)}</p>
+            <p className="text-xs text-gray-400">capacidade desperdiçada</p>
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={240}>
+          <ComposedChart data={idleData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} interval={1} />
+            <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={32}
+              tickFormatter={(v) => `${v}m`} />
+            <Tooltip formatter={(v) => `${v} min`} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="wasted" name="Capacidade desperdiçada" fill="#FCA5A5" radius={[4, 4, 0, 0]} barSize={14} />
+            <Line dataKey="idle" name="Ocioso" stroke="#6366F1" strokeWidth={2} dot={false} />
+            <Line dataKey="wait" name="Espera (criação→retirada)" stroke="#F59E0B" strokeWidth={2} dot={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Status cards + Deliverers card */}
