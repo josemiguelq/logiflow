@@ -15,8 +15,9 @@ class MainActivity : FlutterActivity() {
         // Mantido em sincronia com o meta-data
         // com.google.firebase.messaging.default_notification_channel_id no
         // AndroidManifest. Trocar o id sempre que o som do canal mudar — o som
-        // de um canal é imutável depois de criado.
-        const val ORDERS_CHANNEL_ID = "logiflow_orders_v1"
+        // de um canal é imutável depois de criado, então bumpar o sufixo (_v2,
+        // _v3...) é a forma garantida de aplicar um som novo sem desinstalar.
+        const val ORDERS_CHANNEL_ID = "logiflow_orders_v2"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +37,9 @@ class MainActivity : FlutterActivity() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(ORDERS_CHANNEL_ID) != null) return
 
-        val soundUri = Uri.parse("android.resource://$packageName/raw/motorcycle_fly")
+        // Forma canônica por id de recurso (android.resource://pkg/<int>) — é a
+        // que o próprio Android gera, evita qualquer falha de resolução por nome.
+        val soundUri = Uri.parse("android.resource://$packageName/${R.raw.motorcycle_fly}")
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
