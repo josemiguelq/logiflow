@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Download, Eye, Loader2, ChevronLeft, ChevronRight, ChevronDown, Trash2 } from 'lucide-react'
+import { Download, Eye, Loader2, ChevronDown, Trash2 } from 'lucide-react'
 import { DeliveryRoute, RouteStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
+import { Pagination } from '@/components/ui/pagination'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { useAccess } from '@/hooks/useAccess'
 
@@ -419,29 +420,7 @@ export default function RoutesPage() {
           </table>
         </div>
 
-        {pages > 1 && (
-          <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
-            <span>Página {page} de {pages}</span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Anterior
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(pages, p + 1))}
-                disabled={page === pages}
-                className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
-              >
-                Próximo
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )}
+        <Pagination page={page} pages={pages} onChange={setPage} />
         </>
       )}
 

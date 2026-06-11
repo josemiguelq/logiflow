@@ -3,12 +3,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil, ChevronLeft, ChevronRight, Trash2, Loader2, List, Map as MapIcon, Download } from 'lucide-react'
+import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download } from 'lucide-react'
 import { Customer, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Pagination } from '@/components/ui/pagination'
 import { useAccess } from '@/hooks/useAccess'
 import { LiveMap, type MapDestination, type MapBounds } from '@/components/map'
 
@@ -365,29 +366,7 @@ export default function CustomersPage() {
         )}
       </div>
 
-      {pages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
-          <span>Página {page} de {pages}</span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Anterior
-            </button>
-            <button
-              onClick={() => setPage(p => Math.min(pages, p + 1))}
-              disabled={page === pages}
-              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >
-              Próximo
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} pages={pages} onChange={setPage} />
       </>
       )}
 
