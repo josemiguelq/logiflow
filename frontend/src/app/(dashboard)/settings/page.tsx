@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
-import { Save, Lock, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock } from 'lucide-react'
+import { Save, Lock, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -17,6 +17,7 @@ interface StoreSettings {
   requireDeliveryCode:   boolean
   allowCustomerRatings:  boolean
   paymentMethodsEnabled: boolean
+  hideAllCustomers:     boolean
   maxProofPhotos:       number
   delayPrepYellowMin:    number
   delayPrepRedMin:       number
@@ -68,6 +69,7 @@ export default function SettingsPage() {
       <div className="space-y-6">
         {isManager && <BillingSection />}
         {isManager && <OperationsSection onSaved={() => showToast('Configurações salvas')} />}
+        {isManager && <PrivacySection onSaved={() => showToast('Configurações salvas')} />}
         <ThemeSection isManager={isManager} onSaved={() => showToast('Tema atualizado')} />
         <PasswordSection onSaved={() => showToast('Senha alterada com sucesso')} />
       </div>
@@ -403,6 +405,69 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
               </div>
             </div>
           </div>
+        </div>
+
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+
+        <Button onClick={handleSave} disabled={loading} className="w-full sm:w-auto">
+          <Save className="h-4 w-4" />
+          {loading ? 'Salvando...' : 'Salvar configurações'}
+        </Button>
+      </div>
+    </SectionCard>
+  )
+}
+
+function PrivacySection({ onSaved }: { onSaved: () => void }) {
+  const { data, mutate } = useSWR<StoreSettings>(
+    '/store/settings',
+    (u: string) => api.get<StoreSettings>(u)
+  )
+
+  const [hideAllCustomers, setHideAllCustomers] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+
+  useEffect(() => {
+    if (data) setHideAllCustomers(data.hideAllCustomers ?? false)
+  }, [data])
+
+  async function handleSave() {
+    setLoading(true)
+    setError('')
+    try {
+      await api.patch('/store/settings', { hideAllCustomers })
+      mutate()
+      onSaved()
+    } catch (err: unknown) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <SectionCard icon={ShieldCheck} title="Privacidade">
+      <div className="space-y-5">
+        <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Prevenir mostrar todos os clientes</p>
+            <p className="text-xs text-gray-500">
+              Esconde a lista de clientes. A tabela só aparece após buscar um cliente com no mínimo 4 letras.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHideAllCustomers((v) => !v)}
+            className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+            style={{ background: hideAllCustomers ? 'var(--color-primary)' : '#E5E7EB' }}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                hideAllCustomers ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
         </div>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}

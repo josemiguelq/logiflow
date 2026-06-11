@@ -71,8 +71,16 @@ export default function CustomersPage() {
   const { can } = useAccess()
   const canDelete = can({ scope: 'customers:delete' })
 
+  // Privacy setting: when on, the customer list is hidden until the operator
+  // searches for at least 4 characters, and the map view is disabled.
+  const { data: settings } = useSWR('/store/settings', (u: string) => api.get<{ hideAllCustomers: boolean }>(u))
+  const privacyMode  = settings?.hideAllCustomers ?? false
+  const searchActive = search.trim().length >= 4
+  // In privacy mode the map (which exposes every customer at once) is off-limits.
+  const effectiveView = privacyMode ? 'list' : view
+
   // Fetch every customer (no pagination) only when the map view is active.
-  const { data: allData } = useSWR(view === 'map' ? '/customers?all=true' : null, fetcher)
+  const { data: allData } = useSWR(effectiveView === 'map' ? '/customers?all=true' : null, fetcher)
   const mapCustomers = allData?.items ?? []
 
   // Current visible region of the map; null until the map first reports bounds.
@@ -132,7 +140,9 @@ export default function CustomersPage() {
 
   const params = new URLSearchParams({ page: String(page) })
   if (search) params.set('search', search)
-  const { data, mutate } = useSWR(`/customers?${params}`, fetcher)
+  // In privacy mode, don't fetch the list until the search is at least 4 chars.
+  const shouldFetch = !privacyMode || searchActive
+  const { data, mutate } = useSWR(shouldFetch ? `/customers?${params}` : null, fetcher)
 
   const customers = data?.items ?? []
   const total     = data?.total ?? 0
@@ -195,25 +205,31 @@ export default function CustomersPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-          <p className="text-sm text-gray-500">{total} cliente{total !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-500">
+            {privacyMode && !searchActive
+              ? 'Busque um cliente para começar'
+              : `${total} cliente${total !== 1 ? 's' : ''}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
-            <button
-              onClick={() => setView('list')}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === 'list' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
-            >
-              <List className="h-4 w-4" />
-              Lista
-            </button>
-            <button
-              onClick={() => setView('map')}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === 'map' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
-            >
-              <MapIcon className="h-4 w-4" />
-              Mapa
-            </button>
-          </div>
+          {!privacyMode && (
+            <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
+              <button
+                onClick={() => setView('list')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${effectiveView === 'list' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                <List className="h-4 w-4" />
+                Lista
+              </button>
+              <button
+                onClick={() => setView('map')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${effectiveView === 'map' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                <MapIcon className="h-4 w-4" />
+                Mapa
+              </button>
+            </div>
+          )}
           <Link href="/customers/new">
             <Button>
               <Plus className="h-4 w-4" />
@@ -223,7 +239,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {view === 'map' ? (
+      {effectiveView === 'map' ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="h-[calc(100vh-220px)] min-h-[400px] w-full">
             <LiveMap destinations={mapDestinations} height="100%" autoFitBounds onBoundsChange={setBounds} />
@@ -258,7 +274,12 @@ export default function CustomersPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        {customers.length === 0 ? (
+        {privacyMode && !searchActive ? (
+          <div className="flex flex-col items-center gap-2 py-12 text-gray-400">
+            <Search className="h-6 w-6" />
+            <p className="font-medium">Digite ao menos 4 letras para buscar um cliente</p>
+          </div>
+        ) : customers.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-gray-400">
             <p className="font-medium">Nenhum cliente encontrado</p>
           </div>
