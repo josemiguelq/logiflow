@@ -10,6 +10,7 @@ import { createFcmProvider } from './modules/notifications/infrastructure/fcm/fc
 import { createPgDeviceTokenRepo } from './modules/notifications/infrastructure/repositories/pg-device-token-repo'
 import { buildPushPayload } from './modules/notifications/application/use-cases/build-push-payload'
 import { startHeartbeat } from './shared/infra/websocket'
+import { runAchievementsJob } from './modules/gamification/application/service'
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
   console.error('[FATAL] JWT_SECRET is not set. Refusing to start in production.')
@@ -222,6 +223,14 @@ async function start() {
       .catch((err) => app.log.error({ err }, '[delay-scan] unexpected error'))
   runDelayScan()
   setInterval(runDelayScan, 60_000)
+
+  // ── Conquistas: backfill no boot (365d) + reavaliação periódica (últimos dias) ──
+  runAchievementsJob(365)
+    .catch((err) => app.log.error({ err }, '[achievements] backfill failed'))
+  setInterval(
+    () => runAchievementsJob(3).catch((err) => app.log.error({ err }, '[achievements] job failed')),
+    15 * 60_000,
+  )
 
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)

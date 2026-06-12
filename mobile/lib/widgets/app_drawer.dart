@@ -140,6 +140,14 @@ class AppDrawer extends ConsumerWidget {
                   },
                 ),
                 _DrawerTile(
+                  icon: LucideIcons.award,
+                  label: 'Conquistas',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    context.go('/conquistas');
+                  },
+                ),
+                _DrawerTile(
                   icon: Icons.logout,
                   label: 'Sair',
                   color: const Color(0xFFDC2626),

@@ -313,7 +313,8 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     async assignDeliverer(id, delivererId, routePosition) {
       const { rows } = await db.query(
         `UPDATE orders
-         SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED'
+         SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED',
+             accepted_at = COALESCE(accepted_at, now())
          WHERE id = $1
          RETURNING *`,
         [id, delivererId, routePosition]

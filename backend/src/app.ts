@@ -15,6 +15,7 @@ import { routeRoutes } from './modules/routes/interface/routes'
 import { superAdminRoutes } from './modules/super-admin/interface/routes'
 import { analyticsRoutes } from './modules/analytics/interface/routes'
 import { goalRoutes } from './modules/goals/interface/routes'
+import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { wsHub } from './shared/infra/websocket'
 
 export function buildApp() {
@@ -134,6 +135,7 @@ export function buildApp() {
   app.register(superAdminRoutes)
   app.register(analyticsRoutes)
   app.register(goalRoutes)
+  app.register(gamificationRoutes)
 
   app.get('/health', async (_req, reply) => {
     return reply.type('text/plain').send('ok')
