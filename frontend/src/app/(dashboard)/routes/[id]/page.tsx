@@ -112,6 +112,25 @@ export default function RouteDetailPage({ params }: Props) {
 
   const deliveredCount = route.orders.filter(o => o.status === 'DELIVERED').length
 
+  // Timeline: início da rota → entrega de cada pedido (com delta desde o marco
+  // anterior) → finalização (com total). Ordena pelas datas reais de entrega.
+  const minutesBetween = (from?: string, to?: string) =>
+    from && to ? Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 60000)) : null
+
+  const routeStartAt = route.startedAt ?? route.createdAt
+  const deliveredOrders = route.orders
+    .filter(o => o.status === 'DELIVERED' && o.deliveredAt)
+    .sort((a, b) => new Date(a.deliveredAt!).getTime() - new Date(b.deliveredAt!).getTime())
+
+  const timeline = deliveredOrders.map((o, i) => ({
+    id:    o.id,
+    label: o.customerName,
+    at:    o.deliveredAt!,
+    delta: minutesBetween(i === 0 ? routeStartAt : deliveredOrders[i - 1]!.deliveredAt!, o.deliveredAt!),
+  }))
+  const totalMinutes = route.finishedAt ? minutesBetween(routeStartAt, route.finishedAt) : null
+  const showTimeline = Boolean(route.startedAt) || timeline.length > 0
+
   return (
     <div className="p-6 max-w-4xl">
       {/* Header */}
@@ -197,6 +216,71 @@ export default function RouteDetailPage({ params }: Props) {
             orders={mapData.orders.filter(o => o.lat != null && o.lng != null)}
             trail={mapData.trail}
           />
+        </div>
+      )}
+
+      {/* Timeline vertical: início → entregas (com delta) → finalização (com total) */}
+      {showTimeline && (
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-700">
+            Linha do tempo
+          </h2>
+          <ol className="relative">
+            <span
+              aria-hidden
+              className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200"
+            />
+
+            {/* Início da rota */}
+            <li className="relative pl-6 pb-5">
+              <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-blue-500 ring-1 ring-blue-200" />
+              <p className="text-sm font-medium text-gray-900">Rota iniciada</p>
+              <p className="text-xs text-gray-500">{fmtDateTime(routeStartAt) ?? '—'}</p>
+            </li>
+
+            {/* Entregas */}
+            {timeline.map((t) => (
+              <li key={t.id} className="relative pl-6 pb-5">
+                <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-green-500 ring-1 ring-green-200" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900">{t.label}</p>
+                    <p className="text-xs text-gray-500">Entregue às {fmtDateTime(t.at)}</p>
+                  </div>
+                  {t.delta != null && (
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                      +{t.delta} min
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+
+            {/* Finalização */}
+            {route.finishedAt ? (
+              <li className="relative pl-6">
+                <span className="absolute left-0 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-green-600 ring-1 ring-green-200">
+                  <Flag className="h-2 w-2 text-white" />
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-green-700">Rota finalizada</p>
+                    <p className="text-xs text-gray-500">{fmtDateTime(route.finishedAt)}</p>
+                  </div>
+                  {totalMinutes != null && (
+                    <span className="shrink-0 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                      Total {totalMinutes} min
+                    </span>
+                  )}
+                </div>
+              </li>
+            ) : (
+              <li className="relative pl-6">
+                <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300" />
+                <p className="text-sm text-gray-400">Rota em andamento…</p>
+              </li>
+            )}
+          </ol>
         </div>
       )}
 
