@@ -472,6 +472,7 @@ export async function orderRoutes(app: FastifyInstance) {
           `UPDATE orders
               SET status = $1::order_status, deliverer_id = $2, route_id = $3,
                   picked_up_at = CASE WHEN $6 THEN now() ELSE picked_up_at END,
+                  accepted_at = COALESCE(accepted_at, now()),
                   reserved_by = NULL, reserved_at = NULL
             WHERE id = $4 AND store_id = $5 AND status = 'PREPARING' AND deliverer_id IS NULL`,
           [newStatus, body.delivererId, body.routeId, id, req.actor.storeId, markPickedUp]
@@ -693,7 +694,8 @@ export async function orderRoutes(app: FastifyInstance) {
             throw Object.assign(new Error(`Pedido ${orderIds[i]} não pode ser atribuído (status: ${order.status})`), { statusCode: 409 })
           }
           const { rows: [updated] } = await client.query(
-            `UPDATE orders SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED'
+            `UPDATE orders SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED',
+                    accepted_at = COALESCE(accepted_at, now())
              WHERE id = $1 RETURNING *`,
             [orderIds[i], delivererId, i + 1]
           )
@@ -880,7 +882,8 @@ export async function orderRoutes(app: FastifyInstance) {
       for (let i = 0; i < orderIds.length; i++) {
         const { rowCount } = await db.query(
           `UPDATE orders
-           SET status = 'ASSIGNED', deliverer_id = $1, route_position = $2
+           SET status = 'ASSIGNED', deliverer_id = $1, route_position = $2,
+               accepted_at = COALESCE(accepted_at, now())
            WHERE id = $3 AND store_id = $4 AND status = 'PREPARING' AND deliverer_id IS NULL`,
           [req.actor.sub, i + 1, orderIds[i], req.actor.storeId]
         )

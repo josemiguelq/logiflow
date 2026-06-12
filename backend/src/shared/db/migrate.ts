@@ -12,7 +12,7 @@ async function migrate() {
   `)
 
   const migrationDir = join(__dirname, 'migrations')
-  const files = ['001_schema.sql', '002_billing.sql', '003_drop_customer_address_columns.sql', '004_order_cancellation.sql', '005_goals.sql', '006_order_reservations.sql', '007_cash_payment.sql', '008_payment_methods_setting.sql', '009_push_tokens.sql', '010_multi_proof.sql', '011_delay_alerts.sql', '012_delivery_rules.sql', '013_order_audit.sql', '014_cancel_reason.sql', '015_operator_delay_alert.sql', '016_deliverer_track_scope.sql']
+  const files = ['001_schema.sql', '002_billing.sql', '003_drop_customer_address_columns.sql', '004_order_cancellation.sql', '005_goals.sql', '006_order_reservations.sql', '007_cash_payment.sql', '008_payment_methods_setting.sql', '009_push_tokens.sql', '010_multi_proof.sql', '011_delay_alerts.sql', '012_delivery_rules.sql', '013_order_audit.sql', '014_cancel_reason.sql', '015_operator_delay_alert.sql', '016_deliverer_track_scope.sql', '017_privacy_setting.sql', '018_orders_view_all_scope.sql', '019_gamification.sql']
 
   for (const file of files) {
     const { rows } = await db.query('SELECT name FROM _migrations WHERE name = $1', [file])

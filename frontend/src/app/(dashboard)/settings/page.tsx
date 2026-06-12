@@ -27,6 +27,10 @@ interface StoreSettings {
   notifyOperatorDelayedThreshold: number
   deliveryRequireProximity: boolean
   enforceDeliveryOrder:     boolean
+  achvRoutesTarget:   number
+  achvCaravanOrders:  number
+  achvHunterMinutes:  number
+  achvHunterCount:    number
 }
 
 interface ThemeData {
@@ -115,6 +119,26 @@ function DelayField({ label, value, onChange }: { label: string; value: number; 
   )
 }
 
+function AchvField({ label, suffix, value, onChange, max = 100 }: {
+  label: string; suffix: string; value: number; onChange: (v: number) => void; max?: number
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-gray-600">{label}</label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={1}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(Math.max(1, Math.min(max, Number(e.target.value) || 0)))}
+        />
+        <span className="whitespace-nowrap text-xs text-gray-500">{suffix}</span>
+      </div>
+    </div>
+  )
+}
+
 function BillingSection() {
   const { data } = useSWR<BillingData>('/store/billing', (u: string) => api.get<BillingData>(u))
 
@@ -195,6 +219,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [requireProximity,   setRequireProximity]   = useState(false)
   const [enforceOrder,       setEnforceOrder]       = useState(false)
   const [delayedThreshold,   setDelayedThreshold]   = useState(3)
+  const [achvRoutes,   setAchvRoutes]   = useState(5)
+  const [achvCaravan,  setAchvCaravan]  = useState(8)
+  const [achvMinutes,  setAchvMinutes]  = useState(10)
+  const [achvCount,    setAchvCount]    = useState(3)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -216,6 +244,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setRequireProximity(data.deliveryRequireProximity ?? false)
       setEnforceOrder(data.enforceDeliveryOrder ?? false)
       setDelayedThreshold(data.notifyOperatorDelayedThreshold ?? 3)
+      setAchvRoutes(data.achvRoutesTarget ?? 5)
+      setAchvCaravan(data.achvCaravanOrders ?? 8)
+      setAchvMinutes(data.achvHunterMinutes ?? 10)
+      setAchvCount(data.achvHunterCount ?? 3)
     }
   }, [data])
 
@@ -239,6 +271,10 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         deliveryRequireProximity: requireProximity,
         enforceDeliveryOrder:     enforceOrder,
         notifyOperatorDelayedThreshold: delayedThreshold,
+        achvRoutesTarget:  achvRoutes,
+        achvCaravanOrders: achvCaravan,
+        achvHunterMinutes: achvMinutes,
+        achvHunterCount:   achvCount,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
@@ -404,6 +440,28 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Conquistas / Gamificação */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <p className="text-sm font-medium text-gray-900">Conquistas (gamificação do entregador)</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Metas diárias exibidas no app do entregador. Valem para todos os entregadores da loja.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <AchvField
+              label="🚚 Mestre das Rotas" suffix="rotas/dia"
+              value={achvRoutes} onChange={setAchvRoutes} />
+            <AchvField
+              label="📦 Capitão da Caravana" suffix="pedidos/rota"
+              value={achvCaravan} onChange={setAchvCaravan} />
+            <AchvField
+              label="⚡ Caçador — janela" suffix="min"
+              value={achvMinutes} max={600} onChange={setAchvMinutes} />
+            <AchvField
+              label="⚡ Caçador — qtde" suffix="pedidos/dia"
+              value={achvCount} onChange={setAchvCount} />
           </div>
         </div>
 

@@ -190,6 +190,10 @@ export async function settingsRoutes(app: FastifyInstance) {
       deliveryRequireProximity: s.delivery_require_proximity === 'true',
       enforceDeliveryOrder:     s.enforce_delivery_order     === 'true',
       notifyOperatorDelayedThreshold: parseInt(s.notify_operator_delayed_threshold ?? '3'),
+      achvRoutesTarget:   parseInt(s.achv_routes_target   ?? '5'),
+      achvCaravanOrders:  parseInt(s.achv_caravan_orders  ?? '8'),
+      achvHunterMinutes:  parseInt(s.achv_hunter_minutes  ?? '10'),
+      achvHunterCount:    parseInt(s.achv_hunter_count    ?? '3'),
     }
   })
 
@@ -212,6 +216,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     deliveryRequireProximity: z.boolean().optional(),
     enforceDeliveryOrder:     z.boolean().optional(),
     notifyOperatorDelayedThreshold: z.number().int().min(1).max(100).optional(),
+    achvRoutesTarget:   z.number().int().min(1).max(100).optional(),
+    achvCaravanOrders:  z.number().int().min(1).max(100).optional(),
+    achvHunterMinutes:  z.number().int().min(1).max(600).optional(),
+    achvHunterCount:    z.number().int().min(1).max(100).optional(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
   })
@@ -247,6 +255,10 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['deliveryRequireProximity', 'delivery_require_proximity'],
       ['enforceDeliveryOrder',     'enforce_delivery_order'],
       ['notifyOperatorDelayedThreshold', 'notify_operator_delayed_threshold'],
+      ['achvRoutesTarget',  'achv_routes_target'],
+      ['achvCaravanOrders', 'achv_caravan_orders'],
+      ['achvHunterMinutes', 'achv_hunter_minutes'],
+      ['achvHunterCount',   'achv_hunter_count'],
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))
