@@ -1,6 +1,7 @@
 import { DB } from '../../../../shared/db/client'
 import { Order, OrderStatus, OrderWithDetails, OrderLogEntry, OrderSummary } from '../../domain/entities'
 import { IOrderRepository, OrderFilters, PublicOrderView, InTransitOrder } from '../../application/ports'
+import { isDeliveredOffTarget } from '../../../../shared/utils/geo'
 
 function mapOrderRow(row: Record<string, unknown>): Order {
   return {
@@ -82,6 +83,17 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     proofs: (row.proofs as Array<{ photoUrl: string; lat?: number; lng?: number }> | null) ?? [],
     // Backward-compat shorthand — first photo
     proof: ((row.proofs as Array<{ photoUrl: string; lat?: number; lng?: number }> | null) ?? [])[0],
+    // Entrega fora do local: ponto esperado (customer_lat/lng já é COALESCE com
+    // o override) x 1º comprovante com coordenadas.
+    deliveredOffTarget: (() => {
+      if (row.status !== 'DELIVERED') return false
+      const proof = ((row.proofs as Array<{ lat?: number; lng?: number }> | null) ?? [])
+        .find(p => p.lat != null && p.lng != null)
+      return isDeliveredOffTarget(
+        row.customer_lat as number | null, row.customer_lng as number | null,
+        proof?.lat, proof?.lng,
+      )
+    })(),
   }
 }
 

@@ -4,7 +4,7 @@ import { use, useState } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Clock, Flag, MapPin, Package, Pencil } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -325,6 +325,15 @@ export default function RouteDetailPage({ params }: Props) {
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ORDER_STATUS_COLOR[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
                     {ORDER_STATUS_LABEL[order.status] ?? order.status}
                   </span>
+                  {order.deliveredOffTarget && (
+                    <span
+                      title="Entregue fora do local da entrega (> 100m)"
+                      className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      Fora do local
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
                   <MapPin className="h-3 w-3 shrink-0" />

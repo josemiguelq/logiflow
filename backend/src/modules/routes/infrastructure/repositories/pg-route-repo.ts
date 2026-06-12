@@ -1,5 +1,6 @@
 import { DB } from '../../../../shared/db/client'
 import { DeliveryRoute, RouteStatus, RouteWithDetails, RouteOrderItem } from '../../domain/entities'
+import { isDeliveredOffTarget } from '../../../../shared/utils/geo'
 
 function mapRoute(r: Record<string, unknown>): DeliveryRoute {
   return {
@@ -92,9 +93,19 @@ export function createPgRouteRepo(db: DB) {
                 o.route_position,
                 o.created_at,
                 o.picked_up_at,
-                o.delivered_at
+                o.delivered_at,
+                COALESCE(o.delivery_lat, ca.lat)             AS target_lat,
+                COALESCE(o.delivery_lng, ca.lng)             AS target_lng,
+                pf.lat                                        AS proof_lat,
+                pf.lng                                        AS proof_lng
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN customer_addresses ca ON ca.customer_id = o.customer_id AND ca.is_default = true
+         LEFT JOIN LATERAL (
+           SELECT p.lat, p.lng FROM proof_of_delivery p
+           WHERE p.order_id = o.id AND p.lat IS NOT NULL AND p.lng IS NOT NULL
+           ORDER BY p.photo_index ASC, p.created_at ASC LIMIT 1
+         ) pf ON true
          WHERE o.route_id = $1
          ORDER BY o.route_position ASC NULLS LAST, o.created_at ASC`,
         [id]
@@ -118,6 +129,14 @@ export function createPgRouteRepo(db: DB) {
           createdAt:       (o as Record<string, unknown>).created_at as Date | undefined,
           pickedUpAt:      (o as Record<string, unknown>).picked_up_at as Date | undefined,
           deliveredAt:     (o as Record<string, unknown>).delivered_at as Date | undefined,
+          deliveredOffTarget:
+            ((o as Record<string, unknown>).status === 'DELIVERED') &&
+            isDeliveredOffTarget(
+              (o as Record<string, unknown>).target_lat as number | null,
+              (o as Record<string, unknown>).target_lng as number | null,
+              (o as Record<string, unknown>).proof_lat  as number | null,
+              (o as Record<string, unknown>).proof_lng  as number | null,
+            ),
         } as RouteOrderItem)),
       }
     },

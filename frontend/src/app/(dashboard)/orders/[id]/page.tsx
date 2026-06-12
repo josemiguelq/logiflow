@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
@@ -115,6 +115,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
             {delay.level !== 'none' && <DelayFlag delay={delay} />}
+            {order.deliveredOffTarget && (
+              <span
+                title="A entrega foi confirmada a mais de 100m do endereço esperado"
+                className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Entregue fora do local da entrega
+              </span>
+            )}
           </div>
         </div>
 

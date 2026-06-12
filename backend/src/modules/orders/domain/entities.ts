@@ -79,6 +79,8 @@ export interface OrderWithDetails extends Order {
     lat?: number
     lng?: number
   }>
+  // Entregue a mais de 100m do local esperado (comprovante x endereço/override).
+  deliveredOffTarget?: boolean
 }
 
 export const validTransitions: Record<OrderStatus, OrderStatus[]> = {

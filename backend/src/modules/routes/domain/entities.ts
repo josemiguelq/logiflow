@@ -27,4 +27,6 @@ export interface RouteOrderItem {
   createdAt?: Date
   pickedUpAt?: Date
   deliveredAt?: Date
+  // Entregue a >100m do local esperado (comprovante x endereço/override).
+  deliveredOffTarget?: boolean
 }

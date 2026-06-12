@@ -97,6 +97,7 @@ export interface Order {
     lat?: number
     lng?: number
   }>
+  deliveredOffTarget?: boolean
 }
 
 export type RouteStatus = 'CREATED' | 'STARTED' | 'FINISHED'
@@ -111,6 +112,7 @@ export interface RouteOrderItem {
   createdAt?: string
   pickedUpAt?: string
   deliveredAt?: string
+  deliveredOffTarget?: boolean
   paymentMethod: 'prepaid' | 'cash' | 'card'
   cashAmount?: number
   cashCollected: boolean
