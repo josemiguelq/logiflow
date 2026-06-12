@@ -309,23 +309,38 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {order.log && order.log.length > 0 && (
-            <section className="border-t border-gray-100 pt-4">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Histórico / Auditoria
-              </h2>
-              <ol className="space-y-3">
-                {[...order.log]
-                  .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
-                  .map((e, i) => (
-                    <li key={i} className="flex gap-3">
-                      <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-gray-300" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+          {order.log && order.log.length > 0 && (() => {
+            const sortedLog = [...order.log].sort(
+              (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
+            )
+            return (
+              <section className="border-t border-gray-100 pt-4">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Histórico / Auditoria
+                </h2>
+                <ol className="relative">
+                  <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
+                  {sortedLog.map((e, i) => {
+                    const deltaMin = i === 0
+                      ? null
+                      : Math.round(
+                          (new Date(e.at).getTime() - new Date(sortedLog[i - 1]!.at).getTime()) / 60000
+                        )
+                    return (
+                      <li key={i} className="relative pl-6 pb-4 last:pb-0">
+                        <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                           <p className="text-sm font-medium text-gray-900">
                             {LOG_ACTION_LABEL[e.action] ?? e.action}
                           </p>
-                          <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
+                          <div className="flex items-center gap-2">
+                            {deltaMin != null && (
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                                +{deltaMin < 1 ? '<1' : deltaMin} min
+                              </span>
+                            )}
+                            <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
+                          </div>
                         </div>
                         <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
                         {e.action === 'NOTE_CHANGED' && e.details && (
@@ -339,12 +354,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         {e.action === 'CANCELLED' && e.details?.reason != null && (
                           <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
                         )}
-                      </div>
-                    </li>
-                  ))}
-              </ol>
-            </section>
-          )}
+                      </li>
+                    )
+                  })}
+                </ol>
+              </section>
+            )
+          })()}
         </div>
       </div>
 

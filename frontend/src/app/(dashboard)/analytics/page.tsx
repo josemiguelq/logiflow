@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, ComposedChart, Line,
+  ResponsiveContainer, Legend, LineChart, Line,
 } from 'recharts'
 import {
   Package, Clock, Truck, CheckCircle, XCircle, Navigation,
@@ -19,17 +19,11 @@ import { useEffect } from 'react'
 
 interface TimePoint { date: string; count: number }
 
-interface IdleTimeResponse {
-  referenceLagMin:    number
-  totalIdleMinutes:   number
-  totalWastedMinutes: number
-  series: {
-    date:                  string
-    idleMinutes:           number
-    avgPickupLagMinutes:   number
-    pickedCount:           number
-    wastedCapacityMinutes: number
-  }[]
+interface PickupWaitPoint {
+  date:   string
+  avgMin: number
+  p95Min: number
+  count:  number
 }
 
 interface StatusCounts {
@@ -298,13 +292,20 @@ export default function AnalyticsPage() {
     count: p.count,
   }))
 
-  const { data: idle } = useSWR<IdleTimeResponse>('/analytics/idle-time?days=14', fetcher)
-  const idleData = (idle?.series ?? []).map(s => ({
-    label:   fmtDay(s.date),
-    idle:    s.idleMinutes,
-    wait:    s.avgPickupLagMinutes,
-    wasted:  s.wastedCapacityMinutes,
+  const { data: pickupWait = [] } = useSWR<PickupWaitPoint[]>('/analytics/orders/pickup-wait?days=14', fetcher)
+  const pickupWaitData = pickupWait.map(p => ({
+    label: fmtDay(p.date),
+    avg:   p.avgMin,
+    p95:   p.p95Min,
   }))
+  // Médias do período (ponderadas/simples) para o cabeçalho do card.
+  const waitDaysWithData = pickupWait.filter(p => p.count > 0)
+  const overallAvg = waitDaysWithData.length
+    ? waitDaysWithData.reduce((a, p) => a + p.avgMin * p.count, 0) / waitDaysWithData.reduce((a, p) => a + p.count, 0)
+    : 0
+  const overallP95 = waitDaysWithData.length
+    ? Math.max(...waitDaysWithData.map(p => p.p95Min))
+    : 0
 
   const totalOrders = byStatus
     ? Object.values(byStatus).reduce((a, b) => a + b, 0)
@@ -380,43 +381,42 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      {/* Tempo ocioso x espera (created→pickup) */}
+      {/* Tempo de espera até a retirada (created→picked_up) — média e p95 */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-1 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Hourglass className="h-4 w-4 text-gray-400" />
-            <h2 className="text-base font-semibold text-gray-800">Tempo ocioso x espera dos pedidos</h2>
+            <h2 className="text-base font-semibold text-gray-800">Tempo de espera até a retirada</h2>
           </div>
           <span className="text-xs text-gray-400">últimos 14 dias</span>
         </div>
         <p className="mb-3 text-xs text-gray-500">
-          Ocioso alto com espera baixa = dia tranquilo. Ocioso alto com espera acima de{' '}
-          {idle?.referenceLagMin ?? 30} min = capacidade desperdiçada (barras vermelhas).
+          Da criação do pedido até o entregador retirar. O <strong>p95</strong> mostra a cauda — quando
+          poucos pedidos demoram muito mais que a média.
         </p>
 
         <div className="mb-4 flex gap-6">
           <div>
-            <p className="text-2xl font-bold text-gray-900">{fmtDuration(idle?.totalIdleMinutes ?? 0)}</p>
-            <p className="text-xs text-gray-400">ocioso total</p>
+            <p className="text-2xl font-bold text-gray-900">{fmtDuration(overallAvg)}</p>
+            <p className="text-xs text-gray-400">média do período</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-red-600">{fmtDuration(idle?.totalWastedMinutes ?? 0)}</p>
-            <p className="text-xs text-gray-400">capacidade desperdiçada</p>
+            <p className="text-2xl font-bold text-amber-600">{fmtDuration(overallP95)}</p>
+            <p className="text-xs text-gray-400">pior p95 do período</p>
           </div>
         </div>
 
         <ResponsiveContainer width="100%" height={240}>
-          <ComposedChart data={idleData}>
+          <LineChart data={pickupWaitData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} interval={1} />
             <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={32}
               tickFormatter={(v) => `${v}m`} />
             <Tooltip formatter={(v) => `${v} min`} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="wasted" name="Capacidade desperdiçada" fill="#FCA5A5" radius={[4, 4, 0, 0]} barSize={14} />
-            <Line dataKey="idle" name="Ocioso" stroke="#6366F1" strokeWidth={2} dot={false} />
-            <Line dataKey="wait" name="Espera (criação→retirada)" stroke="#F59E0B" strokeWidth={2} dot={false} />
-          </ComposedChart>
+            <Line dataKey="avg" name="Média" stroke="#2563EB" strokeWidth={2} dot={false} />
+            <Line dataKey="p95" name="p95" stroke="#F59E0B" strokeWidth={2} dot={false} />
+          </LineChart>
         </ResponsiveContainer>
       </div>
 
