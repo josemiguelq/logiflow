@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
 import { useAccess } from '@/hooks/useAccess'
+import { useAuth } from '@/hooks/useAuth'
 import { LiveMap, type MapDestination, type MapBounds } from '@/components/map'
 
 interface PagedCustomers { items: Customer[]; total: number; page: number; pages: number }
@@ -70,12 +71,14 @@ export default function CustomersPage() {
   const [page,   setPage]   = useState(1)
   const [view,   setView]   = useState<'list' | 'map'>('list')
   const { can } = useAccess()
+  const { user } = useAuth()
   const canDelete = can({ scope: 'customers:delete' })
 
   // Privacy setting: when on, the customer list is hidden until the operator
-  // searches for at least 4 characters, and the map view is disabled.
+  // searches for at least 4 characters, and the map view is disabled. The OWNER
+  // is never affected — they always see the full customer list.
   const { data: settings } = useSWR('/store/settings', (u: string) => api.get<{ hideAllCustomers: boolean }>(u))
-  const privacyMode  = settings?.hideAllCustomers ?? false
+  const privacyMode  = (settings?.hideAllCustomers ?? false) && user?.role !== 'OWNER'
   const searchActive = search.trim().length >= 4
   // In privacy mode the map (which exposes every customer at once) is off-limits.
   const effectiveView = privacyMode ? 'list' : view
@@ -285,7 +288,7 @@ export default function CustomersPage() {
             <p className="font-medium">Nenhum cliente encontrado</p>
           </div>
         ) : (
-          <table className="w-full min-w-[520px] text-sm">
+          <table className="w-full min-w-[520px] select-none text-sm">
             <thead className="border-b border-gray-100 bg-gray-50">
               <tr>
                 {canDelete && (
