@@ -47,6 +47,7 @@ class _Stat {
 class AchievementsData {
   final String month;
   final String today;
+  final Map<String, int> config; // routesTarget / caravanOrders / hunterMinutes / hunterCount
   final Map<String, int> streaks;
   final Map<String, _Stat> stats;
   final Map<String, List<String>> byDay; // 'YYYY-MM-DD' -> [keys]
@@ -54,12 +55,17 @@ class AchievementsData {
   const AchievementsData({
     required this.month,
     required this.today,
+    required this.config,
     required this.streaks,
     required this.stats,
     required this.byDay,
   });
 
   factory AchievementsData.fromJson(Map<String, dynamic> j) {
+    final config = <String, int>{};
+    (j['config'] as Map<String, dynamic>? ?? {}).forEach((k, v) {
+      config[k] = (v as num?)?.toInt() ?? 0;
+    });
     final streaks = <String, int>{};
     (j['streaks'] as Map<String, dynamic>? ?? {}).forEach((k, v) {
       streaks[k] = (v as num?)?.toInt() ?? 0;
@@ -77,10 +83,25 @@ class AchievementsData {
     return AchievementsData(
       month:   j['month'] as String? ?? '',
       today:   j['today'] as String? ?? '',
+      config:  config,
       streaks: streaks,
       stats:   stats,
       byDay:   byDay,
     );
+  }
+}
+
+// Explicação sucinta de cada conquista, usando as metas da loja.
+String _achvDescription(String key, Map<String, int> cfg) {
+  switch (key) {
+    case 'ROUTE_MASTER':
+      return 'Conclua ${cfg['routesTarget'] ?? 5} rotas no dia';
+    case 'CARAVAN_CAPTAIN':
+      return 'Uma rota com ${cfg['caravanOrders'] ?? 8}+ pedidos';
+    case 'ORDER_HUNTER':
+      return 'Aceite ${cfg['hunterCount'] ?? 3} pedidos em < ${cfg['hunterMinutes'] ?? 10} min';
+    default:
+      return '';
   }
 }
 
@@ -195,7 +216,7 @@ class _GamificationScreenState extends ConsumerState<GamificationScreen> {
           data: (d) => ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _StreaksCard(streaks: d.streaks),
+              _StreaksCard(streaks: d.streaks, config: d.config),
               const SizedBox(height: 24),
               _MonthSelector(
                 month: _month, months: _months,
@@ -232,7 +253,8 @@ class _GamificationScreenState extends ConsumerState<GamificationScreen> {
 // ── Ofensivas Atuais ─────────────────────────────────────────────────────────
 class _StreaksCard extends StatelessWidget {
   final Map<String, int> streaks;
-  const _StreaksCard({required this.streaks});
+  final Map<String, int> config;
+  const _StreaksCard({required this.streaks, required this.config});
 
   @override
   Widget build(BuildContext context) {
@@ -261,12 +283,21 @@ class _StreaksCard extends StatelessWidget {
   Widget _streakRow(String key, int days) {
     final meta = _achvMeta[key]!;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(meta.emoji, style: const TextStyle(fontSize: 20)),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(meta.name,
-              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(meta.name,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 1),
+              Text(_achvDescription(key, config),
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11.5)),
+            ],
+          ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

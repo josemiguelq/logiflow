@@ -7,6 +7,8 @@ import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck, Star } from 'lucide-rea
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { useAccess } from '@/hooks/useAccess'
+import { AchievementsPanel } from '@/components/achievements/achievements-panel'
 
 interface StatusEntry {
   status:    string
@@ -63,6 +65,7 @@ function StatusBadgeInline({ status }: { status: string }) {
 export default function DelivererDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { user } = useAuth()
+  const { can } = useAccess()
   const isAdmin = user?.role === 'OWNER' || user?.role === 'MANAGER'
 
   const { data, isLoading } = useSWR<DelivererDetail>(
@@ -128,6 +131,18 @@ export default function DelivererDetailPage({ params }: { params: Promise<{ id: 
           <StatusBadgeInline status={data.status} />
         </div>
       </div>
+
+      {/* Conquistas (gamificação) */}
+      {can({ scope: 'goals:view' }) && (
+        <div className="mt-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Conquistas
+          </h2>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <AchievementsPanel delivererId={id} />
+          </div>
+        </div>
+      )}
 
       {/* Status history */}
       <div className="mt-6">
