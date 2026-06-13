@@ -14,6 +14,7 @@ import { OperatorAlerts } from '@/components/alerts/operator-alerts'
 
 interface DeliveryNotif {
   id:            string
+  orderId:       string
   type:          'DELIVERED' | 'OUT_FOR_DELIVERY' | 'DELAYED_YELLOW' | 'DELAYED_RED'
   customerName:  string
   shortId:       string
@@ -42,11 +43,26 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   // Per-notification timers so replacing one (e.g. OUT_FOR_DELIVERY → DELIVERED) resets its timer
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
+  // Som ao entregar (autoplay liberado após o operador interagir com a página).
+  const deliveredAudio = useRef<HTMLAudioElement | null>(null)
+  const playDelivered = useCallback(() => {
+    try {
+      if (!deliveredAudio.current) deliveredAudio.current = new Audio('/sounds/delivered.mp3')
+      deliveredAudio.current.currentTime = 0
+      deliveredAudio.current.play().catch(() => { /* bloqueado até interação — ok */ })
+    } catch { /* no-op */ }
+  }, [])
+
   const dismiss = useCallback((id: string) => {
     const t = timers.current.get(id)
     if (t) { clearTimeout(t); timers.current.delete(id) }
     setNotifs(prev => prev.filter(n => n.id !== id))
   }, [])
+
+  const openOrder = useCallback((orderId: string, notifId: string) => {
+    dismiss(notifId)
+    router.push(`/orders/${orderId}`)
+  }, [router, dismiss])
 
   // Clear any pending timers on unmount
   useEffect(() => {
@@ -66,19 +82,21 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       const shortId = '#' + order.id.slice(-8).toUpperCase()
       const notif: DeliveryNotif = {
         id:            order.id,
+        orderId:       order.id,
         type:          order.status,
         customerName:  order.customer?.name ?? 'Cliente',
         shortId,
         delivererName: order.deliverer?.name,
         address:       order.customer?.address,
       }
+      if (order.status === 'DELIVERED') playDelivered()
       setNotifs(prev => [...prev.filter(n => n.id !== order.id), notif])
       // Reset the timer if this order already had a notification
       const existing = timers.current.get(order.id)
       if (existing) clearTimeout(existing)
       timers.current.set(order.id, setTimeout(() => dismiss(order.id), NOTIF_TTL))
     })
-  }, [on, dismiss])
+  }, [on, dismiss, playDelivered])
 
   // ── Bandeiras de atraso (pedido em rota parado há muito tempo) ──
   useEffect(() => {
@@ -94,6 +112,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       const id = `delay-${d.orderId}`
       const notif: DeliveryNotif = {
         id,
+        orderId:       d.orderId,
         type:          d.level === 'red' ? 'DELAYED_RED' : 'DELAYED_YELLOW',
         customerName:  d.customerName ?? 'Cliente',
         shortId:       d.shortId ?? '#' + d.orderId.slice(-8).toUpperCase(),
@@ -191,7 +210,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           return (
             <div
               key={n.id}
-              className="flex w-[320px] items-start gap-3 rounded-xl bg-gray-900 pl-5 pr-4 py-4 text-white shadow-lg"
+              role="button"
+              tabIndex={0}
+              onClick={() => openOrder(n.orderId, n.id)}
+              className="flex w-[320px] cursor-pointer items-start gap-3 rounded-xl bg-gray-900 pl-5 pr-4 py-4 text-white shadow-lg transition-colors hover:bg-gray-800"
             >
               <span
                 className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconWrap}`}
@@ -223,7 +245,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 )}
               </div>
               <button
-                onClick={() => dismiss(n.id)}
+                onClick={(e) => { e.stopPropagation(); dismiss(n.id) }}
                 aria-label="Fechar notificação"
                 className="-mr-1 shrink-0 rounded-md p-1 text-gray-400 hover:bg-white/10 hover:text-white"
               >
