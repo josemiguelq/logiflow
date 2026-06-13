@@ -6,7 +6,7 @@ import useSWR from 'swr'
 import { Target, Plus, Trash2, X, Check, Trophy, Save } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
-import { AchievementsPanel } from '@/components/achievements/achievements-panel'
+import { StoreAchievementsCalendar } from '@/components/achievements/achievements-panel'
 
 // ───────────────────────── Metas individuais (existente) ─────────────────────
 type GoalType   = 'deliveries' | 'avg_rating' | 'cancellation_rate' | 'avg_delivery_time'
@@ -116,7 +116,18 @@ export default function GoalsPage() {
           <StoreAchievementsConfig canManage={canManage} />
 
           {/* ───── 2. Conquistas dos entregadores ───── */}
-          <DelivererAchievements deliverers={deliverers} />
+          <section>
+            <div className="mb-1 flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-amber-500" />
+              <h2 className="text-base font-semibold text-gray-900">Conquistas dos entregadores</h2>
+            </div>
+            <p className="mb-4 text-sm text-gray-500">
+              Calendário comparativo: cada dia mostra os entregadores que bateram conquistas e quais.
+            </p>
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <StoreAchievementsCalendar />
+            </div>
+          </section>
 
           {/* ───── 3. Metas individuais ───── */}
           <section>
@@ -390,32 +401,3 @@ function StoreAchievementsConfig({ canManage }: { canManage: boolean }) {
   )
 }
 
-// ───────────────────────── Seção 2: calendário de conquistas ─────────────────
-function DelivererAchievements({ deliverers }: { deliverers: DelivererWithGoals[] }) {
-  const [delivererId, setDelivererId] = useState('')
-  useEffect(() => {
-    if (!delivererId && deliverers.length > 0) setDelivererId(deliverers[0].id)
-  }, [deliverers, delivererId])
-
-  return (
-    <section>
-      <div className="mb-1 flex items-center gap-2">
-        <Trophy className="h-4 w-4 text-amber-500" />
-        <h2 className="text-base font-semibold text-gray-900">Conquistas dos entregadores</h2>
-      </div>
-      <p className="mb-4 text-sm text-gray-500">
-        Calendário das conquistas diárias de cada entregador. Clique num dia para ver os detalhes.
-      </p>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="mb-4">
-          <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500">
-            {deliverers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </div>
-        {delivererId && <AchievementsPanel delivererId={delivererId} />}
-      </div>
-    </section>
-  )
-}

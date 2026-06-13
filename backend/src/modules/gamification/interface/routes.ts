@@ -134,6 +134,56 @@ export async function gamificationRoutes(app: FastifyInstance) {
     return buildDayDetail(req.actor.storeId, delivererId, date)
   })
 
+  // Calendário da loja: por dia, quais entregadores tiveram conquistas e quais.
+  app.get('/store/achievements/calendar', { preHandler: storeGuard }, async (req) => {
+    const { month } = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() }).parse(req.query)
+    const storeId = req.actor.storeId
+    const today = todayInTz()
+    const targetMonth = month ?? today.slice(0, 7)
+
+    // day -> delivererId -> { name, achievements:Set }
+    const byDay = new Map<string, Map<string, { name: string; achievements: Set<string> }>>()
+    const add = (day: string, id: string, name: string, achv: string) => {
+      if (!byDay.has(day)) byDay.set(day, new Map())
+      const m = byDay.get(day)!
+      if (!m.has(id)) m.set(id, { name, achievements: new Set() })
+      m.get(id)!.achievements.add(achv)
+    }
+
+    // Dias concluídos (persistidos) do mês.
+    const { rows: persisted } = await db.query(
+      `SELECT to_char(dda.day, 'YYYY-MM-DD') AS day, dda.deliverer_id, d.name, dda.achievement
+       FROM deliverer_daily_achievements dda
+       JOIN deliverers d ON d.id = dda.deliverer_id
+       WHERE dda.store_id = $1 AND to_char(dda.day, 'YYYY-MM') = $2 AND dda.day < $3::date`,
+      [storeId, targetMonth, today]
+    )
+    for (const r of persisted as { day: string; deliverer_id: string; name: string; achievement: string }[]) {
+      add(r.day, r.deliverer_id, r.name, r.achievement)
+    }
+
+    // Hoje ao vivo (só se o mês pedido é o atual).
+    if (targetMonth === today.slice(0, 7)) {
+      const cfg = await getConfig(storeId)
+      const { rows: delivs } = await db.query(
+        `SELECT id, name FROM deliverers WHERE store_id = $1 AND is_active = true`, [storeId]
+      )
+      for (const dv of delivs as { id: string; name: string }[]) {
+        const earned = await computeToday(storeId, dv.id, cfg)
+        for (const e of earned) add(today, dv.id, dv.name, e.achievement)
+      }
+    }
+
+    const days = [...byDay.entries()]
+      .map(([day, m]) => ({
+        day,
+        deliverers: [...m.entries()].map(([id, v]) => ({ id, name: v.name, achievements: [...v.achievements] })),
+      }))
+      .sort((a, b) => a.day.localeCompare(b.day))
+
+    return { month: targetMonth, today, days }
+  })
+
   // Config das metas da loja (X/Y/Z/N) — leitura e escrita pela tela de Metas.
   app.get('/store/achievement-config', { preHandler: storeGuard }, async (req) =>
     getConfig(req.actor.storeId)
