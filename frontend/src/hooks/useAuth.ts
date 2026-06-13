@@ -40,6 +40,8 @@ export const useAuth = create<AuthStore>((set, get) => ({
   },
 
   logout() {
+    // Revoga a sessão no servidor (best-effort) antes de limpar o token local.
+    api.post('/auth/store/logout', {}).catch(() => { /* non-fatal */ })
     authStorage.clear()
     set({ token: null, user: null })
     window.location.href = '/login'

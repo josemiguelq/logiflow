@@ -8,7 +8,7 @@ interface Deps {
 }
 
 export async function loginStoreUser(
-  { email, password }: { email: string; password: string },
+  { email, password, jti }: { email: string; password: string; jti: string },
   { storeUserRepo, signJwt, getScopes }: Deps
 ) {
   const user = await storeUserRepo.findByEmail(email)
@@ -26,6 +26,7 @@ export async function loginStoreUser(
     role:    user.role,
     name:    user.name,
     scopes,
+    jti,    // id da sessão (rastreio/revogação)
   })
 
   return {

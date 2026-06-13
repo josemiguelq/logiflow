@@ -232,6 +232,13 @@ async function start() {
     15 * 60_000,
   )
 
+  // ── Retenção: remove sessões de operador antigas (>30 dias sem atividade) ──
+  const cleanupSessions = () =>
+    db.query(`DELETE FROM store_user_sessions WHERE last_seen_at < now() - interval '30 days'`)
+      .catch((err) => app.log.error({ err }, '[sessions] cleanup failed'))
+  cleanupSessions()
+  setInterval(cleanupSessions, 24 * 60 * 60_000)
+
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)
   await app.listen({ port, host: '0.0.0.0' })

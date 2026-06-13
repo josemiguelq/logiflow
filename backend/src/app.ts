@@ -16,10 +16,14 @@ import { superAdminRoutes } from './modules/super-admin/interface/routes'
 import { analyticsRoutes } from './modules/analytics/interface/routes'
 import { goalRoutes } from './modules/goals/interface/routes'
 import { gamificationRoutes } from './modules/gamification/interface/routes'
+import { sessionRoutes } from './modules/sessions/interface/routes'
 import { wsHub } from './shared/infra/websocket'
 
 export function buildApp() {
   const app = Fastify({
+    // Render (e proxies em geral) ficam à frente do app: confiar no
+    // x-forwarded-for para que req.ip seja o IP real do cliente.
+    trustProxy: true,
     logger: {
       transport: process.env.NODE_ENV !== 'production'
         ? { target: 'pino-pretty' }
@@ -136,6 +140,7 @@ export function buildApp() {
   app.register(analyticsRoutes)
   app.register(goalRoutes)
   app.register(gamificationRoutes)
+  app.register(sessionRoutes)
 
   app.get('/health', async (_req, reply) => {
     return reply.type('text/plain').send('ok')

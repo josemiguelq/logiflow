@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
@@ -39,11 +40,31 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/store/login', async (req, reply) => {
     const body = loginSchema.parse(req.body)
     if (!body.email) return reply.code(400).send({ error: 'email required' })
+    const jti = randomUUID()
     try {
       const result = await loginStoreUser(
-        { email: body.email, password: body.password },
+        { email: body.email, password: body.password, jti },
         { storeUserRepo, signJwt, getScopes }
       )
+
+      // Registra a sessão (IP + dispositivo), atualiza o último login e revoga
+      // sessões anteriores do mesmo IP+dispositivo (uma ativa por dispositivo).
+      const ip = req.ip
+      const ua = (req.headers['user-agent'] ?? '').slice(0, 400)
+      const uid = result.user.id
+      await db.query(
+        `UPDATE store_user_sessions SET revoked_at = now()
+         WHERE store_user_id = $1 AND ip = $2 AND user_agent = $3 AND revoked_at IS NULL`,
+        [uid, ip, ua]
+      ).catch(() => { /* non-fatal */ })
+      await db.query(
+        `INSERT INTO store_user_sessions (id, store_user_id, store_id, ip, user_agent)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [jti, uid, result.user.storeId, ip, ua]
+      ).catch(() => { /* non-fatal */ })
+      await db.query(`UPDATE store_users SET last_login_at = now() WHERE id = $1`, [uid])
+        .catch(() => { /* non-fatal */ })
+
       return result
     } catch {
       return reply.code(401).send({ error: 'Invalid credentials' })

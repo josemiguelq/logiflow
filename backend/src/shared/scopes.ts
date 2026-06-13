@@ -43,6 +43,9 @@ export const SCOPES = [
   // Goals
   'goals:view',
   'goals:manage',
+
+  // Sessions
+  'sessions:view_all',
 ] as const
 
 export type Scope = typeof SCOPES[number]
@@ -75,6 +78,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'settings:edit':        'Configurações — editar',
   'goals:view':           'Metas — visualizar',
   'goals:manage':         'Metas — criar e editar',
+  'sessions:view_all':    'Sessões — ver os acessos de todos os usuários',
 }
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
@@ -87,13 +91,14 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Analítico',      scopes: ['analytics:view'] },
   { label: 'Configurações',  scopes: ['settings:view', 'settings:edit'] },
   { label: 'Metas',          scopes: ['goals:view', 'goals:manage'] },
+  { label: 'Sessões',        scopes: ['sessions:view_all'] },
 ]
 
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   OWNER: [...SCOPES],
   MANAGER: SCOPES.filter(s =>
     !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect',
-      'routes:delete', 'orders:delete', 'customers:delete'].includes(s)
+      'routes:delete', 'orders:delete', 'customers:delete', 'sessions:view_all'].includes(s)
   ),
   ASSISTANT: [
     'orders:view', 'orders:view_all', 'orders:create',
