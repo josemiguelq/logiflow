@@ -26,6 +26,14 @@ interface PickupWaitPoint {
   count:  number
 }
 
+interface HalfHourData {
+  days: string[]
+  rows: Record<string, string | number>[]
+}
+
+// Paleta para as linhas por dia (mais antigo → mais recente).
+const DAY_COLORS = ['#CBD5E1', '#A5B4FC', '#93C5FD', '#6EE7B7', '#FCD34D', '#FDBA74', '#2563EB']
+
 interface StatusCounts {
   PREPARING: number
   ASSIGNED: number
@@ -307,6 +315,8 @@ export default function AnalyticsPage() {
     ? Math.max(...waitDaysWithData.map(p => p.p95Min))
     : 0
 
+  const { data: halfHour } = useSWR<HalfHourData>('/analytics/orders/created-by-halfhour?days=7', fetcher)
+
   const totalOrders = byStatus
     ? Object.values(byStatus).reduce((a, b) => a + b, 0)
     : 0
@@ -416,6 +426,39 @@ export default function AnalyticsPage() {
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line dataKey="avg" name="Média" stroke="#2563EB" strokeWidth={2} dot={false} />
             <Line dataKey="p95" name="p95" stroke="#F59E0B" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Pedidos criados por faixa de 30 min — uma linha por dia (horários de pico) */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-1 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-gray-400" />
+            <h2 className="text-base font-semibold text-gray-800">Pedidos criados por horário</h2>
+          </div>
+          <span className="text-xs text-gray-400">últimos 7 dias · faixas de 30 min</span>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          Cada linha é um dia. Compare os horários de pico de criação de pedidos.
+        </p>
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={halfHour?.rows ?? []}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+            <XAxis dataKey="slot" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} interval={3} />
+            <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {(halfHour?.days ?? []).map((day, i) => (
+              <Line
+                key={day}
+                dataKey={day}
+                name={fmtDay(day)}
+                stroke={DAY_COLORS[i] ?? '#94A3B8'}
+                strokeWidth={day === halfHour?.days[halfHour.days.length - 1] ? 2.5 : 1.5}
+                dot={false}
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>

@@ -67,6 +67,58 @@ export async function analyticsRoutes(app: FastifyInstance) {
     return rows
   })
 
+  // GET /analytics/orders/created-by-halfhour?days=7
+  // Pedidos CRIADOS agrupados por faixa de 30 min do dia (48 slots), uma série
+  // por dia — para comparar os últimos N dias e ver os horários de pico.
+  app.get('/analytics/orders/created-by-halfhour', { preHandler: guard }, async (req) => {
+    const { days } = z.object({
+      days: z.coerce.number().int().min(1).max(31).default(7),
+    }).parse(req.query)
+    const storeId = req.actor.storeId
+    const TZ = 'America/Sao_Paulo'
+
+    // Lista dos N dias (mais antigo → mais recente), inclusive sem pedidos.
+    const { rows: dayRows } = await db.query(
+      `SELECT to_char(d, 'YYYY-MM-DD') AS day
+       FROM generate_series(
+         ((now() AT TIME ZONE '${TZ}')::date - ($1::int - 1)),
+         (now() AT TIME ZONE '${TZ}')::date,
+         interval '1 day') d
+       ORDER BY d`,
+      [days]
+    )
+    const dayList = (dayRows as { day: string }[]).map(r => r.day)
+
+    const { rows: countRows } = await db.query(
+      `SELECT
+         to_char((created_at AT TIME ZONE '${TZ}')::date, 'YYYY-MM-DD') AS day,
+         (EXTRACT(HOUR FROM (created_at AT TIME ZONE '${TZ}'))::int * 2
+           + FLOOR(EXTRACT(MINUTE FROM (created_at AT TIME ZONE '${TZ}')) / 30)::int) AS slot,
+         COUNT(*)::int AS count
+       FROM orders
+       WHERE store_id = $1
+         AND (created_at AT TIME ZONE '${TZ}')::date >= ((now() AT TIME ZONE '${TZ}')::date - ($2::int - 1))
+       GROUP BY 1, 2`,
+      [storeId, days]
+    )
+    const countMap = new Map<string, number>()
+    for (const r of countRows as { day: string; slot: number; count: number }[]) {
+      countMap.set(`${r.day}|${r.slot}`, r.count)
+    }
+
+    const slotLabel = (s: number) =>
+      `${String(Math.floor(s / 2)).padStart(2, '0')}:${s % 2 === 0 ? '00' : '30'}`
+
+    const rows: Record<string, string | number>[] = []
+    for (let s = 0; s < 48; s++) {
+      const row: Record<string, string | number> = { slot: slotLabel(s) }
+      for (const day of dayList) row[day] = countMap.get(`${day}|${s}`) ?? 0
+      rows.push(row)
+    }
+
+    return { days: dayList, rows }
+  })
+
   // GET /analytics/orders/by-status
   app.get('/analytics/orders/by-status', { preHandler: guard }, async (req) => {
     const { rows } = await db.query(
