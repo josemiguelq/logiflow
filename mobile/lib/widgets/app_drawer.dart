@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../core/api/api_client.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/providers/store_settings_provider.dart';
 import '../core/theme/app_theme.dart';
@@ -13,6 +14,22 @@ final _packageInfoProvider = FutureProvider<PackageInfo>(
   (_) => PackageInfo.fromPlatform(),
 );
 
+// Ofensivas atuais (conquista -> dias) para exibir os emojis no cabeçalho.
+final _achievementStreaksProvider = FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  final res = await ApiClient().dio.get('/deliverer/achievements');
+  final streaks = <String, int>{};
+  ((res.data as Map<String, dynamic>)['streaks'] as Map<String, dynamic>? ?? {})
+      .forEach((k, v) => streaks[k] = (v as num?)?.toInt() ?? 0);
+  return streaks;
+});
+
+const _achvOrder = ['ROUTE_MASTER', 'CARAVAN_CAPTAIN', 'ORDER_HUNTER'];
+const _achvEmoji = <String, String>{
+  'ROUTE_MASTER': '🚚',
+  'CARAVAN_CAPTAIN': '📦',
+  'ORDER_HUNTER': '⚡',
+};
+
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
 
@@ -21,6 +38,7 @@ class AppDrawer extends ConsumerWidget {
     final session       = ref.watch(authProvider);
     final storeSettings = ref.watch(storeSettingsProvider);
     final packageInfo   = ref.watch(_packageInfoProvider);
+    final achvStreaks   = ref.watch(_achievementStreaksProvider);
     final storeName     = storeSettings.value?.storeName; // non-null only when custom theme feature is on
     final headerColor   = storeSettings.value?.primaryColor ?? AppTheme.primary;
     final versionLabel  = packageInfo.whenOrNull(
@@ -109,6 +127,41 @@ class AppDrawer extends ConsumerWidget {
                             ),
                           ],
                         ),
+                      ),
+                      // Emojis das conquistas com ofensiva ativa (com o nº de dias).
+                      achvStreaks.maybeWhen(
+                        data: (streaks) {
+                          final active = _achvOrder.where((k) => (streaks[k] ?? 0) > 0).toList();
+                          if (active.isEmpty) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (final k in active)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 10),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(_achvEmoji[k]!, style: const TextStyle(fontSize: 16)),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          '${streaks[k]}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white.withOpacity(0.95),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                        orElse: () => const SizedBox.shrink(),
                       ),
                     ],
                   ),
