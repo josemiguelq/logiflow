@@ -323,7 +323,11 @@ export default function CustomersPage() {
                         />
                       </td>
                     )}
-                    <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
+                    <td className="px-4 py-3">
+                      <Link href={`/customers/${c.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">
+                        {c.name}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">
                       <div className="flex items-center gap-1.5">
                         <Phone className="h-3.5 w-3.5 text-gray-400" />
