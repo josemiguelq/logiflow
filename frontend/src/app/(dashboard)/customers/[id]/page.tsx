@@ -5,11 +5,16 @@ import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Pencil, MapPin, Phone, History, Plus, Pencil as Edit2, Trash2 } from 'lucide-react'
-import { Customer, fullAddress } from '@/types'
+import { Customer, fullAddress, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
-import { formatDate } from '@/lib/utils'
+import { formatDate, STATUS_LABELS } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
+
+interface OrdersSummary {
+  total: number
+  lastOrder: { id: string; status: OrderStatus; createdAt: string; deliveredAt: string | null } | null
+}
 
 interface AddrSnap {
   label?: string; address?: string; number?: string | null; complement?: string | null
@@ -60,6 +65,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   }, [isLoading, can, router])
 
   const { data: customer } = useSWR<Customer>(`/customers/${id}`, (u: string) => api.get<Customer>(u))
+  const { data: summary } = useSWR<OrdersSummary>(
+    `/customers/${id}/orders-summary`, (u: string) => api.get<OrdersSummary>(u)
+  )
   const { data: history = [] } = useSWR<AuditEntry[]>(
     `/customers/${id}/address-history`, (u: string) => api.get<AuditEntry[]>(u)
   )
@@ -89,6 +97,26 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         >
           <Pencil className="h-3.5 w-3.5" /> Editar
         </Link>
+      </div>
+
+      {/* Resumo de pedidos */}
+      <div className="mb-8 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-gray-500">Total de pedidos</p>
+          <p className="mt-1 text-3xl font-bold text-gray-900">{summary?.total ?? '—'}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-gray-500">Último pedido</p>
+          {summary?.lastOrder ? (
+            <Link href={`/orders/${summary.lastOrder.id}`} className="mt-1 block hover:underline">
+              <span className="font-mono text-sm font-bold text-gray-900">#{summary.lastOrder.id.slice(-8).toUpperCase()}</span>
+              <span className="ml-2 text-sm text-gray-500">{STATUS_LABELS[summary.lastOrder.status] ?? summary.lastOrder.status}</span>
+              <p className="mt-0.5 text-xs text-gray-400">{formatDate(summary.lastOrder.createdAt)}</p>
+            </Link>
+          ) : (
+            <p className="mt-1 text-sm text-gray-400">{summary ? 'Nenhum pedido ainda' : '—'}</p>
+          )}
+        </div>
       </div>
 
       {/* Endereços atuais */}

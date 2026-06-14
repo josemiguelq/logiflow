@@ -249,6 +249,37 @@ export async function customerRoutes(app: FastifyInstance) {
     }
   )
 
+  // Resumo de pedidos do cliente: total + último pedido.
+  app.get(
+    '/customers/:id/orders-summary',
+    { preHandler: requireStoreUser },
+    async (req) => {
+      const { id } = req.params as { id: string }
+      const [{ rows: [c] }, { rows: [last] }] = await Promise.all([
+        db.query(
+          `SELECT COUNT(*)::int AS total FROM orders WHERE customer_id = $1 AND store_id = $2`,
+          [id, req.actor.storeId]
+        ),
+        db.query(
+          `SELECT id, status, created_at, delivered_at
+           FROM orders WHERE customer_id = $1 AND store_id = $2
+           ORDER BY created_at DESC LIMIT 1`,
+          [id, req.actor.storeId]
+        ),
+      ])
+      const l = last as Record<string, unknown> | undefined
+      return {
+        total: (c as { total: number }).total,
+        lastOrder: l ? {
+          id:          l.id,
+          status:      l.status,
+          createdAt:   l.created_at,
+          deliveredAt: l.delivered_at,
+        } : null,
+      }
+    }
+  )
+
   // Histórico de alterações de endereço (quem/quando/o quê).
   app.get(
     '/customers/:id/address-history',

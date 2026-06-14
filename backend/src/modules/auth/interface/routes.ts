@@ -9,6 +9,7 @@ import { createPgStoreUserRepo } from '../infrastructure/repositories/pg-store-u
 import { createPgDelivererAuthRepo } from '../infrastructure/repositories/pg-deliverer-auth-repo'
 import { loginStoreUser } from '../application/use-cases/login-store-user'
 import { loginDeliverer } from '../application/use-cases/login-deliverer'
+import { isValidDocument, onlyDigits } from '../../../shared/utils/document'
 
 const loginSchema = z.object({
   email:    z.string().email().optional(),
@@ -86,6 +87,43 @@ export async function authRoutes(app: FastifyInstance) {
   })
 
   // ── Self-service store registration ───────────────────────────────────────
+
+  // Cria loja + papéis (scopes) + usuário OWNER numa transação. Retorna token+user.
+  async function createStoreWithOwner(input: {
+    storeName: string; ownerName: string; email: string; password: string
+    cpfCnpj?: string | null; address?: string | null; lat?: number | null; lng?: number | null
+  }) {
+    const hash     = await bcrypt.hash(input.password, 10)
+    const username = input.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
+
+    const { storeId, user } = await db.transaction(async (client) => {
+      const { rows: [store] } = await client.query(
+        `INSERT INTO stores (name, cpf_cnpj, street, lat, lng, trial_ends_at)
+         VALUES ($1, $2, $3, $4, $5, (now() + INTERVAL '3 months')::DATE)
+         RETURNING id`,
+        [input.storeName, input.cpfCnpj ?? null, input.address ?? null, input.lat ?? null, input.lng ?? null]
+      )
+      for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
+        await client.query(
+          `INSERT INTO store_role_scopes (store_id, role, scopes)
+           VALUES ($1, $2, $3) ON CONFLICT (store_id, role) DO NOTHING`,
+          [store.id, role, JSON.stringify(DEFAULT_ROLE_SCOPES[role])]
+        )
+      }
+      const { rows: [u] } = await client.query(
+        `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
+         VALUES ($1, $2, $3, $4, $5, 'OWNER')
+         RETURNING id, name, email, role`,
+        [store.id, input.ownerName, input.email, username, hash]
+      )
+      return { storeId: store.id as string, user: u as { id: string; name: string; email: string; role: string } }
+    })
+
+    const scopes = DEFAULT_ROLE_SCOPES['OWNER'] ?? []
+    const token  = signJwt({ type: 'store_user', sub: user.id, storeId, role: 'OWNER', name: user.name, scopes })
+    return { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, storeId, scopes } }
+  }
+
   const registerSchema = z.object({
     storeName: z.string().min(2),
     ownerName: z.string().min(2),
@@ -95,58 +133,86 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/register', async (req, reply) => {
     const body = registerSchema.parse(req.body)
-
-    const { rows: [existing] } = await db.query(
-      'SELECT id FROM store_users WHERE email = $1',
-      [body.email]
-    )
+    const { rows: [existing] } = await db.query('SELECT id FROM store_users WHERE email = $1', [body.email])
     if (existing) return reply.code(409).send({ error: 'E-mail já está em uso' })
+    return reply.code(201).send(await createStoreWithOwner(body))
+  })
 
-    const { rows: [store] } = await db.query(
-      `INSERT INTO stores (name, trial_ends_at)
-       VALUES ($1, (now() + INTERVAL '3 months')::DATE)
-       RETURNING id`,
-      [body.storeName]
+  // ── Cadastro em etapas (prospects) ────────────────────────────────────────
+  const prospectStep1 = z.object({
+    storeName: z.string().min(2),
+    cpfCnpj:   z.string().min(11),
+    email:     z.string().email(),
+  })
+
+  app.post('/auth/prospect', async (req, reply) => {
+    const body = prospectStep1.parse(req.body)
+    if (!isValidDocument(body.cpfCnpj)) return reply.code(400).send({ error: 'CPF/CNPJ inválido' })
+    const { rows: [u] } = await db.query('SELECT id FROM store_users WHERE email = $1', [body.email])
+    if (u) return reply.code(409).send({ error: 'E-mail já está em uso' })
+
+    const doc = onlyDigits(body.cpfCnpj)
+    // Continua o mesmo prospect ao retomar com o mesmo e-mail (sem duplicar).
+    const { rows: [existing] } = await db.query(
+      `SELECT id FROM prospects WHERE email = $1 AND status <> 'CONVERTED' LIMIT 1`, [body.email]
     )
-
-    for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
+    if (existing) {
       await db.query(
-        `INSERT INTO store_role_scopes (store_id, role, scopes)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (store_id, role) DO NOTHING`,
-        [store.id, role, JSON.stringify(DEFAULT_ROLE_SCOPES[role])]
+        `UPDATE prospects SET store_name = $2, cpf_cnpj = $3, status = 'STEP1', updated_at = now() WHERE id = $1`,
+        [existing.id, body.storeName, doc]
       )
+      return { id: existing.id }
     }
-
-    const hash     = await bcrypt.hash(body.password, 10)
-    const username = body.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
-    const { rows: [user] } = await db.query(
-      `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, 'OWNER')
-       RETURNING id, name, email, role`,
-      [store.id, body.ownerName, body.email, username, hash]
+    const { rows: [p] } = await db.query(
+      `INSERT INTO prospects (store_name, cpf_cnpj, email, status) VALUES ($1, $2, $3, 'STEP1') RETURNING id`,
+      [body.storeName, doc, body.email]
     )
+    return { id: p.id }
+  })
 
-    const scopes = DEFAULT_ROLE_SCOPES['OWNER'] ?? []
-    const token  = signJwt({
-      type:    'store_user',
-      sub:     user.id,
-      storeId: store.id,
-      role:    'OWNER',
-      name:    user.name,
-      scopes,
-    })
+  const prospectStep2 = z.object({
+    address: z.string().optional(),
+    lat:     z.number().optional(),
+    lng:     z.number().optional(),
+  })
 
-    return reply.code(201).send({
-      token,
-      user: {
-        id:      user.id,
-        name:    user.name,
-        email:   user.email,
-        role:    user.role,
-        storeId: store.id,
-        scopes,
-      },
+  app.patch('/auth/prospect/:id', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const body = prospectStep2.parse(req.body)
+    const { rowCount } = await db.query(
+      `UPDATE prospects SET address = $2, lat = $3, lng = $4, status = 'STEP2', updated_at = now()
+       WHERE id = $1 AND status <> 'CONVERTED'`,
+      [id, body.address ?? null, body.lat ?? null, body.lng ?? null]
+    )
+    if (!rowCount) return reply.code(404).send({ error: 'Cadastro não encontrado' })
+    return { ok: true }
+  })
+
+  const convertSchema = z.object({
+    ownerName: z.string().min(2),
+    password:  z.string().min(6),
+  })
+
+  app.post('/auth/prospect/:id/convert', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const body = convertSchema.parse(req.body)
+
+    const { rows: [p] } = await db.query('SELECT * FROM prospects WHERE id = $1', [id])
+    if (!p) return reply.code(404).send({ error: 'Cadastro não encontrado' })
+    if (p.status === 'CONVERTED') return reply.code(409).send({ error: 'Cadastro já concluído' })
+    if (!p.email || !p.store_name) return reply.code(400).send({ error: 'Cadastro incompleto' })
+
+    const { rows: [u] } = await db.query('SELECT id FROM store_users WHERE email = $1', [p.email])
+    if (u) return reply.code(409).send({ error: 'E-mail já está em uso' })
+
+    const result = await createStoreWithOwner({
+      storeName: p.store_name, ownerName: body.ownerName, email: p.email, password: body.password,
+      cpfCnpj: p.cpf_cnpj, address: p.address, lat: p.lat, lng: p.lng,
     })
+    await db.query(
+      `UPDATE prospects SET status = 'CONVERTED', owner_name = $2, converted_store_id = $3, updated_at = now() WHERE id = $1`,
+      [id, body.ownerName, result.user.storeId]
+    )
+    return reply.code(201).send(result)
   })
 }
