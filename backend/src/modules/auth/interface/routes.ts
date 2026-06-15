@@ -92,17 +92,27 @@ export async function authRoutes(app: FastifyInstance) {
   async function createStoreWithOwner(input: {
     storeName: string; ownerName: string; email: string; password: string
     cpfCnpj?: string | null; address?: string | null; lat?: number | null; lng?: number | null
+    planId?: string | null
   }) {
     const hash     = await bcrypt.hash(input.password, 10)
     const username = input.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
 
     const { storeId, user } = await db.transaction(async (client) => {
       const { rows: [store] } = await client.query(
-        `INSERT INTO stores (name, cpf_cnpj, street, lat, lng, trial_ends_at)
-         VALUES ($1, $2, $3, $4, $5, (now() + INTERVAL '3 months')::DATE)
+        `INSERT INTO stores (name, cpf_cnpj, street, lat, lng, plan_id, trial_ends_at)
+         VALUES ($1, $2, $3, $4, $5, $6, (now() + INTERVAL '3 months')::DATE)
          RETURNING id`,
-        [input.storeName, input.cpfCnpj ?? null, input.address ?? null, input.lat ?? null, input.lng ?? null]
+        [input.storeName, input.cpfCnpj ?? null, input.address ?? null, input.lat ?? null, input.lng ?? null, input.planId ?? null]
       )
+      // Sincroniza as features do plano escolhido (limites + features)
+      if (input.planId) {
+        await client.query(
+          `INSERT INTO store_features_enabled (store_id, feature_id)
+           SELECT $1, feature_id FROM plan_features WHERE plan_id = $2
+           ON CONFLICT DO NOTHING`,
+          [store.id, input.planId]
+        )
+      }
       for (const role of ['OWNER', 'MANAGER', 'ASSISTANT'] as const) {
         await client.query(
           `INSERT INTO store_role_scopes (store_id, role, scopes)
@@ -136,6 +146,30 @@ export async function authRoutes(app: FastifyInstance) {
     const { rows: [existing] } = await db.query('SELECT id FROM store_users WHERE email = $1', [body.email])
     if (existing) return reply.code(409).send({ error: 'E-mail já está em uso' })
     return reply.code(201).send(await createStoreWithOwner(body))
+  })
+
+  // ── Planos ativos (público — usado no wizard de cadastro) ─────────────────
+  app.get('/plans', async () => {
+    const { rows } = await db.query(`
+      SELECT p.id, p.name, p.price_cents, p.max_deliverers, p.max_orders_per_month,
+             COALESCE(
+               (SELECT jsonb_agg(f.name ORDER BY f.name)
+                FROM plan_features pf JOIN features f ON f.id = pf.feature_id
+                WHERE pf.plan_id = p.id),
+               '[]'::jsonb
+             ) AS features
+      FROM plans p
+      WHERE p.is_active = true
+      ORDER BY p.sort_order ASC, p.name ASC
+    `)
+    return rows.map((r: Record<string, unknown>) => ({
+      id:                r.id,
+      name:              r.name,
+      priceCents:        Number(r.price_cents ?? 0),
+      maxDeliverers:     r.max_deliverers       != null ? Number(r.max_deliverers)       : null,
+      maxOrdersPerMonth: r.max_orders_per_month != null ? Number(r.max_orders_per_month) : null,
+      features:          (r.features as string[] | null) ?? [],
+    }))
   })
 
   // ── Cadastro em etapas (prospects) ────────────────────────────────────────
@@ -191,6 +225,7 @@ export async function authRoutes(app: FastifyInstance) {
   const convertSchema = z.object({
     ownerName: z.string().min(2),
     password:  z.string().min(6),
+    planId:    z.string().uuid().nullable().optional(),
   })
 
   app.post('/auth/prospect/:id/convert', async (req, reply) => {
@@ -205,9 +240,18 @@ export async function authRoutes(app: FastifyInstance) {
     const { rows: [u] } = await db.query('SELECT id FROM store_users WHERE email = $1', [p.email])
     if (u) return reply.code(409).send({ error: 'E-mail já está em uso' })
 
+    let planId: string | null = null
+    if (body.planId) {
+      const { rows: [plan] } = await db.query(
+        'SELECT id FROM plans WHERE id = $1 AND is_active = true', [body.planId]
+      )
+      if (!plan) return reply.code(400).send({ error: 'Plano inválido' })
+      planId = body.planId
+    }
+
     const result = await createStoreWithOwner({
       storeName: p.store_name, ownerName: body.ownerName, email: p.email, password: body.password,
-      cpfCnpj: p.cpf_cnpj, address: p.address, lat: p.lat, lng: p.lng,
+      cpfCnpj: p.cpf_cnpj, address: p.address, lat: p.lat, lng: p.lng, planId,
     })
     await db.query(
       `UPDATE prospects SET status = 'CONVERTED', owner_name = $2, converted_store_id = $3, updated_at = now() WHERE id = $1`,

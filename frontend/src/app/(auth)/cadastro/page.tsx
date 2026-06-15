@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Truck, ArrowLeft, Search, MapPin, Loader2 } from 'lucide-react'
+import { Truck, ArrowLeft, Search, MapPin, Loader2, Check } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { StoreUser } from '@/types'
@@ -17,7 +17,26 @@ const MapPicker = dynamic(() => import('./_map_picker'), {
   loading: () => <div className="flex h-full items-center justify-center text-sm text-gray-400">Carregando mapa…</div>,
 })
 
-const STEPS = ['Loja', 'Endereço', 'Acesso']
+const STEPS = ['Loja', 'Endereço', 'Plano', 'Acesso']
+
+interface Plan {
+  id:                string
+  name:              string
+  priceCents:        number
+  maxDeliverers:     number | null
+  maxOrdersPerMonth: number | null
+  features:          string[]
+}
+
+const FEATURE_LABEL: Record<string, string> = {
+  whatsapp:         'Notificações WhatsApp',
+  custom_theme:     'Logo e cores',
+  csv_export:       'Exportação CSV',
+  customer_ratings: 'Avaliação de entregadores',
+}
+
+const fmtPrice = (cents: number) =>
+  (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 async function geocode(q: string): Promise<{ lat: number; lng: number } | null> {
   const res = await fetch(
@@ -49,10 +68,18 @@ export default function CadastroPage() {
   const [lng, setLng]         = useState<number | null>(null)
   const [geocoding, setGeocoding] = useState(false)
 
-  // Etapa 3
+  // Etapa 3 — Plano
+  const [plans, setPlans]   = useState<Plan[]>([])
+  const [planId, setPlanId] = useState<string>('')
+
+  // Etapa 4 — Acesso
   const [ownerName, setOwnerName] = useState('')
   const [password, setPassword]   = useState('')
   const [confirm, setConfirm]     = useState('')
+
+  useEffect(() => {
+    api.get<Plan[]>('/plans').then(setPlans).catch(() => {})
+  }, [])
 
   async function submitStep1() {
     if (storeName.trim().length < 2) return setError('Informe o nome da loja')
@@ -92,6 +119,12 @@ export default function CadastroPage() {
     } finally { setLoading(false) }
   }
 
+  function submitStepPlan() {
+    if (!planId) return setError('Escolha um plano para continuar')
+    setError('')
+    setStep(3)
+  }
+
   async function submitStep3() {
     if (ownerName.trim().length < 2) return setError('Informe seu nome')
     if (password.length < 6) return setError('A senha deve ter ao menos 6 caracteres')
@@ -100,7 +133,7 @@ export default function CadastroPage() {
     try {
       const res = await api.post<{ token: string; user: StoreUser }>(
         `/auth/prospect/${prospectId}/convert`,
-        { ownerName: ownerName.trim(), password }
+        { ownerName: ownerName.trim(), password, planId: planId || null }
       )
       setSession(res.token, res.user)
       router.push('/orders')
@@ -180,8 +213,55 @@ export default function CadastroPage() {
             </div>
           )}
 
-          {/* Etapa 3 — Acesso */}
+          {/* Etapa 3 — Plano */}
           {step === 2 && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-gray-800">Escolha seu plano</h2>
+              <p className="text-sm text-gray-500">3 meses grátis — você só começa a pagar após o período de teste.</p>
+              <div className="space-y-2">
+                {plans.length === 0 && (
+                  <p className="text-sm text-gray-400">Carregando planos…</p>
+                )}
+                {plans.map((p) => {
+                  const selected = planId === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => { setPlanId(p.id); setError('') }}
+                      className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                        selected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            selected ? 'border-blue-500 bg-blue-500' : 'border-gray-300'
+                          }`}>
+                            {selected && <Check className="h-3 w-3 text-white" />}
+                          </div>
+                          <span className="font-semibold text-gray-900">{p.name}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900">
+                          {fmtPrice(p.priceCents)}<span className="text-xs font-normal text-gray-400">/mês</span>
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-xs text-gray-500">
+                        <span>{p.maxDeliverers == null ? 'Entregadores ilimitados' : `Até ${p.maxDeliverers} entregadores`}</span>
+                        <span>{p.maxOrdersPerMonth == null ? 'Entregas ilimitadas' : `Até ${p.maxOrdersPerMonth.toLocaleString('pt-BR')} entregas/mês`}</span>
+                        {p.features.map((f) => (
+                          <span key={f}>{FEATURE_LABEL[f] ?? f}</span>
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Etapa 4 — Acesso */}
+          {step === 3 && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-gray-800">Seu acesso</h2>
               <Field label="Seu nome">
@@ -202,9 +282,14 @@ export default function CadastroPage() {
             type="button"
             className="mt-6 w-full"
             disabled={loading}
-            onClick={step === 0 ? submitStep1 : step === 1 ? submitStep2 : submitStep3}
+            onClick={
+              step === 0 ? submitStep1 :
+              step === 1 ? submitStep2 :
+              step === 2 ? submitStepPlan :
+              submitStep3
+            }
           >
-            {loading ? 'Salvando…' : step === 2 ? 'Concluir cadastro' : 'Avançar'}
+            {loading ? 'Salvando…' : step === 3 ? 'Concluir cadastro' : 'Avançar'}
           </Button>
 
           {step === 0 && (
