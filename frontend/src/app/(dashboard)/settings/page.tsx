@@ -1,16 +1,25 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import useSWR from 'swr'
-import { Save, Lock, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck } from 'lucide-react'
+import { Save, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck, MapPin, Search, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+const AddressMap = dynamic(() => import('./_address_map'), {
+  ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center text-sm text-gray-400">Carregando mapa…</div>,
+})
+
 interface StoreSettings {
   storeName:             string
+  storeAddress:          string | null
+  storeLat:              number | null
+  storeLng:              number | null
   maxOrdersPerRoute:     number
   requireDeliveryPhoto:  boolean
   requirePickupCode:     boolean
@@ -66,17 +75,30 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-2xl">
+    <div className="p-4 sm:p-6 max-w-6xl">
       <h1 className="mb-1 text-2xl font-bold text-gray-900">Configurações</h1>
-      <p className="mb-8 text-sm text-gray-500">Gerencie as preferências da sua loja e conta</p>
+      <p className="mb-8 text-sm text-gray-500">Gerencie as preferências da sua loja</p>
 
-      <div className="space-y-6">
-        {isManager && <BillingSection />}
-        {isManager && <OperationsSection onSaved={() => showToast('Configurações salvas')} />}
-        {isManager && <PrivacySection onSaved={() => showToast('Configurações salvas')} />}
-        <ThemeSection isManager={isManager} onSaved={() => showToast('Tema atualizado')} />
-        <PasswordSection onSaved={() => showToast('Senha alterada com sucesso')} />
-      </div>
+      {isManager ? (
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          {/* Coluna principal — operações (conteúdo mais extenso) */}
+          <div className="space-y-6">
+            <OperationsSection onSaved={() => showToast('Configurações salvas')} />
+          </div>
+
+          {/* Coluna lateral — visão geral, endereço, privacidade e aparência */}
+          <div className="space-y-6">
+            <BillingSection />
+            <StoreAddressSection onSaved={() => showToast('Endereço atualizado')} />
+            <PrivacySection onSaved={() => showToast('Configurações salvas')} />
+            <ThemeSection isManager={isManager} onSaved={() => showToast('Tema atualizado')} />
+          </div>
+        </div>
+      ) : (
+        <div className="max-w-2xl space-y-6">
+          <ThemeSection isManager={isManager} onSaved={() => showToast('Tema atualizado')} />
+        </div>
+      )}
 
       {toast && <Toast message={toast} />}
     </div>
@@ -687,27 +709,57 @@ function ThemeSection({ isManager, onSaved }: { isManager: boolean; onSaved: () 
   )
 }
 
-function PasswordSection({ onSaved }: { onSaved: () => void }) {
-  const [current,  setCurrent]  = useState('')
-  const [next,     setNext]     = useState('')
-  const [confirm,  setConfirm]  = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState('')
+async function geocodeAddress(q: string): Promise<{ lat: number; lng: number } | null> {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+    { headers: { 'Accept-Language': 'pt-BR' } }
+  )
+  const data = (await res.json()) as { lat: string; lon: string }[]
+  if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+  return null
+}
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (next !== confirm) {
-      setError('As senhas não coincidem')
-      return
+function StoreAddressSection({ onSaved }: { onSaved: () => void }) {
+  const { data, mutate } = useSWR<StoreSettings>(
+    '/store/settings',
+    (u: string) => api.get<StoreSettings>(u)
+  )
+
+  const [address, setAddress] = useState('')
+  const [lat, setLat]         = useState<number | null>(null)
+  const [lng, setLng]         = useState<number | null>(null)
+  const [geocoding, setGeocoding] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+
+  useEffect(() => {
+    if (data) {
+      setAddress(data.storeAddress ?? '')
+      setLat(data.storeLat ?? null)
+      setLng(data.storeLng ?? null)
     }
-    setLoading(true)
-    setError('')
+  }, [data])
+
+  async function locate() {
+    if (!address.trim()) return
+    setGeocoding(true); setError('')
     try {
-      await api.patch('/store/me/password', {
-        currentPassword: current,
-        newPassword:     next,
+      const r = await geocodeAddress(address.trim())
+      if (r) { setLat(r.lat); setLng(r.lng) }
+      else setError('Endereço não encontrado — ajuste o pino no mapa.')
+    } catch { setError('Não foi possível localizar — ajuste o pino no mapa.') }
+    finally { setGeocoding(false) }
+  }
+
+  async function handleSave() {
+    setLoading(true); setError('')
+    try {
+      await api.patch('/store/settings', {
+        storeAddress: address.trim() || null,
+        storeLat: lat,
+        storeLng: lng,
       })
-      setCurrent(''); setNext(''); setConfirm('')
+      mutate()
       onSaved()
     } catch (err: unknown) {
       setError((err as Error).message)
@@ -717,47 +769,41 @@ function PasswordSection({ onSaved }: { onSaved: () => void }) {
   }
 
   return (
-    <SectionCard icon={Lock} title="Minha conta">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <SectionCard icon={MapPin} title="Endereço da loja">
+      <div className="space-y-4">
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">Senha atual</label>
-          <Input
-            type="password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            required
-            placeholder="••••••••"
-          />
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">Endereço</label>
+          <p className="mb-2 text-xs text-gray-500">
+            Usado como ponto de partida das rotas. Busque o endereço e ajuste o pino no mapa.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Rua, número, cidade"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); locate() } }}
+            />
+            <Button type="button" variant="outline" onClick={locate} disabled={geocoding}>
+              {geocoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">Nova senha</label>
-          <Input
-            type="password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            required
-            minLength={6}
-            placeholder="Mínimo 6 caracteres"
-          />
+
+        <div className="h-64 overflow-hidden rounded-xl border border-gray-200">
+          <AddressMap lat={lat} lng={lng} onChange={(la, ln) => { setLat(la); setLng(ln) }} />
         </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">Confirmar nova senha</label>
-          <Input
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-            placeholder="Repita a nova senha"
-          />
-        </div>
+        <p className="flex items-center gap-1.5 text-xs text-gray-500">
+          <MapPin className="h-3.5 w-3.5" />
+          {lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : 'Clique no mapa ou busque um endereço'}
+        </p>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-        <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-          <Lock className="h-4 w-4" />
-          {loading ? 'Alterando...' : 'Alterar senha'}
+        <Button onClick={handleSave} disabled={loading} className="w-full sm:w-auto">
+          <Save className="h-4 w-4" />
+          {loading ? 'Salvando...' : 'Salvar endereço'}
         </Button>
-      </form>
+      </div>
     </SectionCard>
   )
 }

@@ -158,7 +158,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     const storeId = req.actor.storeId
 
     const [{ rows: [store] }, { rows: settingRows }] = await Promise.all([
-      db.query('SELECT name, lat, lng FROM stores WHERE id = $1', [storeId]),
+      db.query('SELECT name, street, lat, lng FROM stores WHERE id = $1', [storeId]),
       db.query(
         `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
          FROM settings s
@@ -172,9 +172,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     )
 
     return {
-      storeName:            (store as Record<string, unknown> | undefined)?.name ?? '',
-      storeLat:             (store as Record<string, unknown> | undefined)?.lat  ?? null,
-      storeLng:             (store as Record<string, unknown> | undefined)?.lng  ?? null,
+      storeName:            (store as Record<string, unknown> | undefined)?.name   ?? '',
+      storeAddress:         (store as Record<string, unknown> | undefined)?.street ?? null,
+      storeLat:             (store as Record<string, unknown> | undefined)?.lat    ?? null,
+      storeLng:             (store as Record<string, unknown> | undefined)?.lng    ?? null,
       maxOrdersPerRoute:    parseInt(s.max_orders_per_route    ?? '5'),
       requireDeliveryPhoto:    s.require_delivery_photo    === 'true',
       requirePickupCode:        s.require_pickup_code        !== 'false',
@@ -213,6 +214,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     deliveryRequireProximity: z.boolean().optional(),
     enforceDeliveryOrder:     z.boolean().optional(),
     notifyOperatorDelayedThreshold: z.number().int().min(1).max(100).optional(),
+    storeAddress:          z.string().max(300).optional().nullable(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
   })
@@ -269,6 +271,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     if (body.storeName) {
       storeUpdates.push(`name = $${storeIdx++}`)
       storeParams.push(body.storeName)
+    }
+    if (body.storeAddress !== undefined) {
+      storeUpdates.push(`street = $${storeIdx++}`)
+      storeParams.push(body.storeAddress ?? null)
     }
     if (body.storeLat !== undefined) {
       storeUpdates.push(`lat = $${storeIdx++}`)
