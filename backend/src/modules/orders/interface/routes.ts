@@ -137,19 +137,46 @@ export async function orderRoutes(app: FastifyInstance) {
       }
     }
 
-    // Attach deliverer's last known live position (from location_history, updated every ~15s)
+    // Attach deliverer's last known live position (from location_history, updated every ~15s),
+    // a foto do entregador e o tracejado do trajeto desta entrega.
     let delivererLat: number | null = null
     let delivererLng: number | null = null
+    let delivererPhotoUrl: string | null = null
+    let trail: { lat: number; lng: number }[] = []
     if ((order as { deliverer?: unknown }).deliverer) {
-      const { rows } = await db.query(
-        `SELECT lat, lng FROM location_history
-         WHERE deliverer_id = (SELECT deliverer_id FROM orders WHERE id = $1)
-         ORDER BY recorded_at DESC LIMIT 1`,
+      const { rows: [meta] } = await db.query(
+        `SELECT deliverer_id,
+                COALESCE(out_for_delivery_at, picked_up_at, created_at) AS trail_start,
+                COALESCE(delivered_at, now())                            AS trail_end
+         FROM orders WHERE id = $1`,
         [orderId]
       )
-      if (rows[0]) {
-        delivererLat = (rows[0] as Record<string, unknown>).lat as number
-        delivererLng = (rows[0] as Record<string, unknown>).lng as number
+      const delivererId = (meta as Record<string, unknown> | undefined)?.deliverer_id as string | undefined
+      if (delivererId) {
+        const [{ rows: lastRows }, { rows: photoRows }, { rows: trailRows }] = await Promise.all([
+          db.query(
+            `SELECT lat, lng FROM location_history
+             WHERE deliverer_id = $1 ORDER BY recorded_at DESC LIMIT 1`,
+            [delivererId]
+          ),
+          db.query('SELECT profile_image_url FROM deliverers WHERE id = $1', [delivererId]),
+          db.query(
+            `SELECT lat, lng FROM location_history
+             WHERE deliverer_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+             ORDER BY recorded_at ASC LIMIT 1000`,
+            [delivererId, (meta as Record<string, unknown>).trail_start, (meta as Record<string, unknown>).trail_end]
+          ),
+        ])
+        if (lastRows[0]) {
+          delivererLat = (lastRows[0] as Record<string, unknown>).lat as number
+          delivererLng = (lastRows[0] as Record<string, unknown>).lng as number
+        }
+        delivererPhotoUrl = await resolveImageUrl(
+          (photoRows[0] as Record<string, unknown> | undefined)?.profile_image_url as string | null
+        ) ?? null
+        trail = (trailRows as Array<{ lat: number; lng: number }>).map(r => ({
+          lat: Number(r.lat), lng: Number(r.lng),
+        }))
       }
     }
 
@@ -230,7 +257,7 @@ export async function orderRoutes(app: FastifyInstance) {
       }
     }
 
-    return { ...order, delivererLat, delivererLng, ratingEnabled, storeTheme }
+    return { ...order, delivererLat, delivererLng, delivererPhotoUrl, trail, ratingEnabled, storeTheme }
   })
 
   // ── Public rating submission ──────────────────────────────────────────────

@@ -1,7 +1,29 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+/// Detecta se um erro é falta de conexão com a internet (timeout/socket),
+/// para diferenciar de erros do servidor e mostrar um aviso adequado.
+bool isNoInternetError(Object? error) {
+  if (error is DioException) {
+    switch (error.type) {
+      case DioExceptionType.connectionError:
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        return true;
+      default:
+        break;
+    }
+    if (error.error is SocketException) return true;
+  }
+  return error is SocketException;
+}
+
+const String kNoInternetMessage =
+    'Sem conexão com a internet. Verifique sua conexão e tente novamente.';
 
 const String _baseUrl = String.fromEnvironment(
   'API_URL',

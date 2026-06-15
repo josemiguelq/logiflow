@@ -217,10 +217,12 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       final res   = await ApiClient().dio.get('/deliverer/routes/${summary.id}');
       final route = DelivererRoute.fromJson(res.data as Map<String, dynamic>);
       if (mounted) context.push('/plan-route', extra: route);
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erro ao carregar rota. Tente novamente.')),
+          SnackBar(content: Text(
+            isNoInternetError(e) ? kNoInternetMessage : 'Erro ao carregar rota. Tente novamente.',
+          )),
         );
       }
     } finally {

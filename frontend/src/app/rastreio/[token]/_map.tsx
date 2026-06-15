@@ -20,24 +20,53 @@ const destIcon = new L.Icon({
   popupAnchor:[1, -34],
 })
 
+// Marcador circular com a foto do entregador (fallback: marcador de caminhão).
+function delivererIcon(photoUrl?: string): L.Icon | L.DivIcon {
+  if (!photoUrl) return truckIcon
+  return L.divIcon({
+    className: '',
+    html: `<img src="${photoUrl}" style="width:44px;height:44px;border-radius:9999px;object-fit:cover;border:3px solid #2563EB;box-shadow:0 1px 4px rgba(0,0,0,.4);background:#fff" />`,
+    iconSize:   [44, 44],
+    iconAnchor: [22, 22],
+    popupAnchor:[0, -22],
+  })
+}
+
+interface LatLng { lat: number; lng: number }
+
 interface Props {
   delivererLat: number
   delivererLng: number
   delivererName: string
+  delivererPhotoUrl?: string
+  trail?: LatLng[]
   destLat?: number
   destLng?: number
   destLabel?: string
 }
 
 export default function TrackingMap({
-  delivererLat, delivererLng, delivererName,
+  delivererLat, delivererLng, delivererName, delivererPhotoUrl, trail,
   destLat, destLng, destLabel,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<L.Map | null>(null)
   const markerRef    = useRef<L.Marker | null>(null)
+  const trailRef     = useRef<L.Polyline | null>(null)
 
   const hasDest = destLat != null && destLng != null
+
+  // Enquadra entregador + destino + trajeto.
+  function fit(map: L.Map) {
+    const pts: L.LatLngExpression[] = [[delivererLat, delivererLng]]
+    if (hasDest) pts.push([destLat!, destLng!])
+    for (const p of trail ?? []) pts.push([p.lat, p.lng])
+    if (pts.length > 1) {
+      map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], maxZoom: 16 })
+    } else {
+      map.setView([delivererLat, delivererLng], 15)
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -47,7 +76,15 @@ export default function TrackingMap({
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
 
-    markerRef.current = L.marker([delivererLat, delivererLng], { icon: truckIcon })
+    // Tracejado do trajeto percorrido pelo entregador.
+    if (trail && trail.length >= 2) {
+      trailRef.current = L.polyline(
+        trail.map(p => [p.lat, p.lng] as L.LatLngExpression),
+        { color: '#2563EB', weight: 4, opacity: 0.7, dashArray: '6 8' },
+      ).addTo(map)
+    }
+
+    markerRef.current = L.marker([delivererLat, delivererLng], { icon: delivererIcon(delivererPhotoUrl) })
       .addTo(map)
       .bindPopup(delivererName)
 
@@ -55,32 +92,35 @@ export default function TrackingMap({
       L.marker([destLat!, destLng!], { icon: destIcon })
         .addTo(map)
         .bindPopup(destLabel ?? 'Endereço de entrega')
-      // Enquadra os dois pontos (entregador + destino).
-      map.fitBounds(
-        L.latLngBounds([[delivererLat, delivererLng], [destLat!, destLng!]]),
-        { padding: [48, 48], maxZoom: 16 },
-      )
     }
 
+    fit(map)
     mapRef.current = map
 
-    return () => { map.remove(); mapRef.current = null }
+    return () => { map.remove(); mapRef.current = null; markerRef.current = null; trailRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Atualiza a posição do entregador; mantém os dois pontos visíveis quando há destino.
+  // Atualiza posição, foto e tracejado quando os dados mudam (refetch periódico).
   useEffect(() => {
-    if (!mapRef.current || !markerRef.current) return
-    const latlng = L.latLng(delivererLat, delivererLng)
-    markerRef.current.setLatLng(latlng)
-    if (hasDest) {
-      mapRef.current.fitBounds(
-        L.latLngBounds([[delivererLat, delivererLng], [destLat!, destLng!]]),
-        { padding: [48, 48], maxZoom: 16 },
-      )
-    } else {
-      mapRef.current.panTo(latlng)
+    const map = mapRef.current
+    if (!map || !markerRef.current) return
+
+    markerRef.current.setLatLng(L.latLng(delivererLat, delivererLng))
+    markerRef.current.setIcon(delivererIcon(delivererPhotoUrl))
+
+    if (trail && trail.length >= 2) {
+      const pts = trail.map(p => [p.lat, p.lng] as L.LatLngExpression)
+      if (trailRef.current) {
+        trailRef.current.setLatLngs(pts)
+      } else {
+        trailRef.current = L.polyline(pts, { color: '#2563EB', weight: 4, opacity: 0.7, dashArray: '6 8' }).addTo(map)
+      }
     }
-  }, [delivererLat, delivererLng, destLat, destLng, hasDest])
+
+    fit(map)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delivererLat, delivererLng, delivererPhotoUrl, trail, destLat, destLng, hasDest])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }

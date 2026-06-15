@@ -21,6 +21,8 @@ interface PublicOrder {
   status:        string
   customer:      { name: string; address: string; lat?: number | null; lng?: number | null }
   deliverer?:    { name: string }
+  delivererPhotoUrl?: string | null
+  trail?:        { lat: number; lng: number }[]
   routePosition?: number
   isCurrentStop:  boolean
   delivererLat?:  number | null
@@ -294,6 +296,8 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
               delivererLat={order.delivererLat!}
               delivererLng={order.delivererLng!}
               delivererName={order.deliverer?.name ?? 'Entregador'}
+              delivererPhotoUrl={order.delivererPhotoUrl ?? undefined}
+              trail={order.trail ?? undefined}
               destLat={order.customer.lat ?? undefined}
               destLng={order.customer.lng ?? undefined}
               destLabel={order.customer.address}
@@ -319,12 +323,22 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
           {order.deliverer && (
             <div className="rounded-2xl bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Entregador</p>
-              <div className="mt-1 flex items-center gap-2">
-                <Truck className="h-4 w-4 text-gray-400" />
-                <p className="text-gray-900">{order.deliverer.name}</p>
+              <div className="mt-2 flex items-center gap-3">
+                {order.delivererPhotoUrl ? (
+                  <img
+                    src={order.delivererPhotoUrl}
+                    alt={order.deliverer.name}
+                    className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-gray-100"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100">
+                    <Truck className="h-5 w-5 text-gray-400" />
+                  </div>
+                )}
+                <p className="font-medium text-gray-900">{order.deliverer.name}</p>
               </div>
               {order.routePosition && order.routePosition > 1 && (
-                <p className="mt-1 text-sm text-gray-500">Você é a parada #{order.routePosition} da rota</p>
+                <p className="mt-2 text-sm text-gray-500">Você é a parada #{order.routePosition} da rota</p>
               )}
             </div>
           )}

@@ -55,7 +55,10 @@ class DeliveryScreen extends ConsumerWidget {
       ),
       body: orders.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erro: $e')),
+        error: (e, _) => _DeliveryErrorState(
+          offline: isNoInternetError(e),
+          onRetry: () => ref.invalidate(_activeDeliveryProvider),
+        ),
         data: (list) {
           if (list.isEmpty) {
             return _EmptyDeliveryState(onGoOrders: () => context.go('/orders'));
@@ -741,8 +744,9 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       widget.onDelivered();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      final msg = (e as dynamic).response?.data?['error'] as String? ??
-          'Código incorreto';
+      final msg = isNoInternetError(e)
+          ? kNoInternetMessage
+          : ((e as dynamic).response?.data?['error'] as String? ?? 'Código incorreto');
       setState(() {
         _error = msg;
         _loading = false;
@@ -1244,6 +1248,46 @@ class _EmptyDeliveryState extends StatelessWidget {
               onPressed: onGoOrders,
               icon: const Icon(Icons.inbox_outlined),
               label: const Text('Ver pedidos disponíveis'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeliveryErrorState extends StatelessWidget {
+  final bool offline;
+  final VoidCallback onRetry;
+  const _DeliveryErrorState({required this.offline, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(offline ? Icons.wifi_off_rounded : Icons.error_outline,
+                size: 64, color: offline ? const Color(0xFFEA580C) : Colors.red.shade400),
+            const SizedBox(height: 16),
+            Text(offline ? 'Sem conexão com a internet' : 'Não foi possível carregar',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(
+              offline
+                  ? 'Verifique sua conexão e tente novamente.'
+                  : 'Ocorreu um erro ao carregar as entregas. Tente novamente.',
+              style: TextStyle(color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Tentar novamente'),
             ),
           ],
         ),
