@@ -29,6 +29,13 @@ export function createPgTrackingRepo(db: DB) {
       )
       if (statusRows[0]?.status === 'OFFLINE') return false
 
+      const ts = recordedAt ?? new Date()
+
+      // Chegada ao endereço: na primeira vez que o entregador entra no raio de
+      // chegada de um pedido em rota, registra arrived_at (mesmo que o ping seja
+      // depois descartado pela deduplicação). Permite medir chegada → entrega.
+      await this.detectArrival(delivererId, lat, lng, ts)
+
       const { rows: last } = await db.query(
         `SELECT lat, lng, recorded_at
          FROM location_history
@@ -37,7 +44,6 @@ export function createPgTrackingRepo(db: DB) {
         [delivererId]
       )
 
-      const ts = recordedAt ?? new Date()
       if (last[0]) {
         const dist = haversineMeters(last[0].lat, last[0].lng, lat, lng)
         const elapsed = (ts.getTime() - new Date(last[0].recorded_at).getTime()) / 1000
@@ -70,6 +76,37 @@ export function createPgTrackingRepo(db: DB) {
         if (ok) saved++
       }
       return saved
+    },
+
+    // Marca arrived_at dos pedidos em rota do entregador cujo destino está dentro
+    // do raio de chegada da loja (settings.arrival_radius_meters, padrão 20 m).
+    async detectArrival(delivererId: string, lat: number, lng: number, ts: Date) {
+      const { rows } = await db.query(
+        `SELECT o.id,
+                COALESCE(o.delivery_lat, ca.lat) AS dlat,
+                COALESCE(o.delivery_lng, ca.lng) AS dlng,
+                COALESCE(NULLIF(sv.value, ''), s.default_value, '20')::float AS radius
+         FROM orders o
+         JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
+         LEFT JOIN settings s ON s.name = 'arrival_radius_meters'
+         LEFT JOIN store_setting_values sv ON sv.setting_id = s.id AND sv.store_id = o.store_id
+         WHERE o.deliverer_id = $1
+           AND o.status IN ('ON_ROUTE', 'OUT_FOR_DELIVERY')
+           AND o.arrived_at IS NULL`,
+        [delivererId]
+      )
+
+      for (const r of rows) {
+        if (r.dlat == null || r.dlng == null) continue
+        const dist = haversineMeters(lat, lng, Number(r.dlat), Number(r.dlng))
+        if (dist <= Number(r.radius)) {
+          await db.query(
+            `UPDATE orders SET arrived_at = $2 WHERE id = $1 AND arrived_at IS NULL`,
+            [r.id, ts]
+          )
+        }
+      }
     },
 
     async getLatest(delivererId: string) {

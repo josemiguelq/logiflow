@@ -67,6 +67,7 @@ export interface Order {
   createdAt: string
   pickedUpAt?: string
   outForDeliveryAt?: string
+  arrivedAt?: string
   deliveredAt?: string
   log?: OrderLogEntry[]
   summary?: OrderSummary
@@ -111,6 +112,7 @@ export interface RouteOrderItem {
   routePosition?: number
   createdAt?: string
   pickedUpAt?: string
+  arrivedAt?: string
   deliveredAt?: string
   deliveredOffTarget?: boolean
   paymentMethod: 'prepaid' | 'cash' | 'card'

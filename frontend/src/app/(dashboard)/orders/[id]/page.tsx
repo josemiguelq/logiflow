@@ -211,6 +211,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   {formatDate(order.pickedUpAt)}
                 </div>
               )}
+              {order.arrivedAt && (
+                <div className="flex items-center gap-2 text-gray-700">
+                  <MapPin className="h-4 w-4 text-gray-400 shrink-0" />
+                  <span className="text-gray-500">Chegou ao endereço:</span>
+                  {formatDate(order.arrivedAt)}
+                </div>
+              )}
               {order.deliveredAt && (
                 <div className="flex items-center gap-2 text-gray-700">
                   <Clock className="h-4 w-4 text-gray-400 shrink-0" />
@@ -218,6 +225,20 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   {formatDate(order.deliveredAt)}
                 </div>
               )}
+              {order.arrivedAt && order.deliveredAt && (() => {
+                const secs = Math.round(
+                  (new Date(order.deliveredAt).getTime() - new Date(order.arrivedAt).getTime()) / 1000
+                )
+                if (secs < 0) return null
+                const slow = secs >= 300 // > 5 min parado no endereço
+                return (
+                  <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${slow ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-gray-700'}`}>
+                    <Clock className="h-4 w-4 shrink-0 opacity-70" />
+                    <span className="opacity-80">Tempo no endereço (chegada → entrega):</span>
+                    <span className="font-semibold">{formatSeconds(secs)}</span>
+                  </div>
+                )
+              })()}
             </div>
           </section>
 

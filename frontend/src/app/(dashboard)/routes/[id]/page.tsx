@@ -51,6 +51,17 @@ const fmtDateTime = (iso?: string) =>
       })
     : null
 
+// Duração curta a partir de segundos: "Xs" / "Xmin" / "XminYs".
+const fmtGap = (secs: number): string => {
+  if (secs < 60) return `${secs}s`
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  if (m < 60) return s ? `${m}min ${s}s` : `${m}min`
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return `${h}h${mm.toString().padStart(2, '0')}min`
+}
+
 interface MapPin {
   id: string
   customerName: string
@@ -122,11 +133,16 @@ export default function RouteDetailPage({ params }: Props) {
     .filter(o => o.status === 'DELIVERED' && o.deliveredAt)
     .sort((a, b) => new Date(a.deliveredAt!).getTime() - new Date(b.deliveredAt!).getTime())
 
+  const secondsBetween = (from?: string, to?: string) =>
+    from && to ? Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000)) : null
+
   const timeline = deliveredOrders.map((o, i) => ({
-    id:    o.id,
-    label: o.customerName,
-    at:    o.deliveredAt!,
-    delta: minutesBetween(i === 0 ? routeStartAt : deliveredOrders[i - 1]!.deliveredAt!, o.deliveredAt!),
+    id:        o.id,
+    label:     o.customerName,
+    at:        o.deliveredAt!,
+    arrivedAt: o.arrivedAt ?? null,
+    atLocation: secondsBetween(o.arrivedAt ?? undefined, o.deliveredAt ?? undefined),
+    delta:     minutesBetween(i === 0 ? routeStartAt : deliveredOrders[i - 1]!.deliveredAt!, o.deliveredAt!),
   }))
   const totalMinutes = route.finishedAt ? minutesBetween(routeStartAt, route.finishedAt) : null
   const showTimeline = Boolean(route.startedAt) || timeline.length > 0
@@ -245,13 +261,28 @@ export default function RouteDetailPage({ params }: Props) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-gray-900">{t.label}</p>
+                    {t.arrivedAt && (
+                      <p className="text-xs text-gray-500">Chegou às {fmtDateTime(t.arrivedAt)}</p>
+                    )}
                     <p className="text-xs text-gray-500">Entregue às {fmtDateTime(t.at)}</p>
                   </div>
-                  {t.delta != null && (
-                    <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                      +{t.delta} min
-                    </span>
-                  )}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {t.delta != null && (
+                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                        +{t.delta} min
+                      </span>
+                    )}
+                    {t.atLocation != null && (
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          t.atLocation >= 300 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'
+                        }`}
+                        title="Tempo entre chegar ao endereço e marcar como entregue"
+                      >
+                        no local: {fmtGap(t.atLocation)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}
@@ -349,10 +380,13 @@ export default function RouteDetailPage({ params }: Props) {
                   </span>
                 </div>
 
-                {/* Datas/horas: criação, retirada e entrega */}
+                {/* Datas/horas: criação, retirada, chegada e entrega */}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                   <span>Criação: <span className="text-gray-700">{fmtDateTime(order.createdAt) ?? '—'}</span></span>
                   <span>Retirada: <span className="text-gray-700">{fmtDateTime(order.pickedUpAt) ?? '—'}</span></span>
+                  {order.arrivedAt && (
+                    <span>Chegada: <span className="text-gray-700">{fmtDateTime(order.arrivedAt)}</span></span>
+                  )}
                   <span>Entrega: <span className="text-gray-700">{fmtDateTime(order.deliveredAt) ?? '—'}</span></span>
                 </div>
               </div>

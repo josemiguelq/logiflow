@@ -29,6 +29,7 @@ export interface Order {
   createdAt: Date
   pickedUpAt?: Date
   outForDeliveryAt?: Date
+  arrivedAt?: Date
   deliveredAt?: Date
   deliveryNote?: string
   cancelReason?: string

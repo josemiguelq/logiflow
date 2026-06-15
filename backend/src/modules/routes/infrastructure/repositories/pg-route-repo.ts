@@ -93,6 +93,7 @@ export function createPgRouteRepo(db: DB) {
                 o.route_position,
                 o.created_at,
                 o.picked_up_at,
+                o.arrived_at,
                 o.delivered_at,
                 COALESCE(o.delivery_lat, ca.lat)             AS target_lat,
                 COALESCE(o.delivery_lng, ca.lng)             AS target_lng,
@@ -128,6 +129,7 @@ export function createPgRouteRepo(db: DB) {
           routePosition:   (o as Record<string, unknown>).route_position as number | undefined,
           createdAt:       (o as Record<string, unknown>).created_at as Date | undefined,
           pickedUpAt:      (o as Record<string, unknown>).picked_up_at as Date | undefined,
+          arrivedAt:       (o as Record<string, unknown>).arrived_at as Date | undefined,
           deliveredAt:     (o as Record<string, unknown>).delivered_at as Date | undefined,
           deliveredOffTarget:
             ((o as Record<string, unknown>).status === 'DELIVERED') &&

@@ -33,6 +33,7 @@ interface StoreSettings {
   delayTransitYellowMin: number
   delayTransitRedMin:    number
   deliveryProximityMeters:  number
+  arrivalRadiusMeters:      number
   notifyOperatorDelayedThreshold: number
   deliveryRequireProximity: boolean
   enforceDeliveryOrder:     boolean
@@ -249,6 +250,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [delayTransitYellow, setDelayTransitYellow] = useState(50)
   const [delayTransitRed,    setDelayTransitRed]    = useState(60)
   const [proximityMeters,    setProximityMeters]    = useState(100)
+  const [arrivalRadius,      setArrivalRadius]      = useState(20)
   const [requireProximity,   setRequireProximity]   = useState(false)
   const [enforceOrder,       setEnforceOrder]       = useState(false)
   const [delayedThreshold,   setDelayedThreshold]   = useState(3)
@@ -270,6 +272,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setDelayTransitYellow(data.delayTransitYellowMin ?? 50)
       setDelayTransitRed(data.delayTransitRedMin ?? 60)
       setProximityMeters(data.deliveryProximityMeters ?? 100)
+      setArrivalRadius(data.arrivalRadiusMeters ?? 20)
       setRequireProximity(data.deliveryRequireProximity ?? false)
       setEnforceOrder(data.enforceDeliveryOrder ?? false)
       setDelayedThreshold(data.notifyOperatorDelayedThreshold ?? 3)
@@ -293,6 +296,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         delayTransitYellowMin: delayTransitYellow,
         delayTransitRedMin:    delayTransitRed,
         deliveryProximityMeters:  proximityMeters,
+        arrivalRadiusMeters:      arrivalRadius,
         deliveryRequireProximity: requireProximity,
         enforceDeliveryOrder:     enforceOrder,
         notifyOperatorDelayedThreshold: delayedThreshold,
@@ -411,6 +415,28 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
               max={5000}
               value={proximityMeters}
               onChange={(e) => setProximityMeters(Math.max(10, Math.min(5000, Number(e.target.value) || 0)))}
+              className="w-32"
+            />
+            <span className="text-xs text-gray-500">metros</span>
+          </div>
+        </div>
+
+        {/* Raio de chegada ao endereço */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <label className="block text-sm font-medium text-gray-900">
+            Raio de chegada ao endereço
+          </label>
+          <p className="mt-0.5 mb-2 text-xs text-gray-500">
+            Distância (em metros) em que o entregador é considerado &quot;chegou&quot; ao endereço do
+            pedido. Registra o horário de chegada para medir o tempo até a baixa da entrega.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={5}
+              max={500}
+              value={arrivalRadius}
+              onChange={(e) => setArrivalRadius(Math.max(5, Math.min(500, Number(e.target.value) || 0)))}
               className="w-32"
             />
             <span className="text-xs text-gray-500">metros</span>
