@@ -44,10 +44,12 @@ export function createPgDelivererRepo(db: DB) {
       return rows.map(r => r.id)
     },
 
-    // Contagem de entregadores ativos: total, em rota ativa e sem rota ativa.
-    async routeStatusCounts(storeId: string): Promise<{ active: number; inRoute: number; idle: number }> {
-      const { rows } = await db.query<{ active: string; in_route: string; idle: string }>(
+    // Contagem de entregadores: disponíveis (status AVAILABLE), em rota ativa e
+    // sem rota ativa. `active` = total ativos (is_active), mantido por compat.
+    async routeStatusCounts(storeId: string): Promise<{ available: number; active: number; inRoute: number; idle: number }> {
+      const { rows } = await db.query<{ available: string; active: string; in_route: string; idle: string }>(
         `SELECT
+           COUNT(*) FILTER (WHERE d.is_active AND d.status = 'AVAILABLE') AS available,
            COUNT(*) FILTER (WHERE d.is_active) AS active,
            COUNT(*) FILTER (WHERE d.is_active AND EXISTS (
              SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
@@ -61,9 +63,10 @@ export function createPgDelivererRepo(db: DB) {
       )
       const r = rows[0]
       return {
-        active:  Number(r?.active ?? 0),
-        inRoute: Number(r?.in_route ?? 0),
-        idle:    Number(r?.idle ?? 0),
+        available: Number(r?.available ?? 0),
+        active:    Number(r?.active ?? 0),
+        inRoute:   Number(r?.in_route ?? 0),
+        idle:      Number(r?.idle ?? 0),
       }
     },
 
