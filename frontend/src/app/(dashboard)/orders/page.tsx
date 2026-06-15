@@ -209,6 +209,7 @@ export default function OrdersPage() {
               {query ? `${filteredOrders.length} de ${orders.length}` : orders.length} pedido(s)
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              Entregadores:
               <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                 {delivererCounts.available} disponível(is)
