@@ -6,6 +6,7 @@ import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/a
 import { requireRole, requireScope } from '../../../shared/middleware/rbac'
 import { createPgDelivererRepo } from '../infrastructure/repositories/pg-deliverer-repo'
 import { createPgDeviceTokenRepo } from '../../notifications/infrastructure/repositories/pg-device-token-repo'
+import { assertCanAddDeliverer, invalidateDelivererCount } from '../../../shared/plan-limits'
 
 const createSchema = z.object({
   name:     z.string().min(1),
@@ -41,7 +42,13 @@ export async function delivererRoutes(app: FastifyInstance) {
     { preHandler: [requireStoreUser, requireRole('MANAGER')] },
     async (req, reply) => {
       const body = createSchema.parse(req.body)
+      try {
+        await assertCanAddDeliverer(db, req.actor.storeId)
+      } catch (err: unknown) {
+        return reply.code(403).send({ error: (err as Error).message })
+      }
       const deliverer = await repo.create({ storeId: req.actor.storeId, ...body })
+      await invalidateDelivererCount(req.actor.storeId)
       return reply.code(201).send(deliverer)
     }
   )
@@ -64,7 +71,15 @@ export async function delivererRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const { active } = z.object({ active: z.boolean() }).parse(req.body)
+      if (active) {
+        try {
+          await assertCanAddDeliverer(db, req.actor.storeId)
+        } catch (err: unknown) {
+          return reply.code(403).send({ error: (err as Error).message })
+        }
+      }
       await repo.setActive(id, req.actor.storeId, active)
+      await invalidateDelivererCount(req.actor.storeId)
       return reply.send({ ok: true })
     }
   )

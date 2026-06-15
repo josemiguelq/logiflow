@@ -6,6 +6,7 @@ import { redis } from '../../../shared/infra/redis'
 import { requireSuperAdmin } from '../../../shared/middleware/auth'
 import { DEFAULT_ROLE_SCOPES, SCOPES, SCOPE_LABELS, SCOPE_GROUPS } from '../../../shared/scopes'
 import { billingStatus } from '../../../shared/billing'
+import { activeDelivererCount, monthlyDeliveredCount, invalidateStoreLimits } from '../../../shared/plan-limits'
 
 const createStoreSchema = z.object({
   storeName:     z.string().min(2),
@@ -96,12 +97,17 @@ export async function superAdminRoutes(app: FastifyInstance) {
       const { storeId } = req.params as { storeId: string }
 
       const { rows: [store] } = await db.query(
-        'SELECT id, name, street, street_number, city, lat, lng, created_at FROM stores WHERE id = $1',
+        `SELECT s.id, s.name, s.street, s.street_number, s.city, s.lat, s.lng, s.created_at,
+                s.plan_id, s.max_deliverers_override, s.max_orders_per_month_override,
+                p.name AS plan_name, p.max_deliverers AS plan_max_deliverers,
+                p.max_orders_per_month AS plan_max_orders
+         FROM stores s LEFT JOIN plans p ON p.id = s.plan_id
+         WHERE s.id = $1`,
         [storeId]
       )
       if (!store) return reply.code(404).send({ error: 'Store not found' })
 
-      const [usersRes, deliveriesRes, featuresRes] = await Promise.all([
+      const [usersRes, deliveriesRes, featuresRes, delivererCnt, deliveredCnt] = await Promise.all([
         db.query(
           'SELECT COUNT(*) AS cnt FROM store_users WHERE store_id = $1',
           [storeId]
@@ -120,7 +126,15 @@ export async function superAdminRoutes(app: FastifyInstance) {
            ORDER BY f.name`,
           [storeId]
         ),
+        activeDelivererCount(db, storeId),
+        monthlyDeliveredCount(db, storeId),
       ])
+
+      // Limite efetivo: override (não-nulo) → plano → null (ilimitado). 0 = ilimitado.
+      const eff = (override: unknown, plan: unknown): number | null => {
+        if (override != null) return Number(override) === 0 ? null : Number(override)
+        return plan != null ? Number(plan) : null
+      }
 
       return {
         id:                   store.id,
@@ -133,6 +147,18 @@ export async function superAdminRoutes(app: FastifyInstance) {
         lng:                  store.lng           ?? null,
         userCount:            Number(usersRes.rows[0]?.cnt ?? 0),
         deliveriesLastMonth:  Number(deliveriesRes.rows[0]?.cnt ?? 0),
+        plan: {
+          planId:                     (store.plan_id as string | null) ?? null,
+          planName:                   (store.plan_name as string | null) ?? null,
+          maxDeliverersOverride:      store.max_deliverers_override != null ? Number(store.max_deliverers_override) : null,
+          maxOrdersPerMonthOverride:  store.max_orders_per_month_override != null ? Number(store.max_orders_per_month_override) : null,
+          effectiveMaxDeliverers:     eff(store.max_deliverers_override, store.plan_max_deliverers),
+          effectiveMaxOrdersPerMonth: eff(store.max_orders_per_month_override, store.plan_max_orders),
+          usage: {
+            deliverers:      Number(delivererCnt),
+            ordersThisMonth: Number(deliveredCnt),
+          },
+        },
         enabledFeatures:      featuresRes.rows.map((r: Record<string, unknown>) => ({
           id:          r.id,
           name:        r.name,
@@ -544,4 +570,153 @@ export async function superAdminRoutes(app: FastifyInstance) {
       return { storeId, role, scopes }
     }
   )
+
+  // ── Plans (catalog) ────────────────────────────────────────────────────────
+
+  // Helper: fetch plans with their feature ids/names
+  async function listPlans() {
+    const { rows } = await db.query(`
+      SELECT p.id, p.name, p.price_cents, p.max_deliverers, p.max_orders_per_month,
+             p.sort_order, p.is_active,
+             COALESCE(
+               (SELECT jsonb_agg(jsonb_build_object('id', f.id, 'name', f.name))
+                FROM plan_features pf JOIN features f ON f.id = pf.feature_id
+                WHERE pf.plan_id = p.id),
+               '[]'::jsonb
+             ) AS features
+      FROM plans p
+      ORDER BY p.sort_order ASC, p.name ASC
+    `)
+    return rows.map((r: Record<string, unknown>) => ({
+      id:                r.id,
+      name:              r.name,
+      priceCents:        Number(r.price_cents ?? 0),
+      maxDeliverers:     r.max_deliverers       != null ? Number(r.max_deliverers)       : null,
+      maxOrdersPerMonth: r.max_orders_per_month != null ? Number(r.max_orders_per_month) : null,
+      sortOrder:         Number(r.sort_order ?? 0),
+      isActive:          r.is_active as boolean,
+      features:          (r.features as { id: string; name: string }[] | null) ?? [],
+    }))
+  }
+
+  app.get('/super-admin/plans', { preHandler: requireSuperAdmin }, async () => listPlans())
+
+  const planSchema = z.object({
+    name:              z.string().min(1),
+    priceCents:        z.number().int().min(0).default(0),
+    maxDeliverers:     z.number().int().min(1).nullable().default(null),
+    maxOrdersPerMonth: z.number().int().min(1).nullable().default(null),
+    sortOrder:         z.number().int().default(0),
+    isActive:          z.boolean().default(true),
+    featureIds:        z.array(z.string().uuid()).default([]),
+  })
+
+  async function setPlanFeatures(planId: string, featureIds: string[]) {
+    await db.query('DELETE FROM plan_features WHERE plan_id = $1', [planId])
+    for (const fid of featureIds) {
+      await db.query(
+        'INSERT INTO plan_features (plan_id, feature_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [planId, fid]
+      )
+    }
+  }
+
+  app.post('/super-admin/plans', { preHandler: requireSuperAdmin }, async (req, reply) => {
+    const body = planSchema.parse(req.body)
+    const { rows: [dup] } = await db.query('SELECT id FROM plans WHERE name = $1', [body.name])
+    if (dup) return reply.code(409).send({ error: 'Já existe um plano com esse nome' })
+
+    const { rows: [plan] } = await db.query(
+      `INSERT INTO plans (name, price_cents, max_deliverers, max_orders_per_month, sort_order, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [body.name, body.priceCents, body.maxDeliverers, body.maxOrdersPerMonth, body.sortOrder, body.isActive]
+    )
+    await setPlanFeatures(plan.id as string, body.featureIds)
+    return reply.code(201).send((await listPlans()).find((p) => p.id === plan.id))
+  })
+
+  app.patch('/super-admin/plans/:planId', { preHandler: requireSuperAdmin }, async (req, reply) => {
+    const { planId } = req.params as { planId: string }
+    const { rows: [plan] } = await db.query('SELECT id FROM plans WHERE id = $1', [planId])
+    if (!plan) return reply.code(404).send({ error: 'Plano não encontrado' })
+
+    const body = planSchema.parse(req.body)
+    const { rows: [dup] } = await db.query(
+      'SELECT id FROM plans WHERE name = $1 AND id <> $2', [body.name, planId]
+    )
+    if (dup) return reply.code(409).send({ error: 'Já existe um plano com esse nome' })
+
+    await db.query(
+      `UPDATE plans SET name = $1, price_cents = $2, max_deliverers = $3,
+              max_orders_per_month = $4, sort_order = $5, is_active = $6, updated_at = now()
+       WHERE id = $7`,
+      [body.name, body.priceCents, body.maxDeliverers, body.maxOrdersPerMonth, body.sortOrder, body.isActive, planId]
+    )
+    await setPlanFeatures(planId, body.featureIds)
+
+    // Invalida o cache de limites das lojas nesse plano (mudança de limites/features)
+    const { rows: stores } = await db.query('SELECT id FROM stores WHERE plan_id = $1', [planId])
+    await Promise.all(stores.map((s: Record<string, unknown>) => invalidateStoreLimits(s.id as string)))
+
+    return (await listPlans()).find((p) => p.id === planId)
+  })
+
+  app.delete('/super-admin/plans/:planId', { preHandler: requireSuperAdmin }, async (req, reply) => {
+    const { planId } = req.params as { planId: string }
+    const { rows: [inUse] } = await db.query(
+      'SELECT id FROM stores WHERE plan_id = $1 LIMIT 1', [planId]
+    )
+    if (inUse) return reply.code(409).send({ error: 'Plano em uso por uma ou mais lojas' })
+    const { rowCount } = await db.query('DELETE FROM plans WHERE id = $1', [planId])
+    if (!rowCount) return reply.code(404).send({ error: 'Plano não encontrado' })
+    return { ok: true }
+  })
+
+  // ── Plan assignment per store (+ feature sync) ─────────────────────────────
+
+  const assignPlanSchema = z.object({
+    planId:                    z.string().uuid().nullable(),
+    maxDeliverersOverride:     z.number().int().min(0).nullable().default(null),
+    maxOrdersPerMonthOverride: z.number().int().min(0).nullable().default(null),
+  })
+
+  app.patch('/super-admin/stores/:storeId/plan', { preHandler: requireSuperAdmin }, async (req, reply) => {
+    const { storeId } = req.params as { storeId: string }
+    const { rows: [store] } = await db.query('SELECT id FROM stores WHERE id = $1', [storeId])
+    if (!store) return reply.code(404).send({ error: 'Store not found' })
+
+    const body = assignPlanSchema.parse(req.body)
+
+    if (body.planId) {
+      const { rows: [plan] } = await db.query('SELECT id FROM plans WHERE id = $1', [body.planId])
+      if (!plan) return reply.code(404).send({ error: 'Plano não encontrado' })
+    }
+
+    await db.query(
+      `UPDATE stores SET plan_id = $1, max_deliverers_override = $2, max_orders_per_month_override = $3
+       WHERE id = $4`,
+      [body.planId, body.maxDeliverersOverride, body.maxOrdersPerMonthOverride, storeId]
+    )
+
+    // Sincroniza store_features_enabled com as features do plano (limites + features)
+    if (body.planId) {
+      await db.query(
+        `DELETE FROM store_features_enabled
+         WHERE store_id = $1
+           AND feature_id NOT IN (SELECT feature_id FROM plan_features WHERE plan_id = $2)`,
+        [storeId, body.planId]
+      )
+      await db.query(
+        `INSERT INTO store_features_enabled (store_id, feature_id)
+         SELECT $1, feature_id FROM plan_features WHERE plan_id = $2
+         ON CONFLICT DO NOTHING`,
+        [storeId, body.planId]
+      )
+    }
+
+    await invalidateStoreLimits(storeId)
+    try { await redis.del(`theme:store:${storeId}`) } catch { /* ignore */ }
+
+    return { ok: true }
+  })
 }

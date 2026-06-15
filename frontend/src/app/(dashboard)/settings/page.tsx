@@ -39,6 +39,10 @@ interface BillingData {
   trialDaysLeft: number | null
   trialEndsAt:   string | null
   planLabel:     string
+  usage?: {
+    deliverers:      { used: number; limit: number | null }
+    ordersThisMonth: { used: number; limit: number | null }
+  }
 }
 
 function Toast({ message }: { message: string }) {
@@ -168,7 +172,38 @@ function BillingSection() {
           )}
         </div>
       </div>
+
+      {data.usage && (
+        <div className="mt-5 grid gap-4 border-t border-gray-100 pt-4 sm:grid-cols-2">
+          <BillingUsageBar label="Entregadores"    used={data.usage.deliverers.used}      limit={data.usage.deliverers.limit} />
+          <BillingUsageBar label="Entregas no mês" used={data.usage.ordersThisMonth.used} limit={data.usage.ordersThisMonth.limit} />
+        </div>
+      )}
     </SectionCard>
+  )
+}
+
+function BillingUsageBar({ label, used, limit }: { label: string; used: number; limit: number | null }) {
+  const over = limit != null && used > limit
+  const pct  = limit == null || limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100))
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-sm">
+        <span className="text-gray-500">{label}</span>
+        <span className={`font-semibold ${over ? 'text-red-600' : 'text-gray-800'}`}>
+          {used}{limit == null ? ' / ∞' : ` / ${limit}`}
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+        <div
+          className={`h-full rounded-full ${over ? 'bg-red-500' : 'bg-gray-800'}`}
+          style={{ width: limit == null ? '8%' : `${pct}%` }}
+        />
+      </div>
+      {over && (
+        <p className="mt-1 text-xs text-red-600">Acima do limite do plano — considere fazer upgrade.</p>
+      )}
+    </div>
   )
 }
 

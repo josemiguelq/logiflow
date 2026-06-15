@@ -52,6 +52,16 @@ interface BillingInfo {
   payments:        Payment[]
 }
 
+interface StorePlanInfo {
+  planId:                     string | null
+  planName:                   string | null
+  maxDeliverersOverride:      number | null
+  maxOrdersPerMonthOverride:  number | null
+  effectiveMaxDeliverers:     number | null
+  effectiveMaxOrdersPerMonth: number | null
+  usage: { deliverers: number; ordersThisMonth: number }
+}
+
 interface StoreDetail {
   id:                  string
   name:                string
@@ -63,7 +73,15 @@ interface StoreDetail {
   lng:                 number | null
   userCount:           number
   deliveriesLastMonth: number
+  plan:                StorePlanInfo
   enabledFeatures:     Feature[]
+}
+
+interface PlanOption {
+  id:                string
+  name:              string
+  maxDeliverers:     number | null
+  maxOrdersPerMonth: number | null
 }
 
 function saFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -351,6 +369,7 @@ export default function SuperAdminStoresPage() {
           detail={detailStore}
           loading={detailLoading}
           onClose={() => { setDetailStore(null); setDetailLoading(false) }}
+          onSaved={(id) => { openDetail(id); load() }}
         />
       )}
 
@@ -657,11 +676,12 @@ function StoreBillingDrawer({
 // ── Store Detail Drawer ────────────────────────────────────────────────────────
 
 function StoreDetailDrawer({
-  detail, loading, onClose,
+  detail, loading, onClose, onSaved,
 }: {
   detail:  StoreDetail | null
   loading: boolean
   onClose: () => void
+  onSaved: (storeId: string) => void
 }) {
   return (
     <>
@@ -712,6 +732,9 @@ function StoreDetailDrawer({
                   bg="bg-green-50"
                 />
               </div>
+
+              {/* Plan */}
+              <PlanSection detail={detail} onSaved={() => onSaved(detail.id)} />
 
               {/* Info rows */}
               <div className="space-y-3">
@@ -775,6 +798,104 @@ function StoreDetailDrawer({
         </div>
       </div>
     </>
+  )
+}
+
+// ── Plan section (per-store assignment + overrides + usage) ─────────────────────
+
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | null }) {
+  const over = limit != null && used > limit
+  const pct  = limit == null || limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100))
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="text-gray-500">{label}</span>
+        <span className={`font-semibold ${over ? 'text-red-600' : 'text-gray-700'}`}>
+          {used}{limit == null ? ' / ∞' : ` / ${limit}`}
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+        <div
+          className={`h-full rounded-full ${over ? 'bg-red-500' : 'bg-gray-800'}`}
+          style={{ width: limit == null ? '8%' : `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function PlanSection({ detail, onSaved }: { detail: StoreDetail; onSaved: () => void }) {
+  const { plan } = detail
+  const [options,     setOptions]     = useState<PlanOption[]>([])
+  const [planId,      setPlanId]      = useState<string>(plan.planId ?? '')
+  const [delivOv,     setDelivOv]     = useState(plan.maxDeliverersOverride != null ? String(plan.maxDeliverersOverride) : '')
+  const [ordersOv,    setOrdersOv]    = useState(plan.maxOrdersPerMonthOverride != null ? String(plan.maxOrdersPerMonthOverride) : '')
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
+
+  useEffect(() => {
+    saFetch<PlanOption[]>('/super-admin/plans').then(setOptions).catch(() => {})
+  }, [])
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      await saFetch(`/super-admin/stores/${detail.id}/plan`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          planId: planId || null,
+          maxDeliverersOverride:     delivOv.trim()  === '' ? null : parseInt(delivOv, 10),
+          maxOrdersPerMonthOverride: ordersOv.trim() === '' ? null : parseInt(ordersOv, 10),
+        }),
+      })
+      onSaved()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Plano</p>
+      <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+        <UsageBar label="Entregadores"   used={plan.usage.deliverers}      limit={plan.effectiveMaxDeliverers} />
+        <UsageBar label="Entregas no mês" used={plan.usage.ordersThisMonth} limit={plan.effectiveMaxOrdersPerMonth} />
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Plano atribuído</label>
+          <select value={planId} onChange={e => setPlanId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+            <option value="">— Sem plano (sem limite) —</option>
+            {options.map(o => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Override entregadores</label>
+            <input type="number" min="0" value={delivOv} onChange={e => setDelivOv(e.target.value)} placeholder="herda"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Override entregas/mês</label>
+            <input type="number" min="0" value={ordersOv} onChange={e => setOrdersOv(e.target.value)} placeholder="herda"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <p className="text-[11px] text-gray-400">Vazio = herda do plano · 0 = ilimitado. Atribuir um plano sincroniza as features da loja.</p>
+
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <button onClick={save} disabled={saving}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-900 py-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50">
+          <Check className="h-4 w-4" />
+          {saving ? 'Salvando...' : 'Salvar plano'}
+        </button>
+      </div>
+    </div>
   )
 }
 

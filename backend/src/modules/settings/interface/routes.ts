@@ -7,6 +7,7 @@ import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
 import { billingStatus } from '../../../shared/billing'
+import { resolveStoreLimits, activeDelivererCount, monthlyDeliveredCount } from '../../../shared/plan-limits'
 
 const DEFAULT_THEME = {
   primary:   '#2563EB',
@@ -392,19 +393,29 @@ export async function settingsRoutes(app: FastifyInstance) {
       trialDaysLeft = Math.max(0, Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
     }
 
-    // Derive plan label from enabled features
-    const hasWhatsapp    = featureNames.includes('whatsapp')
-    const hasCustomTheme = featureNames.includes('custom_theme')
+    // Plano atribuído + uso vs limites (cacheado). Fallback ao label derivado das features.
+    const [limits, delivererUsed, deliveredUsed] = await Promise.all([
+      resolveStoreLimits(db, storeId),
+      activeDelivererCount(db, storeId),
+      monthlyDeliveredCount(db, storeId),
+    ])
+
     let planLabel: string
-    if (hasCustomTheme) {
-      planLabel = 'Pro Premium'
-    } else if (hasWhatsapp) {
-      planLabel = 'Pro + WhatsApp'
+    if (limits.planName) {
+      planLabel = limits.planName
     } else {
-      planLabel = 'Starter'
+      // Derive plan label from enabled features (lojas sem plano atribuído)
+      const hasWhatsapp    = featureNames.includes('whatsapp')
+      const hasCustomTheme = featureNames.includes('custom_theme')
+      planLabel = hasCustomTheme ? 'Pro Premium' : hasWhatsapp ? 'Pro + WhatsApp' : 'Starter'
     }
 
-    return { ...bs, trialDaysLeft, planLabel }
+    const usage = {
+      deliverers:      { used: delivererUsed, limit: limits.maxDeliverers },
+      ordersThisMonth: { used: deliveredUsed, limit: limits.maxOrdersPerMonth },
+    }
+
+    return { ...bs, trialDaysLeft, planLabel, usage }
   })
 
   app.delete('/store/users/:id', { preHandler: [requireStoreUser, requireScope('users:delete')] }, async (req, reply) => {

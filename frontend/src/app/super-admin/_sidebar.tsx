@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Store, BarChart2, ShieldCheck, LogOut, Truck } from 'lucide-react'
+import { Store, BarChart2, ShieldCheck, LogOut, Truck, Tag } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
 
 const NAV = [
   { href: '/super-admin/stores',    label: 'Lojas',          icon: Store      },
+  { href: '/super-admin/plans',     label: 'Planos',         icon: Tag        },
   { href: '/super-admin/analytics', label: 'Analítico',      icon: BarChart2  },
   { href: '/super-admin/scopes',    label: 'Roles & Scopes', icon: ShieldCheck },
 ]

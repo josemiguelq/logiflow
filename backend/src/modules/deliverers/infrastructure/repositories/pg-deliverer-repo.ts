@@ -58,7 +58,8 @@ export function createPgDelivererRepo(db: DB) {
              SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
            )) AS idle
          FROM deliverers d
-         WHERE d.store_id = $1`,
+         WHERE d.store_id = $1
+         AND d.status = 'AVAILABLE'`,
         [storeId]
       )
       const r = rows[0]
