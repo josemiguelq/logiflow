@@ -208,6 +208,18 @@ export default function OrdersPage() {
             <p className="mt-0.5 text-sm text-gray-500">
               {query ? `${filteredOrders.length} de ${orders.length}` : orders.length} pedido(s)
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                {delivererCounts.active} ativo(s)
+              </span>
+              <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-0.5 font-medium text-orange-700">
+                {delivererCounts.inRoute} com rota ativa
+              </span>
+              <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 font-medium text-blue-700">
+                {delivererCounts.idle} sem rota ativa
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
