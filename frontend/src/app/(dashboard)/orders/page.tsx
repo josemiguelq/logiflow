@@ -60,7 +60,7 @@ export default function OrdersPage() {
     pickupDelayed: number
     deliveryDelayed: number
     prepRedMin: number
-    deliverers: { active: number; inRoute: number; idle: number }
+    deliverers: { available: number; active: number; inRoute: number; idle: number }
   }
   const { data: pickupAlert } = useSWR<PickupAlert>(
     '/orders/pickup-alert',
@@ -70,7 +70,7 @@ export default function OrdersPage() {
   const pickupDelayed   = pickupAlert?.pickupDelayed ?? 0
   const deliveryDelayed = pickupAlert?.deliveryDelayed ?? 0
   const totalDelayed    = pickupDelayed + deliveryDelayed
-  const delivererCounts = pickupAlert?.deliverers ?? { active: 0, inRoute: 0, idle: 0 }
+  const delivererCounts = pickupAlert?.deliverers ?? { available: 0, active: 0, inRoute: 0, idle: 0 }
 
   const [showDetails,  setShowDetails]  = useState(false)
   const [notifying,    setNotifying]    = useState(false)
@@ -211,7 +211,7 @@ export default function OrdersPage() {
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                {delivererCounts.active} ativo(s)
+                {delivererCounts.available} disponível(is)
               </span>
               <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-0.5 font-medium text-orange-700">
                 {delivererCounts.inRoute} com rota ativa

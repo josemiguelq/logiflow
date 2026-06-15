@@ -107,6 +107,7 @@ const BENEFITS = [
 const INCLUDED_IN_ALL = [
   'App do entregador — grátis e ilimitado',
   'Painel de pedidos',
+  'Link de rastreamento para o cliente',
   'Confirmação por código na entrega (ativável pela loja)',
 ]
 
@@ -135,7 +136,7 @@ const PLANS = [
     price: 80,
     deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
-    features: ['Link de rastreamento para o cliente', 'Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros'],
+    features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros'],
     highlight: false,
     badge: null,
   },
@@ -144,7 +145,7 @@ const PLANS = [
     price: 100,
     deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
-    features: ['Link de rastreamento para o cliente', 'Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
+    features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
     highlight: true,
     badge: 'Mais popular',
   },
@@ -153,7 +154,7 @@ const PLANS = [
     price: 120,
     deliverers: 'Entregadores ilimitados',
     deliveries: 'Sem limite de entregas',
-    features: ['Link de rastreamento para o cliente', 'Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
+    features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
     highlight: false,
     badge: null,
   },
