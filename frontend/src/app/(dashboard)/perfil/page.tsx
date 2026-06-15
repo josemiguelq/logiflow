@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import { User, Monitor, ShieldCheck, Loader2 } from 'lucide-react'
+import { User, Monitor, ShieldCheck, Loader2, Lock, CheckCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccess } from '@/hooks/useAccess'
 import { formatDate } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface Session {
   id: string
@@ -122,10 +124,25 @@ function SessionTable({ sessions, onRevoke, revoking }: {
   )
 }
 
+function Toast({ message }: { message: string }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
+      <CheckCircle className="h-4 w-4 text-green-400" />
+      {message}
+    </div>
+  )
+}
+
 export default function ProfilePage() {
   const { user } = useAuth()
   const { can } = useAccess()
   const canViewAll = can({ scope: 'sessions:view_all' })
+
+  const [toast, setToast] = useState('')
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
 
   const { data: mine, mutate: mutateMine } = useSWR<MySessions>(
     '/store/me/sessions', (u: string) => api.get<MySessions>(u)
@@ -175,6 +192,9 @@ export default function ProfilePage() {
           </div>
         </SectionCard>
 
+        {/* Alterar senha */}
+        <PasswordSection onSaved={() => showToast('Senha alterada com sucesso')} />
+
         {/* Minhas sessões */}
         <SectionCard
           icon={Monitor}
@@ -214,6 +234,85 @@ export default function ProfilePage() {
           </SectionCard>
         )}
       </div>
+
+      {toast && <Toast message={toast} />}
     </div>
+  )
+}
+
+function PasswordSection({ onSaved }: { onSaved: () => void }) {
+  const [current,  setCurrent]  = useState('')
+  const [next,     setNext]     = useState('')
+  const [confirm,  setConfirm]  = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (next !== confirm) {
+      setError('As senhas não coincidem')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await api.patch('/store/me/password', {
+        currentPassword: current,
+        newPassword:     next,
+      })
+      setCurrent(''); setNext(''); setConfirm('')
+      onSaved()
+    } catch (err: unknown) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <SectionCard icon={Lock} title="Alterar senha">
+      <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">Senha atual</label>
+          <Input
+            type="password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            required
+            placeholder="••••••••"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">Nova senha</label>
+          <Input
+            type="password"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            required
+            minLength={6}
+            placeholder="Mínimo 6 caracteres"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">Confirmar nova senha</label>
+          <Input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+            placeholder="Repita a nova senha"
+          />
+        </div>
+
+        {error && <p className="sm:col-span-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+
+        <div className="sm:col-span-3">
+          <Button type="submit" disabled={loading} className="w-full sm:w-auto">
+            <Lock className="h-4 w-4" />
+            {loading ? 'Alterando...' : 'Alterar senha'}
+          </Button>
+        </div>
+      </form>
+    </SectionCard>
   )
 }
