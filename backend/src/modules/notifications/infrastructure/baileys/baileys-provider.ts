@@ -108,13 +108,22 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
     },
 
     async sendMessage(storeId, phone, text) {
-      let normalizedPhone = phone.replace(/\D/g, '')
-      if (!normalizedPhone.startsWith('55')) normalizedPhone = `55${normalizedPhone}`
-      const jid = `${normalizedPhone}@s.whatsapp.net`
-
       const socket = sockets.get(storeId)
       if (!socket) throw new Error(`No active WhatsApp session for store ${storeId}`)
-      await socket.sendMessage(jid, { text })
+
+      let normalizedPhone = phone.replace(/\D/g, '')
+      if (!normalizedPhone.startsWith('55')) normalizedPhone = `55${normalizedPhone}`
+
+      // Resolve o JID canônico no WhatsApp. Números brasileiros são muitas vezes
+      // registrados SEM o 9º dígito extra (ex.: 5567 9 91910048 → 556791910048).
+      // Enviar direto para o JID "cru" resolve sem erro mas nunca entrega — o
+      // onWhatsApp devolve o jid real registrado (e se o número existe).
+      const results = await socket.onWhatsApp(normalizedPhone)
+      const match   = results?.[0]
+      if (!match?.exists || !match.jid) {
+        throw new Error(`Phone ${normalizedPhone} is not a registered WhatsApp number`)
+      }
+      await socket.sendMessage(match.jid, { text })
     },
 
     async reconnectAll() {
