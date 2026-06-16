@@ -22,12 +22,27 @@ export function fullAddress(addr: Pick<CustomerAddress, 'address' | 'number' | '
   return addr.complement ? `${base} - ${addr.complement}` : base
 }
 
+export interface CustomerAuditChange {
+  field: string
+  before: unknown
+  after: unknown
+}
+
+export interface CustomerAuditEntry {
+  changedBy: string | null
+  changedByName: string | null
+  changedAt: string
+  changes: CustomerAuditChange[]
+}
+
 export interface Customer {
   id: string
   name: string
   phone: string
   addresses: CustomerAddress[]
   createdAt: string
+  updatedAt: string
+  audit: CustomerAuditEntry[]
 }
 
 export interface Deliverer {

@@ -1,5 +1,5 @@
 import { DB } from '../../../../shared/db/client'
-import { Customer, CustomerAddress } from '../../domain/entities'
+import { Customer, CustomerAddress, CustomerAuditEntry } from '../../domain/entities'
 
 // Accent maps for accent-insensitive name search via SQL translate().
 // "jose" matches "josé", "JOSÉ", etc. (covers PT-BR accents, both cases).
@@ -28,6 +28,8 @@ function mapRow(r: Record<string, unknown>): Customer {
     phone:     r.phone as string,
     addresses: raw ?? [],
     createdAt: r.created_at as Date,
+    updatedAt: r.updated_at as Date,
+    audit:     (r.audit as CustomerAuditEntry[] | null) ?? [],
   }
 }
 
@@ -137,14 +139,23 @@ export function createPgCustomerRepo(db: DB) {
       return mapRow({ ...customer, addresses: insertedAddrs })
     },
 
-    async update(id: string, storeId: string, data: { name?: string; phone?: string }): Promise<Customer | null> {
+    async update(
+      id: string,
+      storeId: string,
+      data: { name?: string; phone?: string },
+      auditEntry?: CustomerAuditEntry,
+    ): Promise<Customer | null> {
+      // Sempre bump em updated_at; anexa a entrada de auditoria (se houver) ao array.
       const { rows } = await db.query(
         `UPDATE customers
-         SET name  = COALESCE($3, name),
-             phone = COALESCE($4, phone)
+         SET name       = COALESCE($3, name),
+             phone      = COALESCE($4, phone),
+             updated_at = now(),
+             audit      = CASE WHEN $5::jsonb IS NOT NULL THEN audit || $5::jsonb ELSE audit END
          WHERE id = $1 AND store_id = $2
          RETURNING id`,
-        [id, storeId, data.name ?? null, data.phone ?? null]
+        [id, storeId, data.name ?? null, data.phone ?? null,
+         auditEntry ? JSON.stringify([auditEntry]) : null]
       )
       if (!rows[0]) return null
       return this.findById(rows[0].id as string, storeId)

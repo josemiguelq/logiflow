@@ -1,10 +1,12 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// Builds the list of page buttons to show: always the first and last page, a
-// window of ±1 around the current page, and 'gap' markers (…) for the rest.
+// Builds the list of page buttons to show: always the first six pages and the
+// last page, a window of ±1 around the current page, and 'gap' markers (…) for
+// the rest.
 function pageItems(page: number, pages: number): (number | 'gap')[] {
-  const wanted = new Set<number>([1, pages])
+  const wanted = new Set<number>([pages])
+  for (let p = 1; p <= 6 && p <= pages; p++) wanted.add(p)
   for (let p = page - 1; p <= page + 1; p++) {
     if (p >= 1 && p <= pages) wanted.add(p)
   }

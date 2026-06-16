@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Pencil, MapPin, Phone, History, Plus, Pencil as Edit2, Trash2 } from 'lucide-react'
-import { Customer, fullAddress, OrderStatus } from '@/types'
+import { Customer, CustomerAuditEntry, fullAddress, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
 import { formatDate, STATUS_LABELS } from '@/lib/utils'
@@ -34,6 +34,13 @@ const ACTION = {
   CREATED: { label: 'Criado',   color: 'text-green-700 bg-green-50',  icon: Plus },
   UPDATED: { label: 'Editado',  color: 'text-amber-700 bg-amber-50',  icon: Edit2 },
   DELETED: { label: 'Excluído', color: 'text-red-700 bg-red-50',      icon: Trash2 },
+}
+
+// Rótulos e formatação dos campos auditáveis do próprio cliente.
+const CUSTOMER_FIELDS: Record<string, string> = { name: 'Nome', phone: 'Telefone' }
+const fmtCustomerValue = (field: string, value: unknown) => {
+  if (value == null || value === '') return '—'
+  return field === 'phone' ? formatPhone(String(value)) : String(value)
 }
 
 const coordStr = (a?: AddrSnap | null) =>
@@ -138,6 +145,45 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </div>
         ))}
       </div>
+
+      {/* Histórico de alterações do cliente (nome/telefone) */}
+      <div className="mb-3 flex items-center gap-2">
+        <History className="h-4 w-4 text-gray-400" />
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Histórico do cliente</h2>
+      </div>
+
+      {customer.audit.length === 0 ? (
+        <div className="mb-8 rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+          Nenhuma alteração registrada.
+        </div>
+      ) : (
+        <ol className="relative mb-8">
+          <span aria-hidden className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200" />
+          {[...customer.audit].reverse().map((e: CustomerAuditEntry, idx) => (
+            <li key={idx} className="relative pl-7 pb-5 last:pb-0">
+              <span className="absolute left-0 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+                <Edit2 className="h-2.5 w-2.5" />
+              </span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                <p className="text-sm text-gray-500">
+                  por <span className="font-medium text-gray-700">{e.changedByName ?? 'desconhecido'}</span>
+                </p>
+                <p className="text-xs text-gray-400">{formatDate(e.changedAt)}</p>
+              </div>
+              <div className="mt-1.5 space-y-1">
+                {e.changes.map((c, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="font-medium text-gray-500">{CUSTOMER_FIELDS[c.field] ?? c.field}:</span>
+                    <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700 line-through">{fmtCustomerValue(c.field, c.before)}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="rounded bg-green-50 px-1.5 py-0.5 text-green-700">{fmtCustomerValue(c.field, c.after)}</span>
+                  </div>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
 
       {/* Histórico de alterações de endereço */}
       <div className="mb-3 flex items-center gap-2">

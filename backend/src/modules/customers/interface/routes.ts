@@ -4,6 +4,7 @@ import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgCustomerRepo } from '../infrastructure/repositories/pg-customer-repo'
+import { CustomerAuditChange, CustomerAuditEntry } from '../domain/entities'
 
 // Snapshot dos campos auditáveis de um endereço.
 type AddrSnap = {
@@ -138,7 +139,24 @@ export async function customerRoutes(app: FastifyInstance) {
       const existing = await repo.findById(id, req.actor.storeId)
       if (!existing) return reply.code(404).send({ error: 'Not found' })
 
-      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone })
+      // Histórico embutido: registra mudanças de nome/telefone (quem/quando/o quê).
+      const changes: CustomerAuditChange[] = []
+      if (body.name !== undefined && body.name !== existing.name) {
+        changes.push({ field: 'name', before: existing.name, after: body.name })
+      }
+      if (body.phone !== undefined && body.phone !== existing.phone) {
+        changes.push({ field: 'phone', before: existing.phone, after: body.phone })
+      }
+      const auditEntry: CustomerAuditEntry | undefined = changes.length
+        ? {
+            changedBy:     req.actor.sub,
+            changedByName: req.actor.name,
+            changedAt:     new Date().toISOString(),
+            changes,
+          }
+        : undefined
+
+      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone }, auditEntry)
 
       // Sync address sub-table when addresses are provided
       if (body.addresses) {
