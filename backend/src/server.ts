@@ -190,7 +190,10 @@ async function start() {
        WHERE sfe.store_id = $1 AND f.name = 'whatsapp'`,
       [storeId]
     )
-    if (feat.length === 0) return
+    if (feat.length === 0) {
+      app.log.error({ orderId, storeId, statusEvent }, '[whatsapp] NOT sent — store does not have the whatsapp feature enabled')
+      return
+    }
 
     // Abort if this status is not in the store's WhatsApp notify list
     const { rows: [cfg] } = await db.query(
@@ -202,13 +205,22 @@ async function start() {
     )
     let enabledStatuses: string[] = []
     try { enabledStatuses = JSON.parse((cfg as { value?: string } | undefined)?.value ?? '[]') } catch { enabledStatuses = [] }
-    if (!enabledStatuses.includes(statusEvent)) return
+    if (!enabledStatuses.includes(statusEvent)) {
+      app.log.error({ orderId, storeId, statusEvent, enabledStatuses }, '[whatsapp] NOT sent — status not in store notify list')
+      return
+    }
 
     const order = await orderRepo.findById(orderId, storeId)
-    if (!order) return
+    if (!order) {
+      app.log.error({ orderId, storeId, statusEvent }, '[whatsapp] NOT sent — order not found')
+      return
+    }
 
     const phone = order.customer.phone
-    if (!phone) return
+    if (!phone) {
+      app.log.error({ orderId, storeId, statusEvent }, '[whatsapp] NOT sent — customer has no phone')
+      return
+    }
 
     const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'https://logiflow-beige.vercel.app/rastreio'}/${orderId}`
     const message = buildStatusMessage(
@@ -224,9 +236,10 @@ async function start() {
     try {
       await whatsapp.sendMessage(storeId, phone, message)
       await messageLogRepo.markSent(logId)
+      app.log.warn({ orderId, storeId, statusEvent, phone }, '[whatsapp] sent')
     } catch (err) {
       await messageLogRepo.markFailed(logId)
-      app.log.warn({ err, orderId, statusEvent }, 'WhatsApp notification failed (non-fatal)')
+      app.log.error({ err, orderId, storeId, statusEvent, phone }, '[whatsapp] NOT sent — sendMessage threw')
     }
   })
 
