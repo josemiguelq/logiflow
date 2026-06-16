@@ -132,8 +132,8 @@ export function Sidebar({ isOpen, onClose }: Props) {
 
         <div className="border-t border-gray-200 p-4">
           <div className="mb-3 px-1">
-            <Link className="text-xs text-gray-400" href="/perfil">{user?.name}</Link>
-            <p className="text-lg text-gray-800">{user?.email}</p>
+            <Link className="text-sm text-gray-800" href="/perfil">{user?.name}</Link>
+            <p className="text-xs text-gray-400">{user?.email}</p>
             <p className="mt-0.5 text-xs font-medium" style={{ color: 'var(--color-primary)' }}>
               {user?.role}
             </p>
