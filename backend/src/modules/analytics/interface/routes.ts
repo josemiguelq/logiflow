@@ -364,4 +364,33 @@ export async function analyticsRoutes(app: FastifyInstance) {
       count:  r.count,
     }))
   })
+
+  // GET /analytics/customers/order-counts?from=YYYY-MM-DD&to=YYYY-MM-DD
+  // Top 10 clientes com mais pedidos e top 10 com menos pedidos no período
+  // (contagem por data de criação). "Menos" considera apenas clientes com ao
+  // menos 1 pedido no intervalo (o JOIN exclui quem não pediu nada).
+  app.get('/analytics/customers/order-counts', { preHandler: guard }, async (req) => {
+    const { from, to } = z.object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).parse(req.query)
+
+    const params = [req.actor.storeId, from, to]
+    const base =
+      `SELECT c.id, c.name, COUNT(o.id)::int AS count
+       FROM customers c
+       JOIN orders o ON o.customer_id = c.id
+       WHERE o.store_id = $1
+         AND o.created_at >= $2::date
+         AND o.created_at <  $3::date + INTERVAL '1 day'
+       GROUP BY c.id, c.name`
+
+    const [{ rows: top }, { rows: bottom }] = await Promise.all([
+      db.query(`${base} ORDER BY count DESC, c.name ASC LIMIT 10`, params),
+      db.query(`${base} ORDER BY count ASC,  c.name ASC LIMIT 10`, params),
+    ])
+
+    const map = (r: Record<string, unknown>) => ({ name: r.name as string, count: r.count as number })
+    return { top: top.map(map), bottom: bottom.map(map) }
+  })
 }

@@ -4,11 +4,11 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, LineChart, Line,
+  ResponsiveContainer, Legend, LineChart, Line, LabelList,
 } from 'recharts'
 import {
   Package, Clock, Truck, CheckCircle, XCircle, Navigation,
-  Users, TrendingUp, Calendar, Hourglass,
+  Users, TrendingUp, Calendar, Hourglass, Crown, UserMinus,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -68,6 +68,9 @@ interface OrderDurations {
   avgTotalMin: number
   count:       number
 }
+
+interface CustomerCount { name: string; count: number }
+interface CustomerOrderCounts { top: CustomerCount[]; bottom: CustomerCount[] }
 
 interface DurationBucketDay {
   date:        string
@@ -227,6 +230,65 @@ function DurationBucketChart({
   )
 }
 
+// ── Horizontal bar chart of customers by order count ────────────────────────────
+
+function CustomersBarChart({
+  title, icon: Icon, iconColor, color, data, loading,
+}: {
+  title: string
+  icon: React.ElementType
+  iconColor: string
+  color: string
+  data: CustomerCount[]
+  loading: boolean
+}) {
+  const empty = !data.length || data.every(d => d.count === 0)
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <Icon className={`h-4 w-4 ${iconColor}`} />
+        <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+      </div>
+
+      {loading ? (
+        <div className="flex h-52 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+        </div>
+      ) : empty ? (
+        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <Users className="mb-2 h-8 w-8" />
+          <p className="text-sm">Nenhum pedido no período</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={Math.max(220, data.length * 34)}>
+          <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+            <XAxis
+              type="number"
+              allowDecimals={false}
+              tick={{ fontSize: 11, fill: '#9CA3AF' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="name"
+              width={130}
+              tick={{ fontSize: 11, fill: '#6B7280' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip cursor={{ fill: '#F9FAFB' }} formatter={(v) => [`${v} pedidos`, 'Total']} />
+            <Bar dataKey="count" fill={color} radius={[0, 4, 4, 0]} barSize={16}>
+              <LabelList dataKey="count" position="right" style={{ fontSize: 11, fontWeight: 600, fill: '#374151' }} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const ACCESS = { scope: 'analytics:view' } as const
@@ -247,6 +309,14 @@ export default function AnalyticsPage() {
 
   const [dcRange, setDcRange] = useState(thisMonthRange)
   const dcParams = new URLSearchParams({ from: dcRange.from, to: dcRange.to })
+
+  const [custRange, setCustRange] = useState(thisMonthRange)
+  const custParams = new URLSearchParams({ from: custRange.from, to: custRange.to })
+  const { data: customerCounts, isLoading: custLoading } = useSWR<CustomerOrderCounts>(
+    `/analytics/customers/order-counts?${custParams}`,
+    fetcher,
+    { keepPreviousData: true }
+  )
 
   const { data: timeseries, isLoading: tsLoading } = useSWR<TimePoint[]>(
     `/analytics/orders/timeseries?scale=${scale}`,
@@ -830,6 +900,77 @@ export default function AnalyticsPage() {
             })()}
           </div>
         )}
+      </div>
+
+      {/* Top / bottom customers by order count */}
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center gap-2 mr-auto">
+            <Users className="h-4 w-4 text-violet-500" />
+            <span className="text-sm font-semibold text-gray-800">Clientes por nº de pedidos</span>
+          </div>
+
+          {/* Quick filters */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            {([
+              { label: 'Hoje',     range: todayRange()     },
+              { label: 'Este mês', range: thisMonthRange() },
+            ] as const).map(({ label, range }, i) => {
+              const active = custRange.from === range.from && custRange.to === range.to
+              return (
+                <button
+                  key={label}
+                  onClick={() => setCustRange(range)}
+                  className={`px-3 py-1.5 transition-colors ${i > 0 ? 'border-l border-gray-200' : ''} ${
+                    active ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Calendar range */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600">
+            <Calendar className="h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="date"
+              value={custRange.from}
+              max={custRange.to}
+              onChange={e => setCustRange(r => ({ ...r, from: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="date"
+              value={custRange.to}
+              min={custRange.from}
+              max={toDateStr(new Date())}
+              onChange={e => setCustRange(r => ({ ...r, to: e.target.value }))}
+              className="w-28 bg-transparent outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+          <CustomersBarChart
+            title="Top 10 — mais pedidos"
+            icon={Crown}
+            iconColor="text-amber-500"
+            color="#7C3AED"
+            data={customerCounts?.top ?? []}
+            loading={custLoading && !customerCounts}
+          />
+          <CustomersBarChart
+            title="Top 10 — menos pedidos"
+            icon={UserMinus}
+            iconColor="text-gray-400"
+            color="#94A3B8"
+            data={customerCounts?.bottom ?? []}
+            loading={custLoading && !customerCounts}
+          />
+        </div>
       </div>
     </div>
   )
