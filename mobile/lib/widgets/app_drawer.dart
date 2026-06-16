@@ -9,6 +9,7 @@ import '../core/auth/auth_provider.dart';
 import '../core/providers/store_settings_provider.dart';
 import '../core/theme/app_theme.dart';
 import '../features/profile/edit_profile_sheet.dart';
+import '../features/profile/work_schedule_sheet.dart';
 
 final _packageInfoProvider = FutureProvider<PackageInfo>(
   (_) => PackageInfo.fromPlatform(),
@@ -198,6 +199,14 @@ class AppDrawer extends ConsumerWidget {
                   onTap: () {
                     Navigator.of(context).pop();
                     context.go('/conquistas');
+                  },
+                ),
+                _DrawerTile(
+                  icon: LucideIcons.calendarClock,
+                  label: 'Horário de trabalho',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    showWorkScheduleSheet(context);
                   },
                 ),
                 _DrawerTile(

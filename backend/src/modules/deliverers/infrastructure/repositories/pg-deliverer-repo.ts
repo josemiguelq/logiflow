@@ -1,6 +1,36 @@
 import bcrypt from 'bcryptjs'
 import { DB } from '../../../../shared/db/client'
-import { Deliverer, DelivererStatus } from '../../domain/entities'
+import { Deliverer, DelivererStatus, DaySchedule, Punctuality, PunctualityState } from '../../domain/entities'
+
+const TZ = 'America/Sao_Paulo'
+const PUNCTUALITY_TOLERANCE_MIN = 5
+
+function mapDay(r: Record<string, unknown>): DaySchedule {
+  return {
+    dayOfWeek:  Number(r.day_of_week),
+    active:     r.active as boolean,
+    startTime:  r.start_time as string,
+    endTime:    r.end_time as string,
+    lunchStart: (r.lunch_start as string | null) ?? undefined,
+    lunchEnd:   (r.lunch_end as string | null) ?? undefined,
+  }
+}
+
+// Deriva o estado a partir dos valores já calculados no SQL (diffMin no fuso TZ).
+function buildPunctuality(
+  scheduledStart: string | null,
+  firstAvailableAt: string | null,
+  diffMin: number | null,
+): Punctuality {
+  if (!scheduledStart) return { scheduledStart: null, firstAvailableAt, diffMin: null, state: 'off' }
+  if (!firstAvailableAt || diffMin === null) {
+    return { scheduledStart, firstAvailableAt: null, diffMin: null, state: 'absent' }
+  }
+  let state: PunctualityState = 'on_time'
+  if (diffMin >  PUNCTUALITY_TOLERANCE_MIN) state = 'late'
+  else if (diffMin < -PUNCTUALITY_TOLERANCE_MIN) state = 'early'
+  return { scheduledStart, firstAvailableAt, diffMin, state }
+}
 
 function mapRow(r: Record<string, unknown>): Deliverer {
   return {
@@ -164,6 +194,113 @@ export function createPgDelivererRepo(db: DB) {
         [storeId]
       )
       return rows
+    },
+
+    // ── Horário de trabalho ──────────────────────────────────────────────────
+
+    async getSchedule(delivererId: string): Promise<DaySchedule[]> {
+      const { rows } = await db.query(
+        `SELECT day_of_week, active,
+                to_char(start_time, 'HH24:MI')  AS start_time,
+                to_char(end_time,   'HH24:MI')  AS end_time,
+                to_char(lunch_start,'HH24:MI')  AS lunch_start,
+                to_char(lunch_end,  'HH24:MI')  AS lunch_end
+         FROM deliverer_work_schedules
+         WHERE deliverer_id = $1
+         ORDER BY day_of_week ASC`,
+        [delivererId]
+      )
+      return rows.map(mapDay)
+    },
+
+    // Substitui o horário inteiro (envia os dias persistidos, ativos ou não).
+    async replaceSchedule(delivererId: string, storeId: string, days: DaySchedule[]): Promise<void> {
+      await db.transaction(async (client) => {
+        await client.query('DELETE FROM deliverer_work_schedules WHERE deliverer_id = $1', [delivererId])
+        for (const d of days) {
+          await client.query(
+            `INSERT INTO deliverer_work_schedules
+               (deliverer_id, store_id, day_of_week, active, start_time, end_time, lunch_start, lunch_end, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())`,
+            [delivererId, storeId, d.dayOfWeek, d.active, d.startTime, d.endTime, d.lunchStart ?? null, d.lunchEnd ?? null]
+          )
+        }
+      })
+    },
+
+    // Pontualidade de hoje de um entregador: combinado x 1º AVAILABLE.
+    async getPunctuality(delivererId: string): Promise<Punctuality> {
+      const { rows: [r] } = await db.query(
+        `WITH today AS (SELECT (now() AT TIME ZONE '${TZ}')::date AS d,
+                               EXTRACT(DOW FROM (now() AT TIME ZONE '${TZ}'))::int AS dow),
+              sched AS (
+                SELECT to_char(ws.start_time, 'HH24:MI') AS scheduled_start, ws.start_time
+                FROM deliverer_work_schedules ws, today
+                WHERE ws.deliverer_id = $1 AND ws.day_of_week = today.dow AND ws.active
+              ),
+              avail AS (
+                SELECT MIN(dsh.changed_at) AS first_available
+                FROM deliverer_status_history dsh, today
+                WHERE dsh.deliverer_id = $1 AND dsh.status = 'AVAILABLE'
+                  AND (dsh.changed_at AT TIME ZONE '${TZ}')::date = today.d
+              )
+         SELECT sched.scheduled_start,
+                avail.first_available,
+                CASE WHEN sched.start_time IS NOT NULL AND avail.first_available IS NOT NULL
+                  THEN ROUND(EXTRACT(EPOCH FROM (
+                    (avail.first_available AT TIME ZONE '${TZ}')
+                    - ((now() AT TIME ZONE '${TZ}')::date + sched.start_time)
+                  )) / 60.0)::int
+                END AS diff_min
+         FROM today
+         LEFT JOIN sched ON true
+         LEFT JOIN avail ON true`,
+        [delivererId]
+      )
+      return buildPunctuality(
+        (r?.scheduled_start as string | null) ?? null,
+        r?.first_available ? new Date(r.first_available as string).toISOString() : null,
+        r?.diff_min != null ? Number(r.diff_min) : null,
+      )
+    },
+
+    // Resumo do dia: pontualidade de todos os entregadores ativos da loja.
+    async getTodayAttendance(storeId: string): Promise<Array<{ id: string; name: string } & Punctuality>> {
+      const { rows } = await db.query(
+        `WITH today AS (SELECT (now() AT TIME ZONE '${TZ}')::date AS d,
+                               EXTRACT(DOW FROM (now() AT TIME ZONE '${TZ}'))::int AS dow)
+         SELECT d.id, d.name,
+                to_char(ws.start_time, 'HH24:MI') AS scheduled_start,
+                av.first_available,
+                CASE WHEN ws.start_time IS NOT NULL AND av.first_available IS NOT NULL
+                  THEN ROUND(EXTRACT(EPOCH FROM (
+                    (av.first_available AT TIME ZONE '${TZ}')
+                    - ((now() AT TIME ZONE '${TZ}')::date + ws.start_time)
+                  )) / 60.0)::int
+                END AS diff_min
+         FROM deliverers d
+         CROSS JOIN today
+         LEFT JOIN deliverer_work_schedules ws
+           ON ws.deliverer_id = d.id AND ws.day_of_week = today.dow AND ws.active
+         LEFT JOIN LATERAL (
+           SELECT MIN(dsh.changed_at) AS first_available
+           FROM deliverer_status_history dsh
+           WHERE dsh.deliverer_id = d.id AND dsh.status = 'AVAILABLE'
+             AND (dsh.changed_at AT TIME ZONE '${TZ}')::date = today.d
+         ) av ON true
+         WHERE d.store_id = $1 AND d.is_active = true
+         ORDER BY d.name ASC`,
+        [storeId]
+      )
+      return rows.map((r: Record<string, unknown>) => ({
+        id:   r.id as string,
+        name: r.name as string,
+        ...buildPunctuality(
+          (r.scheduled_start as string | null) ?? null,
+          r.first_available ? new Date(r.first_available as string).toISOString() : null,
+          r.diff_min != null ? Number(r.diff_min) : null,
+        ),
+      }))
     },
   }
 }

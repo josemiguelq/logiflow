@@ -42,6 +42,30 @@ export interface Deliverer {
   createdAt: string
 }
 
+// Horário de trabalho por dia da semana (0=Domingo … 6=Sábado)
+export interface DaySchedule {
+  dayOfWeek: number
+  active: boolean
+  startTime: string       // 'HH:MM'
+  endTime: string         // 'HH:MM'
+  lunchStart?: string     // 'HH:MM'
+  lunchEnd?: string       // 'HH:MM'
+}
+
+export type PunctualityState = 'on_time' | 'early' | 'late' | 'absent' | 'off'
+
+export interface Punctuality {
+  scheduledStart: string | null
+  firstAvailableAt: string | null
+  diffMin: number | null
+  state: PunctualityState
+}
+
+export interface AttendanceRow extends Punctuality {
+  id: string
+  name: string
+}
+
 export interface OrderLogEntry {
   at: string
   by: { type: string; id?: string; name?: string }

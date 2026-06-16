@@ -1,14 +1,15 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck, Star } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck, Star, CalendarClock, Coffee, Save } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccess } from '@/hooks/useAccess'
 import { AchievementsPanel } from '@/components/achievements/achievements-panel'
+import type { DaySchedule, Punctuality } from '@/types'
 
 interface StatusEntry {
   status:    string
@@ -28,7 +29,172 @@ interface DelivererDetail {
   createdAt:       string
   avgRating:       number | null
   ratingCount:     number
+  schedule:        DaySchedule[]
+  punctuality:     Punctuality
   history:         StatusEntry[]
+}
+
+const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+}
+
+const PUNCTUALITY_STYLE: Record<Punctuality['state'], { label: string; color: string; bg: string }> = {
+  on_time: { label: 'No horário', color: 'text-green-700',  bg: 'bg-green-50 border-green-200' },
+  early:   { label: 'Adiantado',  color: 'text-blue-700',   bg: 'bg-blue-50 border-blue-200' },
+  late:    { label: 'Atrasado',   color: 'text-red-700',    bg: 'bg-red-50 border-red-200' },
+  absent:  { label: 'Não marcou', color: 'text-gray-600',   bg: 'bg-gray-100 border-gray-200' },
+  off:     { label: 'Folga',      color: 'text-gray-500',   bg: 'bg-gray-50 border-gray-200' },
+}
+
+function PunctualityCard({ p }: { p: Punctuality }) {
+  const s = PUNCTUALITY_STYLE[p.state]
+  const diffLabel = p.diffMin == null || p.diffMin === 0
+    ? null
+    : `${Math.abs(p.diffMin)} min ${p.diffMin > 0 ? 'atrasado' : 'adiantado'}`
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-600">
+          {p.state === 'off' ? (
+            <span>Hoje é folga (sem horário combinado).</span>
+          ) : (
+            <span>
+              Combinado <strong>{p.scheduledStart ?? '—'}</strong>
+              {' · '}
+              marcou Disponível <strong>{fmtTime(p.firstAvailableAt)}</strong>
+            </span>
+          )}
+        </div>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${s.color} ${s.bg}`}>
+          {s.label}{diffLabel ? ` · ${diffLabel}` : ''}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+const emptyDay = (dow: number): DaySchedule => ({
+  dayOfWeek: dow, active: false, startTime: '08:00', endTime: '18:00',
+})
+
+function toWeek(days: DaySchedule[]): DaySchedule[] {
+  return Array.from({ length: 7 }, (_, dow) => days.find(d => d.dayOfWeek === dow) ?? emptyDay(dow))
+}
+
+function WorkScheduleSection({ delivererId, canEdit }: { delivererId: string; canEdit: boolean }) {
+  const { data, mutate } = useSWR<{ days: DaySchedule[] }>(
+    `/deliverers/${delivererId}/schedule`,
+    (u: string) => api.get<{ days: DaySchedule[] }>(u)
+  )
+  const [week, setWeek] = useState<DaySchedule[]>(toWeek([]))
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => { if (data) setWeek(toWeek(data.days)) }, [data])
+
+  function patchDay(dow: number, patch: Partial<DaySchedule>) {
+    setSaved(false)
+    setWeek(w => w.map(d => (d.dayOfWeek === dow ? { ...d, ...patch } : d)))
+  }
+
+  function toggleLunch(dow: number, on: boolean) {
+    patchDay(dow, on ? { lunchStart: '12:00', lunchEnd: '13:00' } : { lunchStart: undefined, lunchEnd: undefined })
+  }
+
+  async function handleSave() {
+    setLoading(true); setError(''); setSaved(false)
+    try {
+      await api.put(`/deliverers/${delivererId}/schedule`, { days: week })
+      await mutate()
+      setSaved(true)
+    } catch (err: unknown) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2.5 border-b border-gray-100 px-5 py-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'var(--color-primary)' }}>
+          <CalendarClock className="h-4 w-4 text-white" />
+        </div>
+        <h2 className="font-semibold text-gray-900">Horário de trabalho</h2>
+      </div>
+
+      <div className="space-y-2 p-4">
+        {week.map(d => {
+          const hasLunch = d.lunchStart != null
+          return (
+            <div key={d.dayOfWeek} className={`rounded-xl border p-3 ${d.active ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50'}`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-medium ${d.active ? 'text-gray-900' : 'text-gray-400'}`}>{DAY_LABELS[d.dayOfWeek]}</span>
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() => patchDay(d.dayOfWeek, { active: !d.active })}
+                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60"
+                  style={{ background: d.active ? 'var(--color-primary)' : '#E5E7EB' }}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${d.active ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {d.active && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <input type="time" disabled={!canEdit} value={d.startTime}
+                      onChange={e => patchDay(d.dayOfWeek, { startTime: e.target.value })}
+                      className="rounded-lg border border-gray-200 px-2 py-1 disabled:bg-gray-50" />
+                    <span className="text-gray-400">até</span>
+                    <input type="time" disabled={!canEdit} value={d.endTime}
+                      onChange={e => patchDay(d.dayOfWeek, { endTime: e.target.value })}
+                      className="rounded-lg border border-gray-200 px-2 py-1 disabled:bg-gray-50" />
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <button type="button" disabled={!canEdit} onClick={() => toggleLunch(d.dayOfWeek, !hasLunch)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs disabled:opacity-60 ${hasLunch ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500'}`}>
+                      <Coffee className="h-3.5 w-3.5" />
+                      Almoço
+                    </button>
+                    {hasLunch && (
+                      <>
+                        <input type="time" disabled={!canEdit} value={d.lunchStart}
+                          onChange={e => patchDay(d.dayOfWeek, { lunchStart: e.target.value })}
+                          className="rounded-lg border border-gray-200 px-2 py-1 disabled:bg-gray-50" />
+                        <span className="text-gray-400">até</span>
+                        <input type="time" disabled={!canEdit} value={d.lunchEnd}
+                          onChange={e => patchDay(d.dayOfWeek, { lunchEnd: e.target.value })}
+                          className="rounded-lg border border-gray-200 px-2 py-1 disabled:bg-gray-50" />
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+        {saved && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-600">Horário salvo</p>}
+
+        {canEdit && (
+          <button onClick={handleSave} disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            style={{ background: 'var(--color-primary)' }}>
+            <Save className="h-4 w-4" />
+            {loading ? 'Salvando...' : 'Salvar horário'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 const STATUS_STYLE: Record<string, { label: string; icon: React.ReactNode; color: string; bg: string }> = {
@@ -130,6 +296,19 @@ export default function DelivererDetailPage({ params }: { params: Promise<{ id: 
           </div>
           <StatusBadgeInline status={data.status} />
         </div>
+      </div>
+
+      {/* Pontualidade hoje */}
+      <div className="mt-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Pontualidade hoje
+        </h2>
+        <PunctualityCard p={data.punctuality} />
+      </div>
+
+      {/* Horário de trabalho */}
+      <div className="mt-6">
+        <WorkScheduleSection delivererId={id} canEdit={can({ scope: 'deliverers:manage' })} />
       </div>
 
       {/* Conquistas (gamificação) */}

@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff, Eye } from 'lucide-react'
-import { Deliverer } from '@/types'
+import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff, Eye, CalendarClock } from 'lucide-react'
+import { Deliverer, AttendanceRow, PunctualityState } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,54 @@ const STATUS_MAP = {
   OFFLINE:   { label: 'Offline',    dot: 'bg-gray-300' },
 }
 
+const PUNCT_STYLE: Record<PunctualityState, { label: string; cls: string }> = {
+  on_time: { label: 'No horário', cls: 'text-green-700 bg-green-50 border-green-200' },
+  early:   { label: 'Adiantado',  cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+  late:    { label: 'Atrasado',   cls: 'text-red-700 bg-red-50 border-red-200' },
+  absent:  { label: 'Não marcou', cls: 'text-gray-600 bg-gray-100 border-gray-200' },
+  off:     { label: 'Folga',      cls: 'text-gray-500 bg-gray-50 border-gray-200' },
+}
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+}
+
+function AttendancePanel({ rows }: { rows: AttendanceRow[] }) {
+  // Mostra primeiro quem trabalha hoje (não-folga), depois folgas.
+  const sorted = [...rows].sort((a, b) => Number(a.state === 'off') - Number(b.state === 'off'))
+  if (sorted.length === 0) return null
+  return (
+    <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-3">
+        <CalendarClock className="h-4 w-4 text-gray-400" />
+        <h2 className="text-sm font-semibold text-gray-800">Presença hoje</h2>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {sorted.map(r => {
+          const s = PUNCT_STYLE[r.state]
+          const diff = r.diffMin != null && r.diffMin !== 0
+            ? ` · ${Math.abs(r.diffMin)} min ${r.diffMin > 0 ? 'atrasado' : 'adiantado'}`
+            : ''
+          return (
+            <div key={r.id} className="flex items-center justify-between gap-3 px-5 py-2.5">
+              <span className="w-40 shrink-0 truncate text-sm font-medium text-gray-800">{r.name}</span>
+              <span className="flex-1 text-xs text-gray-500">
+                {r.state === 'off'
+                  ? 'Folga'
+                  : <>Combinado {r.scheduledStart ?? '—'} · marcou {fmtTime(r.firstAvailableAt)}</>}
+              </span>
+              <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${s.cls}`}>
+                {s.label}{diff}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function DeliverersPage() {
   const [showCreate, setShowCreate]           = useState(false)
   const [editing, setEditing]                 = useState<Deliverer | null>(null)
@@ -23,6 +71,10 @@ export default function DeliverersPage() {
   const { data: deliverers = [], mutate } = useSWR<Deliverer[]>(
     '/deliverers',
     (url: string) => api.get<Deliverer[]>(url)
+  )
+  const { data: attendance = [] } = useSWR<AttendanceRow[]>(
+    '/deliverers/attendance/today',
+    (url: string) => api.get<AttendanceRow[]>(url)
   )
   const { can } = useAccess()
 
@@ -59,6 +111,8 @@ export default function DeliverersPage() {
           Novo Entregador
         </Button>
       </div>
+
+      <AttendancePanel rows={attendance} />
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         {deliverers.length === 0 ? (

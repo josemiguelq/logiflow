@@ -22,6 +22,38 @@ const updateSchema = z.object({
   password: z.string().min(6).optional(),
 })
 
+// ── Horário de trabalho ──────────────────────────────────────────────────────
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+const dayScheduleSchema = z.object({
+  dayOfWeek:  z.number().int().min(0).max(6),
+  active:     z.boolean(),
+  startTime:  z.string().regex(TIME_RE),
+  endTime:    z.string().regex(TIME_RE),
+  lunchStart: z.string().regex(TIME_RE).nullish(),
+  lunchEnd:   z.string().regex(TIME_RE).nullish(),
+})
+  .refine(d => d.startTime < d.endTime, { message: 'Início deve ser antes do fim' })
+  .refine(d => (d.lunchStart == null) === (d.lunchEnd == null), { message: 'Almoço precisa de início e fim' })
+  .refine(
+    d => d.lunchStart == null ||
+      (d.startTime <= d.lunchStart && d.lunchStart < d.lunchEnd! && d.lunchEnd! <= d.endTime),
+    { message: 'Almoço deve estar dentro do expediente' }
+  )
+
+const scheduleBodySchema = z.object({
+  days: z.array(dayScheduleSchema).max(7)
+    .refine(arr => new Set(arr.map(d => d.dayOfWeek)).size === arr.length, { message: 'Dia da semana repetido' }),
+})
+
+const normalizeDay = (d: z.infer<typeof dayScheduleSchema>) => ({
+  dayOfWeek:  d.dayOfWeek,
+  active:     d.active,
+  startTime:  d.startTime,
+  endTime:    d.endTime,
+  lunchStart: d.lunchStart ?? undefined,
+  lunchEnd:   d.lunchEnd ?? undefined,
+})
+
 export async function delivererRoutes(app: FastifyInstance) {
   const repo = createPgDelivererRepo(db)
 
@@ -209,6 +241,47 @@ export async function delivererRoutes(app: FastifyInstance) {
     return reply.send({ ok: true })
   })
 
+  // ── Horário de trabalho ────────────────────────────────────────────────────
+
+  // Entregador lê o próprio horário
+  app.get('/deliverer/schedule', { preHandler: requireDeliverer }, async (req) => {
+    return { days: await repo.getSchedule(req.actor.sub) }
+  })
+
+  // Entregador substitui o próprio horário
+  app.put('/deliverer/schedule', { preHandler: requireDeliverer }, async (req, reply) => {
+    const { days } = scheduleBodySchema.parse(req.body)
+    await repo.replaceSchedule(req.actor.sub, req.actor.storeId, days.map(normalizeDay))
+    return reply.send({ ok: true })
+  })
+
+  // Operador visualiza o horário de qualquer entregador da loja
+  app.get('/deliverers/:id/schedule', { preHandler: requireStoreUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const d = await repo.findById(id, req.actor.storeId)
+    if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
+    return { days: await repo.getSchedule(id) }
+  })
+
+  // Operador edita o horário de qualquer entregador (scope deliverers:manage)
+  app.put(
+    '/deliverers/:id/schedule',
+    { preHandler: [requireStoreUser, requireScope('deliverers:manage')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const d = await repo.findById(id, req.actor.storeId)
+      if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
+      const { days } = scheduleBodySchema.parse(req.body)
+      await repo.replaceSchedule(id, req.actor.storeId, days.map(normalizeDay))
+      return reply.send({ ok: true })
+    }
+  )
+
+  // Resumo do dia: pontualidade de todos os entregadores ativos
+  app.get('/deliverers/attendance/today', { preHandler: requireStoreUser }, async (req) => {
+    return repo.getTodayAttendance(req.actor.storeId)
+  })
+
   // Store user fetches a single deliverer with their status history
   app.get(
     '/deliverers/:id/history',
@@ -240,6 +313,11 @@ export async function delivererRoutes(app: FastifyInstance) {
         [id, req.actor.storeId]
       )
 
+      const [schedule, punctuality] = await Promise.all([
+        repo.getSchedule(id),
+        repo.getPunctuality(id),
+      ])
+
       return {
         id:              d.id,
         name:            d.name,
@@ -251,6 +329,8 @@ export async function delivererRoutes(app: FastifyInstance) {
         createdAt:       d.created_at,
         avgRating:       ratingRow?.avg_rating != null ? Number(ratingRow.avg_rating) : null,
         ratingCount:     Number(ratingRow?.rating_count ?? 0),
+        schedule,
+        punctuality,
         history: history.map((h: Record<string, unknown>) => ({
           status:    h.status,
           lat:       h.lat,
