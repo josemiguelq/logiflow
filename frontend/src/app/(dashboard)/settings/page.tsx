@@ -44,6 +44,7 @@ const WHATSAPP_STATUS_OPTIONS: { value: string; label: string; desc: string }[] 
   { value: 'PREPARING',        label: 'Pedido criado',      desc: 'Quando o pedido é registrado' },
   { value: 'ON_ROUTE',         label: 'Em rota',            desc: 'Quando o entregador retira os pedidos da rota' },
   { value: 'OUT_FOR_DELIVERY', label: 'Saiu para entrega',  desc: 'Quando o pedido é a próxima parada' },
+  { value: 'ARRIVING',         label: 'Chegando ao endereço', desc: 'Quando o entregador entra no raio de chegada — avisa o cliente para se preparar para receber' },
   { value: 'DELIVERED',        label: 'Entregue',           desc: 'Quando a entrega é concluída' },
   { value: 'CANCELLED',        label: 'Cancelado',          desc: 'Quando o pedido é cancelado' },
   { value: 'ADDRESS_CHANGED',  label: 'Endereço alterado',  desc: 'Quando o endereço de entrega muda' },

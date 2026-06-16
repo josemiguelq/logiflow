@@ -55,6 +55,13 @@ function buildStatusMessage(
         `Acompanhe em tempo real:\n${trackingUrl}\n\n` +
         `Código de confirmação: *${deliveryCode}*`
       )
+    case 'ARRIVING':
+      return (
+        `Olá, ${customerName}! O entregador está chegando — já está bem pertinho de você! 📍\n\n` +
+        `${infoBlock}\n\n` +
+        `Prepare-se para receber seu pedido. 😉\n\n` +
+        `Código de confirmação: *${deliveryCode}*`
+      )
     case 'DELIVERED':
       return (
         `Olá, ${customerName}! Seu pedido foi entregue com sucesso. ✅\n\n` +

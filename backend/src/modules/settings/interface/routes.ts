@@ -22,17 +22,22 @@ function themeCacheKey(storeId: string) {
 }
 
 // Status de pedido que podem disparar notificação por WhatsApp ao cliente.
+// 'ARRIVING' (proximidade/raio de chegada) é opt-in — fora do default.
 const WHATSAPP_NOTIFY_STATUSES = [
-  'PREPARING', 'ON_ROUTE', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'ADDRESS_CHANGED',
+  'PREPARING', 'ON_ROUTE', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'ADDRESS_CHANGED', 'ARRIVING',
 ] as const
 
+const DEFAULT_WHATSAPP_NOTIFY_STATUSES = [
+  'PREPARING', 'ON_ROUTE', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'ADDRESS_CHANGED',
+]
+
 function parseStatusList(raw: string | undefined): string[] {
-  if (!raw) return [...WHATSAPP_NOTIFY_STATUSES]
+  if (!raw) return [...DEFAULT_WHATSAPP_NOTIFY_STATUSES]
   try {
     const arr = JSON.parse(raw)
-    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [...WHATSAPP_NOTIFY_STATUSES]
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [...DEFAULT_WHATSAPP_NOTIFY_STATUSES]
   } catch {
-    return [...WHATSAPP_NOTIFY_STATUSES]
+    return [...DEFAULT_WHATSAPP_NOTIFY_STATUSES]
   }
 }
 

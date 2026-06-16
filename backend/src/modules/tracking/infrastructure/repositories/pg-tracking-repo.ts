@@ -1,4 +1,5 @@
 import { DB } from '../../../../shared/db/client'
+import { notificationQueue } from '../../../../shared/infra/queue'
 
 const MIN_DISTANCE_METERS = 50
 const MIN_TIME_SECONDS    = 60
@@ -82,7 +83,7 @@ export function createPgTrackingRepo(db: DB) {
     // do raio de chegada da loja (settings.arrival_radius_meters, padrão 20 m).
     async detectArrival(delivererId: string, lat: number, lng: number, ts: Date) {
       const { rows } = await db.query(
-        `SELECT o.id,
+        `SELECT o.id, o.store_id, o.status,
                 COALESCE(o.delivery_lat, ca.lat) AS dlat,
                 COALESCE(o.delivery_lng, ca.lng) AS dlng,
                 COALESCE(NULLIF(sv.value, ''), s.default_value, '20')::float AS radius
@@ -100,11 +101,20 @@ export function createPgTrackingRepo(db: DB) {
       for (const r of rows) {
         if (r.dlat == null || r.dlng == null) continue
         const dist = haversineMeters(lat, lng, Number(r.dlat), Number(r.dlng))
-        if (dist <= Number(r.radius)) {
-          await db.query(
-            `UPDATE orders SET arrived_at = $2 WHERE id = $1 AND arrived_at IS NULL`,
-            [r.id, ts]
-          )
+        if (dist > Number(r.radius)) continue
+
+        // RETURNING garante que só notificamos quando ESTE ping marcou a chegada
+        // (e não um ping concorrente), evitando notificação duplicada.
+        const { rows: updated } = await db.query(
+          `UPDATE orders SET arrived_at = $2 WHERE id = $1 AND arrived_at IS NULL RETURNING id`,
+          [r.id, ts]
+        )
+        // Notificação de proximidade: só faz sentido para a parada ativa
+        // (OUT_FOR_DELIVERY). O worker decide o envio conforme as settings da loja.
+        if (updated.length > 0 && r.status === 'OUT_FOR_DELIVERY') {
+          notificationQueue.add('status_changed', {
+            type: 'whatsapp', storeId: r.store_id, orderId: r.id, statusEvent: 'ARRIVING',
+          }).catch(() => { /* non-fatal */ })
         }
       }
     },
