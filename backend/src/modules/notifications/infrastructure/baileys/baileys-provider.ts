@@ -1,6 +1,8 @@
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
+  type WAMessageContent,
+  type WAMessageKey,
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import { IWhatsAppProvider } from '../../domain/ports'
@@ -11,6 +13,21 @@ type SocketInstance = ReturnType<typeof makeWASocket>
 
 const sockets = new Map<string, SocketInstance>()
 const qrCodes = new Map<string, string>()
+
+// Cache das mensagens enviadas, por id. Quando o aparelho do destinatário não
+// consegue descriptografar, ele pede o reenvio (retry receipt) e o Baileys chama
+// getMessage(key) para reencriptar e reenviar. Sem isso, a mensagem fica em
+// "Aguardando mensagem. Esta ação pode levar alguns instantes" para sempre.
+const MAX_CACHED_MESSAGES = 1_000
+const sentMessages = new Map<string, WAMessageContent>()
+
+function cacheSentMessage(id: string, content: WAMessageContent) {
+  sentMessages.set(id, content)
+  if (sentMessages.size > MAX_CACHED_MESSAGES) {
+    const oldest = sentMessages.keys().next().value
+    if (oldest !== undefined) sentMessages.delete(oldest)
+  }
+}
 
 export function createBaileysProvider(db: DB): IWhatsAppProvider {
   const sessionStore = createDbSessionStore(db)
@@ -27,6 +44,10 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
       // Render cold-starts are slow — give WhatsApp more time to respond
       connectTimeoutMs:      60_000,
       defaultQueryTimeoutMs: 0,       // 0 = no timeout (wait indefinitely)
+      // Responde a retry receipts: devolve a mensagem original para o Baileys
+      // reencriptar e reenviar quando o destinatário não conseguiu descriptografar.
+      getMessage: async (key: WAMessageKey) =>
+        (key.id ? sentMessages.get(key.id) : undefined) ?? undefined,
       // Suppress Baileys' verbose internal error logs
       logger: {
         level: 'silent',
@@ -123,7 +144,9 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
       if (!match?.exists || !match.jid) {
         throw new Error(`Phone ${normalizedPhone} is not a registered WhatsApp number`)
       }
-      await socket.sendMessage(match.jid, { text })
+      const sent = await socket.sendMessage(match.jid, { text })
+      // Guarda para conseguir reenviar caso o destinatário peça (retry receipt).
+      if (sent?.key?.id && sent.message) cacheSentMessage(sent.key.id, sent.message)
     },
 
     async reconnectAll() {
