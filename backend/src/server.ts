@@ -50,7 +50,7 @@ function buildStatusMessage(
       )
     case 'OUT_FOR_DELIVERY':
       return (
-        `Olá, ${customerName}! Seu pedido está saindo para entrega agora! 🏃\n\n` +
+        `Olá, ${customerName}! Seu pedido é a próxima parada! 🏃\n\n` +
         `${infoBlock}\n\n` +
         `Acompanhe em tempo real:\n${trackingUrl}\n\n` +
         `Código de confirmação: *${deliveryCode}*`
