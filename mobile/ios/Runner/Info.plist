@@ -6,6 +6,10 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>O LogiFlow usa sua localização durante as entregas para rastrear o trajeto em tempo real e mostrar as rotas até os clientes.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>O LogiFlow usa sua localização, inclusive em segundo plano durante as entregas, para rastrear o trajeto em tempo real e atualizar a posição para a loja e os clientes que acompanham o pedido.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>O LogiFlow usa sua localização, inclusive em segundo plano durante as entregas, para rastrear o trajeto em tempo real e atualizar a posição para a loja e os clientes que acompanham o pedido.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>O LogiFlow usa a câmera para você fotografar comprovantes de entrega e a foto do seu perfil.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

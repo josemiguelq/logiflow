@@ -12,10 +12,13 @@ export function createPgMessageLogRepo(db: DB): IMessageLogRepository {
       return rows[0].id
     },
 
-    async markSent(id) {
+    async markSent(id, waMessageId) {
       await db.query(
-        `UPDATE message_logs SET status = 'SENT', attempts = attempts + 1 WHERE id = $1`,
-        [id]
+        `UPDATE message_logs
+         SET status = 'SENT', attempts = attempts + 1,
+             wa_message_id = COALESCE($2, wa_message_id)
+         WHERE id = $1`,
+        [id, waMessageId ?? null]
       )
     },
 

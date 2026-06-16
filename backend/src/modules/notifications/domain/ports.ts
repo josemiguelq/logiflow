@@ -1,7 +1,8 @@
 // Domain port — the domain knows NOTHING about Baileys.
 
 export interface IWhatsAppProvider {
-  sendMessage(storeId: string, phone: string, text: string): Promise<void>
+  // Retorna o id da mensagem no WhatsApp (key.id), ou null se indisponível.
+  sendMessage(storeId: string, phone: string, text: string): Promise<string | null>
   getQRCode(storeId: string): Promise<string | null>
   connect(storeId: string): Promise<void>
   disconnect(storeId: string): Promise<void>
@@ -16,6 +17,6 @@ export interface IMessageLogRepository {
     phone: string
     message: string
   }): Promise<string>
-  markSent(id: string): Promise<void>
+  markSent(id: string, waMessageId?: string | null): Promise<void>
   markFailed(id: string): Promise<void>
 }

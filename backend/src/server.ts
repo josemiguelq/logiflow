@@ -234,9 +234,9 @@ async function start() {
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
     try {
-      await whatsapp.sendMessage(storeId, phone, message)
-      await messageLogRepo.markSent(logId)
-      app.log.warn({ orderId, storeId, statusEvent, phone }, '[whatsapp] sent')
+      const waId = await whatsapp.sendMessage(storeId, phone, message)
+      await messageLogRepo.markSent(logId, waId)
+      app.log.warn({ orderId, storeId, statusEvent, phone, waId }, '[whatsapp] sent')
     } catch (err) {
       await messageLogRepo.markFailed(logId)
       app.log.error({ err, orderId, storeId, statusEvent, phone }, '[whatsapp] NOT sent — sendMessage threw')

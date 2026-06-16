@@ -46,8 +46,23 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
       defaultQueryTimeoutMs: 0,       // 0 = no timeout (wait indefinitely)
       // Responde a retry receipts: devolve a mensagem original para o Baileys
       // reencriptar e reenviar quando o destinatário não conseguiu descriptografar.
-      getMessage: async (key: WAMessageKey) =>
-        (key.id ? sentMessages.get(key.id) : undefined) ?? undefined,
+      // Cache em memória (exato) primeiro; fallback no message_logs (sobrevive a
+      // restart) reconstruindo o texto salvo.
+      getMessage: async (key: WAMessageKey): Promise<WAMessageContent | undefined> => {
+        if (!key.id) return undefined
+        const cached = sentMessages.get(key.id)
+        if (cached) return cached
+        try {
+          const { rows } = await db.query(
+            `SELECT message FROM message_logs WHERE wa_message_id = $1 LIMIT 1`,
+            [key.id]
+          )
+          const text = rows[0]?.message as string | undefined
+          return text ? { conversation: text } : undefined
+        } catch {
+          return undefined
+        }
+      },
       // Suppress Baileys' verbose internal error logs
       logger: {
         level: 'silent',
@@ -145,8 +160,10 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
         throw new Error(`Phone ${normalizedPhone} is not a registered WhatsApp number`)
       }
       const sent = await socket.sendMessage(match.jid, { text })
+      const waId = sent?.key?.id ?? null
       // Guarda para conseguir reenviar caso o destinatário peça (retry receipt).
-      if (sent?.key?.id && sent.message) cacheSentMessage(sent.key.id, sent.message)
+      if (waId && sent?.message) cacheSentMessage(waId, sent.message)
+      return waId
     },
 
     async reconnectAll() {
