@@ -185,6 +185,18 @@ async function start() {
     )
     if (feat.length === 0) return
 
+    // Abort if this status is not in the store's WhatsApp notify list
+    const { rows: [cfg] } = await db.query(
+      `SELECT COALESCE(ssv.value, s.default_value) AS value
+       FROM settings s
+       LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
+       WHERE s.name = 'whatsapp_notify_statuses'`,
+      [storeId]
+    )
+    let enabledStatuses: string[] = []
+    try { enabledStatuses = JSON.parse((cfg as { value?: string } | undefined)?.value ?? '[]') } catch { enabledStatuses = [] }
+    if (!enabledStatuses.includes(statusEvent)) return
+
     const order = await orderRepo.findById(orderId, storeId)
     if (!order) return
 

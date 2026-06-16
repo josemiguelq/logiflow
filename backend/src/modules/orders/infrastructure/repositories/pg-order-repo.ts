@@ -245,6 +245,17 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return rows.map(mapRow)
     },
 
+    async findNextOnRoute(routeId) {
+      const { rows } = await db.query(
+        `${WITH_JOINS}
+         WHERE o.route_id = $1 AND o.status = 'ON_ROUTE'
+         ORDER BY o.route_position ASC NULLS LAST
+         LIMIT 1`,
+        [routeId]
+      )
+      return rows[0] ? mapRow(rows[0]) : null
+    },
+
     async findPreparing(storeId, requestingDelivererId) {
       const { rows } = await db.query(
         `${WITH_JOINS}

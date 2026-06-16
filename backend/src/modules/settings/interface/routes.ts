@@ -21,6 +21,21 @@ function themeCacheKey(storeId: string) {
   return `theme:store:${storeId}`
 }
 
+// Status de pedido que podem disparar notificação por WhatsApp ao cliente.
+const WHATSAPP_NOTIFY_STATUSES = [
+  'PREPARING', 'ON_ROUTE', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'ADDRESS_CHANGED',
+] as const
+
+function parseStatusList(raw: string | undefined): string[] {
+  if (!raw) return [...WHATSAPP_NOTIFY_STATUSES]
+  try {
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [...WHATSAPP_NOTIFY_STATUSES]
+  } catch {
+    return [...WHATSAPP_NOTIFY_STATUSES]
+  }
+}
+
 export async function settingsRoutes(app: FastifyInstance) {
   // GET /store/features — returns all enabled feature flags for the store
   app.get('/store/features', { preHandler: requireStoreUser }, async (req) => {
@@ -193,6 +208,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       deliveryRequireProximity: s.delivery_require_proximity === 'true',
       enforceDeliveryOrder:     s.enforce_delivery_order     === 'true',
       notifyOperatorDelayedThreshold: parseInt(s.notify_operator_delayed_threshold ?? '3'),
+      whatsappNotifyStatuses:   parseStatusList(s.whatsapp_notify_statuses),
     }
   })
 
@@ -216,6 +232,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     deliveryRequireProximity: z.boolean().optional(),
     enforceDeliveryOrder:     z.boolean().optional(),
     notifyOperatorDelayedThreshold: z.number().int().min(1).max(100).optional(),
+    whatsappNotifyStatuses: z.array(z.enum(WHATSAPP_NOTIFY_STATUSES)).optional(),
     storeAddress:          z.string().max(300).optional().nullable(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
@@ -256,6 +273,10 @@ export async function settingsRoutes(app: FastifyInstance) {
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))
+    }
+
+    if (body.whatsappNotifyStatuses !== undefined) {
+      await upsertSetting('whatsapp_notify_statuses', JSON.stringify(body.whatsappNotifyStatuses))
     }
 
     if (body.allowCustomerRatings !== undefined) {

@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { OrderStatus, canTransition, CANCEL_REASON_CODES } from '../domain/entities'
+import { OrderStatus, OrderWithDetails, canTransition, CANCEL_REASON_CODES } from '../domain/entities'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
@@ -91,6 +91,29 @@ export async function orderRoutes(app: FastifyInstance) {
       action,
       ...(details ? { details } : {}),
     }).catch(() => { /* non-fatal */ })
+
+  // Avança um pedido ON_ROUTE para OUT_FOR_DELIVERY (próxima parada da rota).
+  // Dispara o mesmo conjunto de efeitos de uma transição normal: log de sistema,
+  // broadcast WS, notificação ao cliente e invalidação de cache.
+  const advanceToOutForDelivery = async (
+    next: OrderWithDetails,
+    storeId: string,
+    delivererId?: string,
+  ) => {
+    await orderRepo.updateStatus(next.id, 'OUT_FOR_DELIVERY', { outForDeliveryAt: new Date() })
+    await orderRepo.appendLog(next.id, {
+      at:     new Date().toISOString(),
+      by:     { type: 'system' },
+      action: 'OUT_FOR_DELIVERY',
+      details: { trigger: 'route_auto_advance' },
+    }).catch(() => { /* non-fatal */ })
+
+    const updated = await orderRepo.findById(next.id, storeId)
+    wsHub.broadcastOrderUpdate(storeId, updated ?? next)
+    queueNotif(storeId, next.id, 'OUT_FOR_DELIVERY')
+    if (delivererId) invalidateDelivererOrders(delivererId)
+    invalidateStoreOrders(storeId)
+  }
 
   // ── Public tracking (no auth) ────────────────────────────────────────────
   app.get('/tracking/:orderId', async (req, reply) => {
@@ -1063,6 +1086,13 @@ export async function orderRoutes(app: FastifyInstance) {
         queueNotif(req.actor.storeId, id, 'DELIVERED')
         invalidateDelivererOrders(req.actor.sub)
         invalidateStoreOrders(req.actor.storeId)
+
+        // Auto-avanço da rota: a próxima parada (pedido ON_ROUTE de menor
+        // posição) entra em OUT_FOR_DELIVERY, disparando suas notificações.
+        if (order.routeId) {
+          const next = await orderRepo.findNextOnRoute(order.routeId)
+          if (next) await advanceToOutForDelivery(next, req.actor.storeId, order.delivererId)
+        }
 
         // Auto-finish route when all its orders are delivered/cancelled
         if (order.routeId) {

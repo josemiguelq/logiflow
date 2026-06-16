@@ -6,6 +6,8 @@ export interface IOrderRepository {
   searchByStore(storeId: string, filters: OrderFilters): Promise<{ items: OrderWithDetails[]; total: number }>
   findByDeliverer(delivererId: string): Promise<OrderWithDetails[]>
   findByRoute(routeId: string): Promise<OrderWithDetails[]>
+  // Próxima parada de uma rota: pedido ON_ROUTE de menor route_position.
+  findNextOnRoute(routeId: string): Promise<OrderWithDetails | null>
   findPreparing(storeId: string, requestingDelivererId?: string): Promise<OrderWithDetails[]>
   create(data: Omit<Order, 'id' | 'createdAt'>): Promise<Order>
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>

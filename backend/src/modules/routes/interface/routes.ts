@@ -384,12 +384,30 @@ export async function routeRoutes(app: FastifyInstance) {
       await routeRepo.updateStatus(id, route.store_id as string, 'STARTED')
 
       const orders = await orderRepo.findByRoute(id)
+
+      // Auto-avanço: a 1ª parada da rota (menor route_position ainda ON_ROUTE)
+      // já entra em OUT_FOR_DELIVERY; as demais permanecem ON_ROUTE.
+      let firstAdvanced = false
       for (const o of orders) {
+        if (!firstAdvanced && o.status === 'ON_ROUTE') {
+          firstAdvanced = true
+          await orderRepo.updateStatus(o.id, 'OUT_FOR_DELIVERY', { outForDeliveryAt: new Date() })
+          orderRepo.appendLog(o.id, {
+            at:     new Date().toISOString(),
+            by:     { type: 'system' },
+            action: 'OUT_FOR_DELIVERY',
+            details: { trigger: 'route_auto_advance' },
+          }).catch(() => { /* non-fatal */ })
+          const updated = await orderRepo.findById(o.id, route.store_id as string)
+          wsHub.broadcastOrderUpdate(route.store_id as string, updated ?? o)
+          queueNotif(route.store_id as string, o.id, 'OUT_FOR_DELIVERY')
+          continue
+        }
         wsHub.broadcastOrderUpdate(route.store_id as string, o)
         queueNotif(route.store_id as string, o.id, 'ON_ROUTE')
       }
 
-      return { ok: true, orders }
+      return { ok: true, orders: await orderRepo.findByRoute(id) }
     }
   )
 

@@ -48,10 +48,12 @@ const STATUS_INFO: Record<string, {
   CANCELLED:        { label: 'Pedido cancelado',            sub: 'Entre em contato com a loja para mais informações', icon: XCircle, color: 'text-red-500',     bgColor: 'bg-red-50'     },
 }
 
-const STEP_STATUSES = ['PREPARING', 'ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY', 'DELIVERED']
-const STEP_LABELS   = ['Preparando', 'Alocado', 'Em rota', 'Saiu', 'Entregue']
+// Timeline público: apenas criado → saiu para entrega → entregue.
+const STEP_STATUSES = ['PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED']
+const STEP_LABELS   = ['Criado', 'Saiu para entrega', 'Entregue']
 
 function stepIndex(status: string) {
+  // Status intermediários (ASSIGNED, ON_ROUTE) contam como ainda na etapa "Criado".
   const i = STEP_STATUSES.indexOf(status)
   return i === -1 ? 0 : i
 }
@@ -320,7 +322,7 @@ export default function CustomerTrackingPage({ params }: { params: Promise<{ tok
             </div>
           </div>
 
-          {order.deliverer && (
+          {order.deliverer && order.status === 'OUT_FOR_DELIVERY' && (
             <div className="rounded-2xl bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Entregador</p>
               <div className="mt-2 flex items-center gap-3">
