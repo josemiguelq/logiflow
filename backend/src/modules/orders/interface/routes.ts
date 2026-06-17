@@ -7,6 +7,7 @@ import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgOrderRepo } from '../infrastructure/repositories/pg-order-repo'
 import { createPgRouteRepo } from '../../routes/infrastructure/repositories/pg-route-repo'
 import { createPgDelivererRepo } from '../../deliverers/infrastructure/repositories/pg-deliverer-repo'
+import { createPgMessageLogRepo } from '../../notifications/infrastructure/repositories/pg-message-log-repo'
 import { generateCode } from '../../../shared/utils/code-generator'
 import { createOrder } from '../application/use-cases/create-order'
 import { assignDeliverer } from '../application/use-cases/assign-deliverer'
@@ -76,6 +77,7 @@ export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
   const routeRepo = createPgRouteRepo(db)
   const delivererRepo = createPgDelivererRepo(db)
+  const messageLogRepo = createPgMessageLogRepo(db)
 
   // Auditoria: anexa uma entrada ao log do pedido com o autor (req.actor).
   // Best-effort — nunca derruba a request principal.
@@ -403,6 +405,17 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await orderRepo.findById(id, req.actor.storeId)
       if (!order) return reply.code(404).send({ error: 'Not found' })
       return signOrderProof(order)
+    }
+  )
+
+  // Mensagens (WhatsApp) enviadas ao cliente deste pedido — texto, status e
+  // horário, em ordem cronológica. Escopo por loja via store_id na query.
+  app.get(
+    '/orders/:id/messages',
+    { preHandler: [requireStoreUser, requireScope('orders:view')] },
+    async (req) => {
+      const { id } = req.params as { id: string }
+      return messageLogRepo.findByOrder(req.actor.storeId, id)
     }
   )
 

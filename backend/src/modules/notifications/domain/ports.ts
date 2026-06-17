@@ -10,6 +10,13 @@ export interface IWhatsAppProvider {
   reconnectAll(): Promise<void>
 }
 
+export interface MessageLogEntry {
+  id: string
+  message: string
+  status: 'PENDING' | 'SENT' | 'FAILED'
+  createdAt: Date
+}
+
 export interface IMessageLogRepository {
   log(entry: {
     storeId: string
@@ -19,4 +26,5 @@ export interface IMessageLogRepository {
   }): Promise<string>
   markSent(id: string, waMessageId?: string | null): Promise<void>
   markFailed(id: string): Promise<void>
+  findByOrder(storeId: string, orderId: string): Promise<MessageLogEntry[]>
 }

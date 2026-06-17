@@ -9,6 +9,7 @@ import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
 import { RouteEditor } from './_edit'
+import { OrderMessages } from './_order-messages'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 
 const RouteMap = dynamic(() => import('./_map'), { ssr: false })
@@ -411,6 +412,7 @@ export default function RouteDetailPage({ params }: Props) {
                 </button>
               </div>
             )}
+            <OrderMessages orderId={order.id} />
             </div>
           ))}
         </div>

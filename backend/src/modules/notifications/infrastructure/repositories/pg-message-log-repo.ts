@@ -28,5 +28,21 @@ export function createPgMessageLogRepo(db: DB): IMessageLogRepository {
         [id]
       )
     },
+
+    async findByOrder(storeId, orderId) {
+      const { rows } = await db.query(
+        `SELECT id, message, status, created_at
+         FROM message_logs
+         WHERE store_id = $1 AND order_id = $2
+         ORDER BY created_at ASC`,
+        [storeId, orderId]
+      )
+      return (rows as Record<string, unknown>[]).map((r) => ({
+        id:        r.id as string,
+        message:   r.message as string,
+        status:    r.status as 'PENDING' | 'SENT' | 'FAILED',
+        createdAt: r.created_at as Date,
+      }))
+    },
   }
 }

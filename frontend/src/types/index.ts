@@ -116,6 +116,13 @@ export interface Order {
   deliveredOffTarget?: boolean
 }
 
+export interface OrderMessage {
+  id: string
+  message: string
+  status: 'PENDING' | 'SENT' | 'FAILED'
+  createdAt: string
+}
+
 export type RouteStatus = 'CREATED' | 'STARTED' | 'FINISHED'
 
 export interface RouteOrderItem {
