@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download } from 'lucide-react'
+import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download, ArrowDown, ArrowUp } from 'lucide-react'
 import { Customer, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
@@ -69,6 +69,7 @@ function DeleteModal({ count, customerName, loading, onConfirm, onClose }: Delet
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [page,   setPage]   = useState(1)
+  const [sort,   setSort]   = useState<'newest' | 'oldest'>('newest')
   const [view,   setView]   = useState<'list' | 'map'>('list')
   const { can } = useAccess()
   const { user } = useAuth()
@@ -84,7 +85,7 @@ export default function CustomersPage() {
   const effectiveView = privacyMode ? 'list' : view
 
   // Fetch every customer (no pagination) only when the map view is active.
-  const { data: allData } = useSWR(effectiveView === 'map' ? '/customers?all=true' : null, fetcher)
+  const { data: allData } = useSWR(effectiveView === 'map' ? `/customers?all=true&sort=${sort}` : null, fetcher)
   const mapCustomers = allData?.items ?? []
 
   // Current visible region of the map; null until the map first reports bounds.
@@ -138,11 +139,11 @@ export default function CustomersPage() {
   const [deletingBatch, setDeletingBatch] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  useEffect(() => { setPage(1) }, [search])
-  // Clear selection on page/search change
-  useEffect(() => { setSelected(new Set()) }, [page, search])
+  useEffect(() => { setPage(1) }, [search, sort])
+  // Clear selection on page/search/sort change
+  useEffect(() => { setSelected(new Set()) }, [page, search, sort])
 
-  const params = new URLSearchParams({ page: String(page) })
+  const params = new URLSearchParams({ page: String(page), sort })
   if (search) params.set('search', search)
   // In privacy mode, don't fetch the list until the search is at least 4 chars.
   const shouldFetch = !privacyMode || searchActive
@@ -304,6 +305,18 @@ export default function CustomersPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Nome</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Telefone</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Endereços</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <button
+                    onClick={() => setSort(s => (s === 'newest' ? 'oldest' : 'newest'))}
+                    className="flex items-center gap-1 font-medium text-gray-500 transition-colors hover:text-gray-900"
+                    title={sort === 'newest' ? 'Mais recentes primeiro' : 'Mais antigos primeiro'}
+                  >
+                    Cadastro
+                    {sort === 'newest'
+                      ? <ArrowDown className="h-3.5 w-3.5" />
+                      : <ArrowUp className="h-3.5 w-3.5" />}
+                  </button>
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -344,6 +357,9 @@ export default function CustomersPage() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {new Date(c.createdAt).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">

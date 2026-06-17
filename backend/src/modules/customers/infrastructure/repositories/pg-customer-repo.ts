@@ -61,10 +61,13 @@ export function createPgCustomerRepo(db: DB) {
       search?: string,
       page = 1,
       limit = 15,
+      sort: 'newest' | 'oldest' = 'newest',
     ): Promise<{ items: Customer[]; total: number }> {
       const baseWhere = search
         ? 'c.store_id = $1 AND (translate(c.name, $3, $4) ILIKE translate($2, $3, $4) OR c.phone ILIKE $2)'
         : 'c.store_id = $1'
+      // Ordena o dataset inteiro no banco (não só a página atual) por data de criação.
+      const dir     = sort === 'oldest' ? 'ASC' : 'DESC'
       const offset  = (page - 1) * limit
       const params  = search ? [storeId, `%${search}%`, ACCENTS, PLAIN] : [storeId]
 
@@ -74,7 +77,7 @@ export function createPgCustomerRepo(db: DB) {
            ${WITH_ADDRESSES}
            WHERE ${baseWhere}
            GROUP BY c.id
-           ORDER BY c.created_at DESC
+           ORDER BY c.created_at ${dir}
          ) sub
          LIMIT ${limit} OFFSET ${offset}`,
         params
@@ -83,12 +86,16 @@ export function createPgCustomerRepo(db: DB) {
       return { items: rows.map(mapRow), total }
     },
 
-    async findAllByStore(storeId: string): Promise<{ items: Customer[]; total: number }> {
+    async findAllByStore(
+      storeId: string,
+      sort: 'newest' | 'oldest' = 'newest',
+    ): Promise<{ items: Customer[]; total: number }> {
+      const dir = sort === 'oldest' ? 'ASC' : 'DESC'
       const { rows } = await db.query(
         `${WITH_ADDRESSES}
          WHERE c.store_id = $1
          GROUP BY c.id
-         ORDER BY c.created_at DESC`,
+         ORDER BY c.created_at ${dir}`,
         [storeId]
       )
       const items = rows.map(mapRow)
