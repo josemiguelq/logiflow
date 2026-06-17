@@ -24,10 +24,13 @@ function buildStatusMessage(
   deliveryCode: string,
   deliveryAddress: string,
   delivererName: string | undefined,
+  requireDeliveryCode: boolean,
 ): string {
   const addrLine     = `📍 Endereço de entrega: *${deliveryAddress}*`
   const delivLine    = delivererName ? `🛵 Entregador: *${delivererName}*` : ''
   const infoBlock    = [addrLine, delivLine].filter(Boolean).join('\n')
+  // Só inclui o código quando a loja exige confirmação por código na entrega.
+  const codeBlock    = requireDeliveryCode ? `\n\nCódigo de confirmação: *${deliveryCode}*` : ''
 
   switch (statusEvent) {
     case 'PREPARING':
@@ -52,15 +55,15 @@ function buildStatusMessage(
       return (
         `Olá, ${customerName}! Seu pedido é a próxima parada! 🏃\n\n` +
         `${infoBlock}\n\n` +
-        `Acompanhe em tempo real:\n${trackingUrl}\n\n` +
-        `Código de confirmação: *${deliveryCode}*`
+        `Acompanhe em tempo real:\n${trackingUrl}` +
+        codeBlock
       )
     case 'ARRIVING':
       return (
         `Olá, ${customerName}! O entregador está chegando — já está bem pertinho de você! 📍\n\n` +
         `${infoBlock}\n\n` +
-        `Prepare-se para receber seu pedido. 😉\n\n` +
-        `Código de confirmação: *${deliveryCode}*`
+        `Prepare-se para receber seu pedido. 😉` +
+        codeBlock
       )
     case 'DELIVERED':
       return (
@@ -222,6 +225,16 @@ async function start() {
       return
     }
 
+    // Confirmação por código na entrega — quando off, não expomos o código na msg.
+    const { rows: [codeCfg] } = await db.query(
+      `SELECT COALESCE(ssv.value, s.default_value) AS value
+       FROM settings s
+       LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
+       WHERE s.name = 'require_delivery_code'`,
+      [storeId]
+    )
+    const requireDeliveryCode = (codeCfg as { value?: string } | undefined)?.value !== 'false'
+
     const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'https://logiflow-beige.vercel.app/rastreio'}/${orderId}`
     const message = buildStatusMessage(
       statusEvent,
@@ -230,6 +243,7 @@ async function start() {
       order.deliveryCode,
       order.customer.address,
       order.deliverer?.name,
+      requireDeliveryCode,
     )
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
