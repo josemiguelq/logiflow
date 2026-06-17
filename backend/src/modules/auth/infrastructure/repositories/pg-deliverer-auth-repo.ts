@@ -28,6 +28,14 @@ export function createPgDelivererAuthRepo(db: DB): IDelivererAuthRepository {
       return rows[0] ? mapRow(rows[0]) : null
     },
 
+    async findByStoreAndUsername(storeId, username) {
+      const { rows } = await db.query(
+        'SELECT * FROM deliverers WHERE store_id = $1 AND username = $2 AND is_active = true LIMIT 1',
+        [storeId, username]
+      )
+      return rows[0] ? mapRow(rows[0]) : null
+    },
+
     async findById(id) {
       const { rows } = await db.query(
         'SELECT * FROM deliverers WHERE id = $1 LIMIT 1',

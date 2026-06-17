@@ -8,5 +8,6 @@ export interface IStoreUserRepository {
 
 export interface IDelivererAuthRepository {
   findByUsername(username: string): Promise<Deliverer | null>
+  findByStoreAndUsername(storeId: string, username: string): Promise<Deliverer | null>
   findById(id: string): Promise<Deliverer | null>
 }

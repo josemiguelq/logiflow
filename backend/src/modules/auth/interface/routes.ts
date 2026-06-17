@@ -9,6 +9,7 @@ import { createPgStoreUserRepo } from '../infrastructure/repositories/pg-store-u
 import { createPgDelivererAuthRepo } from '../infrastructure/repositories/pg-deliverer-auth-repo'
 import { loginStoreUser } from '../application/use-cases/login-store-user'
 import { loginDeliverer } from '../application/use-cases/login-deliverer'
+import { loginDelivererV2 } from '../application/use-cases/login-deliverer-v2'
 import { isValidDocument, onlyDigits } from '../../../shared/utils/document'
 
 const loginSchema = z.object({
@@ -81,6 +82,40 @@ export async function authRoutes(app: FastifyInstance) {
         { delivererRepo, signJwt }
       )
       return result
+    } catch {
+      return reply.code(401).send({ error: 'Invalid credentials' })
+    }
+  })
+
+  // ── Login v2 do entregador (multi-loja por código de convite) ─────────────
+
+  // Resolve uma loja pelo código de convite (público). Usado pelo app para
+  // mostrar o nome da loja antes de logar e salvar a loja localmente.
+  const findStoreByCode = async (code: string) => {
+    const { rows: [s] } = await db.query(
+      'SELECT id, name, invite_code FROM stores WHERE invite_code = $1 LIMIT 1',
+      [code]
+    )
+    return s ? { id: s.id as string, name: s.name as string, code: s.invite_code as string } : null
+  }
+
+  app.get('/auth/store/by-code/:code', async (req, reply) => {
+    const { code } = req.params as { code: string }
+    const store = await findStoreByCode(code.trim().toUpperCase())
+    if (!store) return reply.code(404).send({ error: 'Loja não encontrada' })
+    return { storeId: store.id, storeName: store.name, code: store.code }
+  })
+
+  const loginV2Schema = z.object({
+    storeCode: z.string().min(1),
+    username:  z.string().min(1),
+    password:  z.string().min(1),
+  })
+
+  app.post('/auth/deliverer/login/v2', async (req, reply) => {
+    const body = loginV2Schema.parse(req.body)
+    try {
+      return await loginDelivererV2(body, { delivererRepo, findStoreByCode, signJwt })
     } catch {
       return reply.code(401).send({ error: 'Invalid credentials' })
     }
