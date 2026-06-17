@@ -11,6 +11,10 @@ export interface IOrderRepository {
   findPreparing(storeId: string, requestingDelivererId?: string): Promise<OrderWithDetails[]>
   create(data: Omit<Order, 'id' | 'createdAt'>): Promise<Order>
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>
+  // Transição idempotente ON_ROUTE → OUT_FOR_DELIVERY. Retorna o pedido só quando
+  // ESTE chamada efetuou a mudança (status era ON_ROUTE); null se já avançado.
+  // Permite que múltiplos gatilhos (start de rota, start por pedido) notifiquem 1x só.
+  transitionToOutForDelivery(id: string): Promise<Order | null>
   assignDeliverer(id: string, delivererId: string, routePosition: number): Promise<Order>
   addProof(orderId: string, photoUrl: string, lat?: number, lng?: number, photoIndex?: number): Promise<void>
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>

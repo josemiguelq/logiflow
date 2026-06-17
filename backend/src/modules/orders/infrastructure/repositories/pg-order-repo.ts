@@ -309,6 +309,19 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return mapOrderRow(rows[0] as Record<string, unknown>)
     },
 
+    async transitionToOutForDelivery(id) {
+      // Guarda atômica: só transiciona quando ainda ON_ROUTE. RETURNING garante que
+      // só o chamador que realmente mudou o status dispara efeitos (notificação 1x).
+      const { rows } = await db.query(
+        `UPDATE orders
+         SET status = 'OUT_FOR_DELIVERY', out_for_delivery_at = COALESCE(out_for_delivery_at, now())
+         WHERE id = $1 AND status = 'ON_ROUTE'
+         RETURNING *`,
+        [id]
+      )
+      return rows[0] ? mapOrderRow(rows[0] as Record<string, unknown>) : null
+    },
+
     async appendLog(orderId, entry) {
       await db.query(
         `UPDATE orders SET log = COALESCE(log, '[]'::jsonb) || $2::jsonb WHERE id = $1`,

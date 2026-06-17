@@ -100,7 +100,9 @@ export async function orderRoutes(app: FastifyInstance) {
     storeId: string,
     delivererId?: string,
   ) => {
-    await orderRepo.updateStatus(next.id, 'OUT_FOR_DELIVERY', { outForDeliveryAt: new Date() })
+    // Idempotente: só notifica se ESTE chamada moveu o pedido de ON_ROUTE.
+    const advanced = await orderRepo.transitionToOutForDelivery(next.id)
+    if (!advanced) return
     await orderRepo.appendLog(next.id, {
       at:     new Date().toISOString(),
       by:     { type: 'system' },
@@ -1392,7 +1394,10 @@ export async function orderRoutes(app: FastifyInstance) {
       if (!order || order.delivererId !== req.actor.sub) {
         return reply.code(404).send({ error: 'Not found' })
       }
-      const updated = await orderRepo.updateStatus(id, 'OUT_FOR_DELIVERY', { outForDeliveryAt: new Date() })
+      // Idempotente: se o pedido já está OUT_FOR_DELIVERY (ex.: a rota já o avançou
+      // automaticamente), não re-notifica — apenas devolve o estado atual.
+      const updated = await orderRepo.transitionToOutForDelivery(id)
+      if (!updated) return order
       logEvent(id, req.actor, 'OUT_FOR_DELIVERY')
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       queueNotif(req.actor.storeId, id, 'OUT_FOR_DELIVERY')

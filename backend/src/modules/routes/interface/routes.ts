@@ -391,7 +391,10 @@ export async function routeRoutes(app: FastifyInstance) {
       for (const o of orders) {
         if (!firstAdvanced && o.status === 'ON_ROUTE') {
           firstAdvanced = true
-          await orderRepo.updateStatus(o.id, 'OUT_FOR_DELIVERY', { outForDeliveryAt: new Date() })
+          // Idempotente: só notifica se ESTE chamada moveu o pedido de ON_ROUTE,
+          // evitando duplicar a mensagem caso o start por pedido também dispare.
+          const advanced = await orderRepo.transitionToOutForDelivery(o.id)
+          if (!advanced) continue
           orderRepo.appendLog(o.id, {
             at:     new Date().toISOString(),
             by:     { type: 'system' },
