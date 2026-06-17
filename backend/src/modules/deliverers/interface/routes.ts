@@ -22,6 +22,11 @@ const updateSchema = z.object({
   password: z.string().min(6).optional(),
 })
 
+// Username é único por loja: a violação dispara o código 23505 do Postgres.
+function isUsernameConflict(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { code?: string }).code === '23505'
+}
+
 export async function delivererRoutes(app: FastifyInstance) {
   const repo = createPgDelivererRepo(db)
 
@@ -29,6 +34,20 @@ export async function delivererRoutes(app: FastifyInstance) {
     '/deliverers',
     { preHandler: requireStoreUser },
     async (req) => repo.findByStore(req.actor.storeId)
+  )
+
+  // Código de convite da loja: o entregador digita no app (login v2) para
+  // selecionar a loja. Exibido no painel para o gestor compartilhar.
+  app.get(
+    '/deliverers/invite-code',
+    { preHandler: requireStoreUser },
+    async (req) => {
+      const { rows: [s] } = await db.query(
+        'SELECT invite_code FROM stores WHERE id = $1',
+        [req.actor.storeId]
+      )
+      return { code: (s as { invite_code: string } | undefined)?.invite_code ?? null }
+    }
   )
 
   app.get(
@@ -47,7 +66,15 @@ export async function delivererRoutes(app: FastifyInstance) {
       } catch (err: unknown) {
         return reply.code(403).send({ error: (err as Error).message })
       }
-      const deliverer = await repo.create({ storeId: req.actor.storeId, ...body })
+      let deliverer
+      try {
+        deliverer = await repo.create({ storeId: req.actor.storeId, ...body })
+      } catch (err: unknown) {
+        if (isUsernameConflict(err)) {
+          return reply.code(409).send({ error: 'Já existe um entregador com esse username nesta loja' })
+        }
+        throw err
+      }
       await invalidateDelivererCount(req.actor.storeId)
       return reply.code(201).send(deliverer)
     }
@@ -59,7 +86,15 @@ export async function delivererRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const body = updateSchema.parse(req.body)
-      const deliverer = await repo.update(id, req.actor.storeId, body)
+      let deliverer
+      try {
+        deliverer = await repo.update(id, req.actor.storeId, body)
+      } catch (err: unknown) {
+        if (isUsernameConflict(err)) {
+          return reply.code(409).send({ error: 'Já existe um entregador com esse username nesta loja' })
+        }
+        throw err
+      }
       if (!deliverer) return reply.code(404).send({ error: 'Entregador não encontrado' })
       return deliverer
     }

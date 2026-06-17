@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff, Eye } from 'lucide-react'
+import { Plus, Truck, Map, Pencil, PowerOff, Power, WifiOff, Eye, Copy, Check } from 'lucide-react'
 import { Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -59,6 +59,8 @@ export default function DeliverersPage() {
           Novo Entregador
         </Button>
       </div>
+
+      <InviteCodeCard />
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         {deliverers.length === 0 ? (
@@ -202,6 +204,49 @@ export default function DeliverersPage() {
           onSaved={() => { setEditing(null); mutate() }}
         />
       )}
+    </div>
+  )
+}
+
+// Código de convite da loja: o entregador digita no app (login v2) para
+// selecionar a loja antes de entrar com username e senha.
+function InviteCodeCard() {
+  const { data } = useSWR<{ code: string | null }>(
+    '/deliverers/invite-code',
+    (url: string) => api.get<{ code: string | null }>(url)
+  )
+  const [copied, setCopied] = useState(false)
+  const code = data?.code
+
+  if (!code) return null
+
+  async function copy() {
+    await navigator.clipboard.writeText(code!)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div>
+        <p className="text-sm font-medium text-gray-900">Código de convite da loja</p>
+        <p className="mt-0.5 text-xs text-gray-500">
+          O entregador digita este código no app para selecionar sua loja ao fazer login.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="rounded-lg bg-gray-100 px-3 py-1.5 font-mono text-lg font-bold tracking-widest text-gray-900">
+          {code}
+        </span>
+        <button
+          onClick={copy}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          title="Copiar código"
+        >
+          {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+          {copied ? 'Copiado' : 'Copiar'}
+        </button>
+      </div>
     </div>
   )
 }
