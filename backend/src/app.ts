@@ -45,6 +45,9 @@ export function buildApp() {
         cb(null, true)   // reflect the Origin header — works with credentials
         return
       }
+      // Log para diagnóstico: se requests falham por CORS (e não por cold start),
+      // a origem rejeitada aparece aqui. Silêncio = não é CORS.
+      app.log.warn({ origin, allowed: corsOrigins }, 'CORS rejected origin')
       cb(new Error('Not allowed by CORS'), false)
     },
     credentials:    true,

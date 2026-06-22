@@ -11,6 +11,9 @@ import { loginStoreUser } from '../application/use-cases/login-store-user'
 import { loginDeliverer } from '../application/use-cases/login-deliverer'
 import { loginDelivererV2 } from '../application/use-cases/login-deliverer-v2'
 import { isValidDocument, onlyDigits } from '../../../shared/utils/document'
+import { isLoginLocked, registerLoginFailure, clearLoginFailures } from '../../../shared/login-throttle'
+
+const TOO_MANY = 'Muitas tentativas de senha. Tente novamente em alguns minutos.'
 
 const loginSchema = z.object({
   email:    z.string().email().optional(),
@@ -42,12 +45,14 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/store/login', async (req, reply) => {
     const body = loginSchema.parse(req.body)
     if (!body.email) return reply.code(400).send({ error: 'email required' })
+    if (await isLoginLocked('store', body.email)) return reply.code(429).send({ error: TOO_MANY })
     const jti = randomUUID()
     try {
       const result = await loginStoreUser(
         { email: body.email, password: body.password, jti },
         { storeUserRepo, signJwt, getScopes }
       )
+      await clearLoginFailures('store', body.email)
 
       // Registra a sessão (IP + dispositivo), atualiza o último login e revoga
       // sessões anteriores do mesmo IP+dispositivo (uma ativa por dispositivo).
@@ -69,6 +74,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       return result
     } catch {
+      await registerLoginFailure('store', body.email)
       return reply.code(401).send({ error: 'Invalid credentials' })
     }
   })
@@ -76,13 +82,16 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/deliverer/login', async (req, reply) => {
     const body = loginSchema.parse(req.body)
     if (!body.username) return reply.code(400).send({ error: 'username required' })
+    if (await isLoginLocked('deliverer', body.username)) return reply.code(429).send({ error: TOO_MANY })
     try {
       const result = await loginDeliverer(
         { username: body.username, password: body.password },
         { delivererRepo, signJwt }
       )
+      await clearLoginFailures('deliverer', body.username)
       return result
     } catch {
+      await registerLoginFailure('deliverer', body.username)
       return reply.code(401).send({ error: 'Invalid credentials' })
     }
   })
@@ -114,9 +123,14 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/deliverer/login/v2', async (req, reply) => {
     const body = loginV2Schema.parse(req.body)
+    const id = `${body.storeCode}:${body.username}`
+    if (await isLoginLocked('deliverer', id)) return reply.code(429).send({ error: TOO_MANY })
     try {
-      return await loginDelivererV2(body, { delivererRepo, findStoreByCode, signJwt })
+      const result = await loginDelivererV2(body, { delivererRepo, findStoreByCode, signJwt })
+      await clearLoginFailures('deliverer', id)
+      return result
     } catch {
+      await registerLoginFailure('deliverer', id)
       return reply.code(401).send({ error: 'Invalid credentials' })
     }
   })

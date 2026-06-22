@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
 import { requireSuperAdmin } from '../../../shared/middleware/auth'
+import { isLoginLocked, registerLoginFailure, clearLoginFailures } from '../../../shared/login-throttle'
 import { DEFAULT_ROLE_SCOPES, SCOPES, SCOPE_LABELS, SCOPE_GROUPS } from '../../../shared/scopes'
 import { billingStatus } from '../../../shared/billing'
 import { activeDelivererCount, monthlyDeliveredCount, invalidateStoreLimits } from '../../../shared/plan-limits'
@@ -30,15 +31,26 @@ export async function superAdminRoutes(app: FastifyInstance) {
       password: z.string().min(1),
     }).parse(req.body)
 
+    if (await isLoginLocked('super-admin', email)) {
+      return reply.code(429).send({ error: 'Muitas tentativas de senha. Tente novamente em alguns minutos.' })
+    }
+
     const { rows: [admin] } = await db.query(
       'SELECT id, email, password_hash FROM super_admins WHERE email = $1',
       [email]
     )
-    if (!admin) return reply.code(401).send({ error: 'Credenciais inválidas' })
+    if (!admin) {
+      await registerLoginFailure('super-admin', email)
+      return reply.code(401).send({ error: 'Credenciais inválidas' })
+    }
 
     const valid = await bcrypt.compare(password, admin.password_hash as string)
-    if (!valid) return reply.code(401).send({ error: 'Credenciais inválidas' })
+    if (!valid) {
+      await registerLoginFailure('super-admin', email)
+      return reply.code(401).send({ error: 'Credenciais inválidas' })
+    }
 
+    await clearLoginFailures('super-admin', email)
     const token = signJwt({ type: 'super_admin', sub: admin.id, email: admin.email })
     return { token, email: admin.email }
   })
