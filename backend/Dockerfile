@@ -33,4 +33,5 @@ COPY scripts ./scripts
 RUN mkdir -p uploads
 
 EXPOSE 3001
-CMD ["npm", "run", "start"]
+# node como PID 1: recebe SIGTERM corretamente e não mascara o erro real (npm engole o sinal)
+CMD ["node", "--dns-result-order=ipv4first", "dist/server.js"]
