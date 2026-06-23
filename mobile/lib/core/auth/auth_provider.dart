@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/api_client.dart';
 import '../push/push_notification_service.dart';
+import 'known_stores_store.dart';
 
 class DelivererSession {
   final String id;
@@ -62,6 +63,7 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
   }
 
   final _api = ApiClient();
+  final _knownStores = KnownStoresStore();
   bool _initialising = true;
 
   void _handleUnauthorized() {
@@ -128,6 +130,33 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
     final session = DelivererSession.fromJson(
       res.data['deliverer'] as Map<String, dynamic>,
     );
+    await _api.setToken(token);
+    await _api.saveSession(session.toJson());
+    state = session;
+    PushNotificationService.init().ignore();
+  }
+
+  /// Login v2: escolhe a loja pelo código de convite + username + senha.
+  /// Em caso de sucesso, garante a loja salva localmente (lista de lojas
+  /// conhecidas) para não exigir o código novamente.
+  Future<void> loginV2(String storeCode, String username, String password) async {
+    final res = await _api.dio.post('/auth/deliverer/login/v2', data: {
+      'storeCode': storeCode,
+      'username':  username,
+      'password':  password,
+    });
+    final token   = res.data['token'] as String;
+    final session = DelivererSession.fromJson(
+      res.data['deliverer'] as Map<String, dynamic>,
+    );
+    final store = res.data['store'] as Map<String, dynamic>?;
+    if (store != null) {
+      await _knownStores.add(KnownStore(
+        code:      store['code'] as String,
+        storeId:   store['id'] as String,
+        storeName: store['name'] as String,
+      ));
+    }
     await _api.setToken(token);
     await _api.saveSession(session.toJson());
     state = session;
