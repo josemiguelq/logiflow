@@ -36,8 +36,7 @@ function buildStatusMessage(
     case 'PREPARING':
       return (
         `Olá, ${customerName}! Seu pedido foi registrado e está sendo preparado. 🛒\n\n` +
-        `${addrLine}\n\n` +
-        `Acompanhe em tempo real:\n${trackingUrl}`
+        `${addrLine}\n\n`
       )
     case 'ASSIGNED':
       return (
