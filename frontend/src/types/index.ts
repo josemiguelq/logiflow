@@ -35,10 +35,17 @@ export interface CustomerAuditEntry {
   changes: CustomerAuditChange[]
 }
 
+export interface Assistance {
+  id: string
+  name: string
+}
+
 export interface Customer {
   id: string
   name: string
   phone: string
+  assistanceId?: string | null
+  assistanceName?: string | null
   addresses: CustomerAddress[]
   createdAt: string
   updatedAt: string

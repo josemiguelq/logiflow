@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { Plus, MapPin, Trash2, ChevronDown } from 'lucide-react'
-import { Customer, CustomerAddress } from '@/types'
+import { Customer, CustomerAddress, Assistance } from '@/types'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { maskPhone, stripPhone, formatPhone } from '@/lib/phone'
+import { AssistanceCombobox } from './_assistance_combobox'
 
 const AddressMapPicker = dynamic(() => import('./_address_map'), { ssr: false })
 
@@ -177,8 +178,9 @@ export function AddressAutocomplete({
 interface Props {
   initialName?: string
   initialPhone?: string
+  initialAssistance?: Assistance | null
   initialAddresses?: AddressEntry[]
-  onSave: (name: string, phone: string, addresses: AddressEntry[]) => Promise<void>
+  onSave: (name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null) => Promise<void>
   loading: boolean
   error: string
   onCancel: () => void
@@ -187,6 +189,7 @@ interface Props {
 export function CustomerForm({
   initialName = '',
   initialPhone = '',
+  initialAssistance = null,
   initialAddresses,
   onSave,
   loading,
@@ -195,6 +198,7 @@ export function CustomerForm({
 }: Props) {
   const [name, setName] = useState(initialName)
   const [phone, setPhone] = useState(initialPhone)
+  const [assistance, setAssistance] = useState<Assistance | null>(initialAssistance)
   const [addresses, setAddresses] = useState<AddressEntry[]>(
     initialAddresses ?? [{ ...emptyAddress('Principal'), isDefault: true }]
   )
@@ -213,7 +217,7 @@ export function CustomerForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    await onSave(name, phone, addresses)
+    await onSave(name, phone, addresses, assistance?.id ?? null)
   }
 
   return (
@@ -234,6 +238,10 @@ export function CustomerForm({
             placeholder="(67) 99999-9999"
             inputMode="numeric"
           />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">Assistência</label>
+          <AssistanceCombobox value={assistance} onChange={setAssistance} />
         </div>
       </div>
 

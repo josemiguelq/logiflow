@@ -28,6 +28,8 @@ export interface Customer {
   storeId: string
   name: string
   phone: string
+  assistanceId: string | null
+  assistanceName: string | null
   addresses: CustomerAddress[]
   createdAt: Date
   updatedAt: Date

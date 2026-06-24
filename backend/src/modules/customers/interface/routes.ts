@@ -38,15 +38,17 @@ const addressSchema = z.object({
 })
 
 const customerCreateSchema = z.object({
-  name:      z.string().min(1),
-  phone:     z.string().min(8),
-  addresses: z.array(addressSchema).min(1),
+  name:         z.string().min(1),
+  phone:        z.string().min(8),
+  assistanceId: z.string().uuid().nullable().optional(),
+  addresses:    z.array(addressSchema).min(1),
 })
 
 const customerUpdateSchema = z.object({
-  name:      z.string().min(1).optional(),
-  phone:     z.string().min(8).optional(),
-  addresses: z.array(addressSchema).min(1).optional(),
+  name:         z.string().min(1).optional(),
+  phone:        z.string().min(8).optional(),
+  assistanceId: z.string().uuid().nullable().optional(),
+  addresses:    z.array(addressSchema).min(1).optional(),
 })
 
 export async function customerRoutes(app: FastifyInstance) {
@@ -83,6 +85,16 @@ export async function customerRoutes(app: FastifyInstance) {
     })
   }
 
+  // Resolve o nome da assistência DENTRO da loja. Retorna null se não existir
+  // (ou pertencer a outra loja) — usado para validação multi-tenant e auditoria.
+  const resolveAssistanceName = async (storeId: string, assistanceId: string): Promise<string | null> => {
+    const { rows: [a] } = await db.query(
+      `SELECT name FROM assistances WHERE id = $1 AND store_id = $2`,
+      [assistanceId, storeId],
+    )
+    return (a as { name: string } | undefined)?.name ?? null
+  }
+
   app.get(
     '/customers',
     { preHandler: requireStoreUser },
@@ -116,11 +128,14 @@ export async function customerRoutes(app: FastifyInstance) {
     { preHandler: requireStoreUser },
     async (req, reply) => {
       const body = customerCreateSchema.parse(req.body)
+      if (body.assistanceId && !(await resolveAssistanceName(req.actor.storeId, body.assistanceId))) {
+        return reply.code(400).send({ error: 'Assistência inválida' })
+      }
       const existing = await repo.findByPhone(req.actor.storeId, body.phone)
       if (existing) return existing
 
       const customer = await repo.create(
-        { storeId: req.actor.storeId, name: body.name, phone: body.phone },
+        { storeId: req.actor.storeId, name: body.name, phone: body.phone, assistanceId: body.assistanceId ?? null },
         body.addresses.map((a, i) => ({ ...a, isDefault: i === 0 || !!a.isDefault }))
       )
       for (const addr of customer.addresses) {
@@ -148,6 +163,15 @@ export async function customerRoutes(app: FastifyInstance) {
       if (body.phone !== undefined && body.phone !== existing.phone) {
         changes.push({ field: 'phone', before: existing.phone, after: body.phone })
       }
+      // Mudança de assistência (vínculo opcional): valida na loja e audita por NOME.
+      if (body.assistanceId !== undefined && (body.assistanceId ?? null) !== existing.assistanceId) {
+        let afterName: string | null = null
+        if (body.assistanceId) {
+          afterName = await resolveAssistanceName(req.actor.storeId, body.assistanceId)
+          if (!afterName) return reply.code(400).send({ error: 'Assistência inválida' })
+        }
+        changes.push({ field: 'assistance', before: existing.assistanceName, after: afterName })
+      }
       const auditEntry: CustomerAuditEntry | undefined = changes.length
         ? {
             changedBy:     req.actor.sub,
@@ -157,7 +181,7 @@ export async function customerRoutes(app: FastifyInstance) {
           }
         : undefined
 
-      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone }, auditEntry)
+      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone, assistanceId: body.assistanceId }, auditEntry)
 
       // Sync address sub-table when addresses are provided
       if (body.addresses) {
