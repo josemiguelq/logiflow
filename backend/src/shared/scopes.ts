@@ -28,6 +28,7 @@ export const SCOPES = [
   'users:view',
   'users:create',
   'users:delete',
+  'users:reset_password',
 
   // WhatsApp
   'whatsapp:view',
@@ -71,6 +72,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'users:view':           'Usuários — visualizar',
   'users:create':         'Usuários — criar',
   'users:delete':         'Usuários — remover',
+  'users:reset_password': 'Usuários — redefinir senha',
   'whatsapp:view':        'WhatsApp — visualizar',
   'whatsapp:connect':     'WhatsApp — conectar/desconectar',
   'analytics:view':       'Analítico — visualizar',
@@ -86,7 +88,7 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
   { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track'] },
-  { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete'] },
+  { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete', 'users:reset_password'] },
   { label: 'WhatsApp',       scopes: ['whatsapp:view', 'whatsapp:connect'] },
   { label: 'Analítico',      scopes: ['analytics:view'] },
   { label: 'Configurações',  scopes: ['settings:view', 'settings:edit'] },
@@ -97,7 +99,8 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   OWNER: [...SCOPES],
   MANAGER: SCOPES.filter(s =>
-    !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect',
+    !['users:view', 'users:create', 'users:delete', 'users:reset_password',
+      'whatsapp:view', 'whatsapp:connect',
       'routes:delete', 'orders:delete', 'customers:delete', 'sessions:view_all'].includes(s)
   ),
   ASSISTANT: [

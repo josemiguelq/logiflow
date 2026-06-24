@@ -11,7 +11,8 @@
     "seed:apple": "tsx src/shared/db/seed-apple.ts",
     "reset": "tsx src/shared/db/reset.ts",
     "simulate": "tsx scripts/simulate-deliverer.ts",
-    "fix-coords": "tsx scripts/fix-address-coords.ts"
+    "fix-coords": "tsx scripts/fix-address-coords.ts",
+    "backfill-assistances": "tsx scripts/backfill-assistances.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",

@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import { Plus, Trash2, X, Users } from 'lucide-react'
+import { Plus, Trash2, X, Users, KeyRound } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+import { useAccess } from '@/hooks/useAccess'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -31,12 +32,16 @@ const ROLE_COLOR: Record<string, string> = {
 
 export default function UsersPage() {
   const { user }    = useAuth()
-  const [showForm,  setShowForm]  = useState(false)
+  const { can }     = useAccess()
+  const [showForm,  setShowForm]    = useState(false)
+  const [resetting, setResetting]   = useState<StoreUserRow | null>(null)
   const { data: users = [], mutate } = useSWR<StoreUserRow[]>(
     '/store/users', (url: string) => api.get<StoreUserRow[]>(url)
   )
 
-  const canManage = user?.role === 'OWNER' || user?.role === 'MANAGER'
+  const canManage       = user?.role === 'OWNER' || user?.role === 'MANAGER'
+  const canResetPassword = can({ scope: 'users:reset_password' })
+  const showActions     = canManage || canResetPassword
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Remover ${name}?`)) return
@@ -71,7 +76,7 @@ export default function UsersPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Nome</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Email / Username</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Perfil</th>
-                {canManage && <th className="px-4 py-3" />}
+                {showActions && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -87,16 +92,27 @@ export default function UsersPage() {
                       {ROLE_LABEL[u.role]}
                     </span>
                   </td>
-                  {canManage && (
+                  {showActions && (
                     <td className="px-4 py-3 text-right">
-                      {u.id !== user?.id && u.role !== 'OWNER' && (
-                        <button
-                          onClick={() => handleDelete(u.id, u.name)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="h-3 w-3" /> Remover
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Reset de senha: não para si mesmo; MANAGER só em ASSISTANT */}
+                        {canResetPassword && u.id !== user?.id && (user?.role === 'OWNER' || u.role === 'ASSISTANT') && (
+                          <button
+                            onClick={() => setResetting(u)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            <KeyRound className="h-3 w-3" /> Resetar senha
+                          </button>
+                        )}
+                        {canManage && u.id !== user?.id && u.role !== 'OWNER' && (
+                          <button
+                            onClick={() => handleDelete(u.id, u.name)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" /> Remover
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -113,6 +129,92 @@ export default function UsersPage() {
           onSaved={() => { setShowForm(false); mutate() }}
         />
       )}
+
+      {resetting && (
+        <ResetPasswordModal
+          target={resetting}
+          onClose={() => setResetting(null)}
+          onDone={() => setResetting(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ResetPasswordModal({
+  target, onClose, onDone,
+}: {
+  target: StoreUserRow
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm,     setConfirm]     = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (newPassword !== confirm) {
+      setError('As senhas não coincidem')
+      return
+    }
+    setLoading(true); setError('')
+    try {
+      await api.patch(`/store/users/${target.id}/password`, { newPassword })
+      alert(`Senha de ${target.name} redefinida. As sessões ativas foram encerradas.`)
+      onDone()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Resetar senha</h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-gray-500">
+          Defina uma nova senha para <span className="font-medium text-gray-900">{target.name}</span> e
+          repasse a ele. As sessões ativas serão encerradas.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Nova senha</label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              required
+              minLength={6}
+              placeholder="Mínimo 6 caracteres"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Confirmar nova senha</label>
+            <Input
+              type="password"
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              required
+              minLength={6}
+            />
+          </div>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" className="flex-1" disabled={loading}>
+              {loading ? 'Salvando...' : 'Redefinir senha'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
