@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { buildApp } from './app'
+import { buildApp, buildTime } from './app'
 import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
 import { scanDelayedOrders } from './modules/orders/application/use-cases/scan-delayed-orders'
 import { db } from './shared/db/client'
@@ -90,6 +90,7 @@ function buildStatusMessage(
 
 async function start() {
   const app            = buildApp()
+  app.log.info({ buildTime }, '[boot] version')
   const whatsapp       = createBaileysProvider(db)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)

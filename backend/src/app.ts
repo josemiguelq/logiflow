@@ -1,4 +1,6 @@
 import Fastify from 'fastify'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import websocket from '@fastify/websocket'
@@ -18,6 +20,16 @@ import { goalRoutes } from './modules/goals/interface/routes'
 import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
 import { wsHub } from './shared/infra/websocket'
+
+// Versão do build (gerada em dist/version.json pelo `npm run build`). Lida uma
+// vez no carregamento do módulo; em dev (tsx, sem version.json) cai no fallback.
+const startedAt = new Date().toISOString()
+let buildTime = 'dev'
+try {
+  buildTime = (JSON.parse(readFileSync(join(__dirname, 'version.json'), 'utf8')) as { buildTime: string }).buildTime
+} catch { /* sem version.json em dev — mantém 'dev' */ }
+
+export { buildTime }
 
 export function buildApp() {
   const app = Fastify({
@@ -148,6 +160,14 @@ export function buildApp() {
   app.get('/health', async (_req, reply) => {
     return reply.type('text/plain').send('ok')
   })
+
+  // Confirma qual build está no ar: buildTime muda a cada deploy novo;
+  // startedAt/uptimeSec indicam quando o container subiu pela última vez.
+  app.get('/version', async () => ({
+    buildTime,
+    startedAt,
+    uptimeSec: Math.round(process.uptime()),
+  }))
 
   return app
 }
