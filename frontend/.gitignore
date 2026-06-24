@@ -3,6 +3,9 @@ node_modules/
 out/
 dist/
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 .env
 .env.local
 .env.development.local
