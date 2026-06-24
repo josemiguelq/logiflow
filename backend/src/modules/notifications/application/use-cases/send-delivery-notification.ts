@@ -33,8 +33,9 @@ export async function sendDeliveryNotification(
   try {
     await whatsapp.sendMessage(storeId, phone, message)
     await messageLog.markSent(logId)
-  } catch {
-    await messageLog.markFailed(logId)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    await messageLog.markFailed(logId, reason)
     throw new Error('Failed to send WhatsApp message')
   }
 }

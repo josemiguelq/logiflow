@@ -22,10 +22,13 @@ export function createPgMessageLogRepo(db: DB): IMessageLogRepository {
       )
     },
 
-    async markFailed(id) {
+    async markFailed(id, error) {
       await db.query(
-        `UPDATE message_logs SET status = 'FAILED', attempts = attempts + 1 WHERE id = $1`,
-        [id]
+        `UPDATE message_logs
+         SET status = 'FAILED', attempts = attempts + 1,
+             error = COALESCE($2, error)
+         WHERE id = $1`,
+        [id, error ?? null]
       )
     },
 
