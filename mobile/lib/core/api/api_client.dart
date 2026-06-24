@@ -27,7 +27,7 @@ const String kNoInternetMessage =
 
 const String _baseUrl = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'https://logiflow-api.quisbert.com.br',
+  defaultValue: 'https://api-logiflow.quisbert.com.br',
 );
 
 String get wsBaseUrl =>

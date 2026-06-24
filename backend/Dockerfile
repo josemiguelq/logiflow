@@ -34,4 +34,5 @@ RUN mkdir -p uploads
 
 EXPOSE 3001
 # node como PID 1: recebe SIGTERM corretamente e não mascara o erro real (npm engole o sinal)
-CMD ["node", "--dns-result-order=ipv4first", "dist/server.js"]
+# -r newrelic: carrega o agente APM antes de tudo (config via env vars na Render)
+CMD ["node", "-r", "newrelic", "--dns-result-order=ipv4first", "dist/server.js"]
