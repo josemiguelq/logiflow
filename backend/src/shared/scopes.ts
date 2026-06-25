@@ -23,6 +23,7 @@ export const SCOPES = [
   'deliverers:manage',
   'deliverers:force_offline',
   'deliverers:track',
+  'deliverers:delete',
 
   // Users
   'users:view',
@@ -69,6 +70,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'deliverers:manage':        'Entregadores — gerenciar',
   'deliverers:force_offline': 'Entregadores — forçar offline',
   'deliverers:track':         'Entregadores — rastrear localização',
+  'deliverers:delete':        'Entregadores — excluir',
   'users:view':           'Usuários — visualizar',
   'users:create':         'Usuários — criar',
   'users:delete':         'Usuários — remover',
@@ -87,7 +89,7 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Pedidos',        scopes: ['orders:view', 'orders:view_all', 'orders:create', 'orders:cancel', 'orders:delete'] },
   { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
-  { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track'] },
+  { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track', 'deliverers:delete'] },
   { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete', 'users:reset_password'] },
   { label: 'WhatsApp',       scopes: ['whatsapp:view', 'whatsapp:connect'] },
   { label: 'Analítico',      scopes: ['analytics:view'] },
@@ -101,7 +103,7 @@ export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   MANAGER: SCOPES.filter(s =>
     !['users:view', 'users:create', 'users:delete', 'users:reset_password',
       'whatsapp:view', 'whatsapp:connect',
-      'routes:delete', 'orders:delete', 'customers:delete', 'sessions:view_all'].includes(s)
+      'routes:delete', 'orders:delete', 'customers:delete', 'deliverers:delete', 'sessions:view_all'].includes(s)
   ),
   ASSISTANT: [
     'orders:view', 'orders:view_all', 'orders:create',

@@ -119,6 +119,19 @@ export async function delivererRoutes(app: FastifyInstance) {
     }
   )
 
+  // Soft delete: exclui o entregador sem apagar a linha, preservando os pedidos.
+  app.delete(
+    '/deliverers/:id',
+    { preHandler: [requireStoreUser, requireScope('deliverers:delete')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const ok = await repo.softDelete(id, req.actor.storeId, req.actor.sub)
+      if (!ok) return reply.code(404).send({ error: 'Entregador não encontrado' })
+      await invalidateDelivererCount(req.actor.storeId)
+      return reply.send({ ok: true })
+    }
+  )
+
   // Store admin forces a deliverer offline (bypasses active-orders guard)
   app.patch(
     '/deliverers/:id/force-offline',

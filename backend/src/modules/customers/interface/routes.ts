@@ -231,7 +231,12 @@ export async function customerRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const existing = await repo.findById(id, req.actor.storeId)
       if (!existing) return reply.code(404).send({ error: 'Cliente não encontrado' })
-      await db.query(`DELETE FROM customers WHERE id = $1 AND store_id = $2`, [id, req.actor.storeId])
+      // Soft delete: preserva os pedidos do cliente (orders.customer_id é NOT NULL).
+      await db.query(
+        `UPDATE customers SET deleted_at = now(), deleted_by = $3
+         WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
+        [id, req.actor.storeId, req.actor.sub]
+      )
       return { ok: true }
     }
   )
@@ -242,8 +247,9 @@ export async function customerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { ids } = z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(req.body)
       const { rowCount } = await db.query(
-        `DELETE FROM customers WHERE id = ANY($1::uuid[]) AND store_id = $2`,
-        [ids, req.actor.storeId]
+        `UPDATE customers SET deleted_at = now(), deleted_by = $3
+         WHERE id = ANY($1::uuid[]) AND store_id = $2 AND deleted_at IS NULL`,
+        [ids, req.actor.storeId, req.actor.sub]
       )
       return { ok: true, deleted: rowCount ?? 0 }
     }
