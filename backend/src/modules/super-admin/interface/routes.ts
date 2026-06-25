@@ -55,6 +55,39 @@ export async function superAdminRoutes(app: FastifyInstance) {
     return { token, email: admin.email }
   })
 
+  // ── Perfil do super admin ───────────────────────────────────────────────────
+  app.get('/super-admin/me', { preHandler: requireSuperAdmin }, async (req, reply) => {
+    const { rows: [me] } = await db.query(
+      'SELECT id, email, created_at FROM super_admins WHERE id = $1',
+      [req.actor.sub]
+    )
+    if (!me) return reply.code(404).send({ error: 'Conta não encontrada' })
+    return { id: me.id, email: me.email, createdAt: me.created_at }
+  })
+
+  const saPasswordSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword:     z.string().min(6),
+  })
+
+  app.patch('/super-admin/me/password', { preHandler: requireSuperAdmin }, async (req, reply) => {
+    const body = saPasswordSchema.parse(req.body)
+
+    const { rows: [admin] } = await db.query(
+      'SELECT password_hash FROM super_admins WHERE id = $1',
+      [req.actor.sub]
+    )
+    if (!admin) return reply.code(404).send({ error: 'Conta não encontrada' })
+
+    const valid = await bcrypt.compare(body.currentPassword, admin.password_hash as string)
+    if (!valid) return reply.code(400).send({ error: 'Senha atual incorreta' })
+
+    const hash = await bcrypt.hash(body.newPassword, 10)
+    await db.query('UPDATE super_admins SET password_hash = $1 WHERE id = $2', [hash, req.actor.sub])
+
+    return { ok: true }
+  })
+
   // ── Analytics ─────────────────────────────────────────────────────────────
 
   app.get('/super-admin/analytics', { preHandler: requireSuperAdmin }, async () => {
