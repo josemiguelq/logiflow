@@ -29,7 +29,7 @@ function isExpired(a: Announcement) {
 }
 
 export default function AnnouncementsPage() {
-  const { data: avisos = [], mutate } = useSWR<Announcement[]>('/avisos', (u: string) => api.get<Announcement[]>(u))
+  const { data: announcements = [], mutate } = useSWR<Announcement[]>('/announcements', (u: string) => api.get<Announcement[]>(u))
   const [editing, setEditing] = useState<Announcement | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<Announcement | null>(null)
@@ -39,7 +39,7 @@ export default function AnnouncementsPage() {
     if (!deleting) return
     setDeleteLoading(true)
     try {
-      await api.delete(`/avisos/${deleting.id}`)
+      await api.delete(`/announcements/${deleting.id}`)
       setDeleting(null)
       mutate()
     } finally {
@@ -58,19 +58,19 @@ export default function AnnouncementsPage() {
         </div>
         <Button onClick={() => setCreating(true)}>
           <Plus className="h-4 w-4" />
-          Novo aviso
+          Novo comunicado
         </Button>
       </div>
 
-      {avisos.length === 0 ? (
+      {announcements.length === 0 ? (
         <div className="flex flex-col items-center rounded-xl border border-gray-200 bg-white py-16 text-gray-400 shadow-sm">
           <Megaphone className="mb-3 h-10 w-10" />
-          <p className="font-medium">Nenhum aviso criado</p>
-          <p className="mt-1 text-sm">Crie um aviso para comunicar seus entregadores</p>
+          <p className="font-medium">Nenhum comunicado criado</p>
+          <p className="mt-1 text-sm">Crie um comunicado para seus entregadores</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {avisos.map((a) => {
+          {announcements.map((a) => {
             const expired = isExpired(a)
             return (
               <div key={a.id} className="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -113,7 +113,7 @@ export default function AnnouncementsPage() {
 
       {(creating || editing) && (
         <AnnouncementFormModal
-          aviso={editing}
+          announcement={editing}
           onClose={() => { setCreating(false); setEditing(null) }}
           onSaved={() => { setCreating(false); setEditing(null); mutate() }}
         />
@@ -127,9 +127,9 @@ export default function AnnouncementsPage() {
                 <Trash2 className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-gray-900">Excluir aviso</h2>
+                <h2 className="font-semibold text-gray-900">Excluir comunicado</h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  O aviso <span className="font-medium">{deleting.title || '(sem título)'}</span> será excluído. Esta ação não pode ser desfeita.
+                  O comunicado <span className="font-medium">{deleting.title || '(sem título)'}</span> será excluído. Esta ação não pode ser desfeita.
                 </p>
               </div>
             </div>
@@ -159,20 +159,20 @@ function isoToLocalInput(iso: string | null): string {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16)
 }
 
-function AnnouncementFormModal({ aviso, onClose, onSaved }: {
-  aviso: Announcement | null
+function AnnouncementFormModal({ announcement, onClose, onSaved }: {
+  announcement: Announcement | null
   onClose: () => void
   onSaved: () => void
 }) {
-  const isEdit = !!aviso
-  const [title, setTitle]       = useState(aviso?.title ?? '')
-  const [emoji, setEmoji]       = useState(aviso?.emoji ?? '📢')
-  const [body, setBody]         = useState(aviso?.body ?? '')
-  const [accent, setAccent]     = useState(aviso?.accentColor ?? DEFAULTS.accent)
-  const [bg, setBg]             = useState(aviso?.backgroundColor ?? DEFAULTS.background)
-  const [textColor, setText]    = useState(aviso?.textColor ?? DEFAULTS.text)
-  const [active, setActive]     = useState(aviso?.active ?? true)
-  const [expires, setExpires]   = useState(isoToLocalInput(aviso?.expiresAt ?? null))
+  const isEdit = !!announcement
+  const [title, setTitle]       = useState(announcement?.title ?? '')
+  const [emoji, setEmoji]       = useState(announcement?.emoji ?? '📢')
+  const [body, setBody]         = useState(announcement?.body ?? '')
+  const [accent, setAccent]     = useState(announcement?.accentColor ?? DEFAULTS.accent)
+  const [bg, setBg]             = useState(announcement?.backgroundColor ?? DEFAULTS.background)
+  const [textColor, setText]    = useState(announcement?.textColor ?? DEFAULTS.text)
+  const [active, setActive]     = useState(announcement?.active ?? true)
+  const [expires, setExpires]   = useState(isoToLocalInput(announcement?.expiresAt ?? null))
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -202,7 +202,7 @@ function AnnouncementFormModal({ aviso, onClose, onSaved }: {
   }
 
   async function handleSave() {
-    if (!body.trim()) { setError('Escreva a mensagem do aviso'); return }
+    if (!body.trim()) { setError('Escreva a mensagem do comunicado'); return }
     setLoading(true); setError('')
     const payload = {
       title:           title.trim() || null,
@@ -215,8 +215,8 @@ function AnnouncementFormModal({ aviso, onClose, onSaved }: {
       expiresAt:       expires ? new Date(expires).toISOString() : null,
     }
     try {
-      if (isEdit) await api.patch(`/avisos/${aviso!.id}`, payload)
-      else await api.post('/avisos', payload)
+      if (isEdit) await api.patch(`/announcements/${announcement!.id}`, payload)
+      else await api.post('/announcements', payload)
       onSaved()
     } catch (err: unknown) {
       setError((err as Error).message || 'Erro ao salvar')
@@ -230,7 +230,7 @@ function AnnouncementFormModal({ aviso, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">{isEdit ? 'Editar aviso' : 'Novo aviso'}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{isEdit ? 'Editar comunicado' : 'Novo comunicado'}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
         </div>
 
@@ -262,7 +262,7 @@ function AnnouncementFormModal({ aviso, onClose, onSaved }: {
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={7}
-                placeholder="Escreva o aviso… use a barra acima para formatar."
+                placeholder="Escreva o comunicado… use a barra acima para formatar."
                 className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-gray-900 focus:outline-none"
               />
             </div>
@@ -299,7 +299,7 @@ function AnnouncementFormModal({ aviso, onClose, onSaved }: {
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSave} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {isEdit ? 'Salvar' : 'Criar aviso'}
+            {isEdit ? 'Salvar' : 'Criar comunicado'}
           </Button>
         </div>
       </div>
