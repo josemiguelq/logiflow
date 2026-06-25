@@ -115,6 +115,7 @@ export default function DeliverersPage() {
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Nome</th>
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Username</th>
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Primeiro acesso</th>
+                <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Termos</th>
                 <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
                 <th className="px-5 py-3" />
               </tr>
@@ -160,6 +161,20 @@ export default function DeliverersPage() {
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
                           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                           Concluído
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {d.termsAccepted ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700"
+                          title={d.termsAcceptedAt ? `Aceito em ${new Date(d.termsAcceptedAt).toLocaleString('pt-BR')}` : undefined}>
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          Aceitos
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
+                          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                          Pendente
                         </span>
                       )}
                     </td>

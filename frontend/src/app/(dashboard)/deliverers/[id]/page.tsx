@@ -3,7 +3,7 @@
 import { use } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck, Star } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Wifi, WifiOff, Truck, Star, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -26,6 +26,9 @@ interface DelivererDetail {
   profileImageUrl: string | null
   isActive:        boolean
   createdAt:       string
+  termsAcceptedAt:      string | null
+  termsAcceptedVersion: string | null
+  termsCurrent:         boolean
   avgRating:       number | null
   ratingCount:     number
   history:         StatusEntry[]
@@ -129,6 +132,41 @@ export default function DelivererDetailPage({ params }: { params: Promise<{ id: 
             )}
           </div>
           <StatusBadgeInline status={data.status} />
+        </div>
+      </div>
+
+      {/* Termos de uso */}
+      <div className="mt-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Termos de uso
+        </h2>
+        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          {data.termsAcceptedAt ? (
+            <>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${data.termsCurrent ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
+                {data.termsCurrent ? <ShieldCheck className="h-5 w-5" /> : <ShieldAlert className="h-5 w-5" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {data.termsCurrent ? 'Termos aceitos' : 'Aceitou uma versão anterior'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Em {formatDate(data.termsAcceptedAt)}
+                  {data.termsAcceptedVersion && ` · versão ${data.termsAcceptedVersion}`}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Termos não aceitos</p>
+                <p className="text-xs text-gray-500">O entregador ainda não aceitou os termos de uso.</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

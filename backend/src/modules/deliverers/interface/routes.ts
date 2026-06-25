@@ -309,7 +309,8 @@ export async function delivererRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const { rows: [d] } = await db.query(
-        `SELECT id, name, username, email, status, profile_image_url, is_active, created_at
+        `SELECT id, name, username, email, status, profile_image_url, is_active, created_at,
+                terms_accepted_at, terms_accepted_version
          FROM deliverers WHERE id = $1 AND store_id = $2`,
         [id, req.actor.storeId]
       )
@@ -342,6 +343,9 @@ export async function delivererRoutes(app: FastifyInstance) {
         profileImageUrl: d.profile_image_url,
         isActive:        d.is_active,
         createdAt:       d.created_at,
+        termsAcceptedAt:      d.terms_accepted_at,
+        termsAcceptedVersion: d.terms_accepted_version,
+        termsCurrent:         d.terms_accepted_version === DELIVERER_TERMS.version,
         avgRating:       ratingRow?.avg_rating != null ? Number(ratingRow.avg_rating) : null,
         ratingCount:     Number(ratingRow?.rating_count ?? 0),
         history: history.map((h: Record<string, unknown>) => ({

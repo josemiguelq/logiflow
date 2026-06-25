@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { DB } from '../../../../shared/db/client'
 import { Deliverer, DelivererStatus } from '../../domain/entities'
+import { DELIVERER_TERMS } from '../../../legal/deliverer-terms'
 
 function mapRow(r: Record<string, unknown>): Deliverer {
   return {
@@ -20,13 +21,21 @@ function mapRow(r: Record<string, unknown>): Deliverer {
 
 export function createPgDelivererRepo(db: DB) {
   return {
-    async findByStore(storeId: string): Promise<Omit<Deliverer, 'passwordHash'>[]> {
+    async findByStore(storeId: string): Promise<Array<Omit<Deliverer, 'passwordHash'> & { termsAccepted: boolean; termsAcceptedAt: Date | null }>> {
       const { rows } = await db.query(
-        `SELECT id, store_id, name, email, username, profile_image_url, status, is_active, needs_onboarding, created_at
+        `SELECT id, store_id, name, email, username, profile_image_url, status, is_active, needs_onboarding, created_at,
+                terms_accepted_at, terms_accepted_version
          FROM deliverers WHERE store_id = $1 AND deleted_at IS NULL ORDER BY is_active DESC, name ASC`,
         [storeId]
       )
-      return rows.map((r: Record<string, unknown>) => { const { passwordHash: _, ...rest } = mapRow(r); return rest })
+      return rows.map((r: Record<string, unknown>) => {
+        const { passwordHash: _, ...rest } = mapRow(r)
+        return {
+          ...rest,
+          termsAccepted:   r.terms_accepted_version === DELIVERER_TERMS.version,
+          termsAcceptedAt: (r.terms_accepted_at as Date | null) ?? null,
+        }
+      })
     },
 
     // IDs dos entregadores ativos SEM rota em andamento (nenhuma rota

@@ -62,6 +62,8 @@ export interface Deliverer {
   needsOnboarding: boolean
   profileImageUrl?: string
   createdAt: string
+  termsAccepted?: boolean
+  termsAcceptedAt?: string | null
 }
 
 export interface OrderLogEntry {
