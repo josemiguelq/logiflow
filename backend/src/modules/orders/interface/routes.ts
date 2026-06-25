@@ -422,8 +422,6 @@ export async function orderRoutes(app: FastifyInstance) {
   const createSchema = z.object({
     customerId:      z.string().uuid(),
     notes:           z.string().optional(),
-    paymentMethod:   z.enum(['prepaid', 'cash', 'card']).default('prepaid'),
-    cashAmount:      z.number().positive().optional(),
     lat:             z.number().optional(),
     lng:             z.number().optional(),
     deliveryAddress: z.string().optional(),
@@ -455,7 +453,6 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
-          paymentMethod: body.paymentMethod, cashAmount: body.cashAmount,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         { orderRepo }
       )
@@ -989,13 +986,15 @@ export async function orderRoutes(app: FastifyInstance) {
 
   const pickupSchema   = z.object({ code: z.string() })
   const deliverySchema = z.object({
-    code:          z.string().default(''),
-    photoUrl:      z.string().optional(),                      // legacy: old app — single photo
-    photoUrls:     z.array(z.string()).optional(),             // new: multiple photos
-    lat:           z.number().optional(),
-    lng:           z.number().optional(),
-    note:          z.string().max(500).optional(),
-    cashCollected: z.boolean().optional(),
+    code:             z.string().default(''),
+    photoUrl:         z.string().optional(),                      // legacy: old app — single photo
+    photoUrls:        z.array(z.string()).optional(),             // new: multiple photos
+    lat:              z.number().optional(),
+    lng:              z.number().optional(),
+    note:             z.string().max(500).optional(),
+    cashCollected:    z.boolean().optional(),
+    collectedAmount:  z.number().positive().optional(),
+    collectedMethod:  z.enum(['cash', 'pix']).optional(),
   })
 
   app.post(
@@ -1083,10 +1082,10 @@ export async function orderRoutes(app: FastifyInstance) {
           { orderRepo, log: req.log }
         )
 
-        if (body.cashCollected) {
+        if (body.cashCollected || body.collectedAmount != null) {
           await db.query(
-            `UPDATE orders SET cash_collected = TRUE WHERE id = $1`,
-            [id]
+            `UPDATE orders SET cash_collected = TRUE, collected_amount = $2, collected_method = $3 WHERE id = $1`,
+            [id, body.collectedAmount ?? null, body.collectedMethod ?? null]
           )
         }
 
