@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { db } from '../db/client'
 import { redis } from '../infra/redis'
+import { addActorContext } from '../infra/observability'
 
 export type JWTPayload =
   | { type: 'store_user'; sub: string; storeId: string; role: string; name: string; scopes: string[]; jti?: string }
@@ -27,6 +28,7 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
     await req.jwtVerify()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     req.actor = req.user as any
+    addActorContext(req.actor)
   } catch {
     reply.code(401).send({ error: 'Unauthorized' })
     return
