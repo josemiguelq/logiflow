@@ -194,8 +194,7 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
           className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium transition-colors"
           style={copied ? { borderColor: '#86efac', color: '#16a34a', background: '#f0fdf4' } : { color: '#4B5563' }}
         >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
-          {copied ? 'Copiado!' : 'Compartilhar'}
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}      
         </button>
 
         {onAssign && order.status === 'PREPARING' && (
