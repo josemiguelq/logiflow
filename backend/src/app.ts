@@ -20,6 +20,7 @@ import { analyticsRoutes } from './modules/analytics/interface/routes'
 import { goalRoutes } from './modules/goals/interface/routes'
 import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
+import { announcementRoutes } from './modules/announcements/interface/routes'
 import { wsHub } from './shared/infra/websocket'
 
 // Versão do build (gerada em dist/version.json pelo `npm run build`). Lida uma
@@ -158,6 +159,7 @@ export function buildApp() {
   app.register(goalRoutes)
   app.register(gamificationRoutes)
   app.register(sessionRoutes)
+  app.register(announcementRoutes)
 
   app.get('/health', async (_req, reply) => {
     return reply.type('text/plain').send('ok')

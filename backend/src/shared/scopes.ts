@@ -48,6 +48,9 @@ export const SCOPES = [
 
   // Sessions
   'sessions:view_all',
+
+  // Announcements
+  'announcements:manage',
 ] as const
 
 export type Scope = typeof SCOPES[number]
@@ -83,6 +86,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'goals:view':           'Metas — visualizar',
   'goals:manage':         'Metas — criar e editar',
   'sessions:view_all':    'Sessões — ver os acessos de todos os usuários',
+  'announcements:manage': 'Comunicados — criar e enviar para entregadores',
 }
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
@@ -96,6 +100,7 @@ export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Configurações',  scopes: ['settings:view', 'settings:edit'] },
   { label: 'Metas',          scopes: ['goals:view', 'goals:manage'] },
   { label: 'Sessões',        scopes: ['sessions:view_all'] },
+  { label: 'Comunicados',    scopes: ['announcements:manage'] },
 ]
 
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
