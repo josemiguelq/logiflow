@@ -14,6 +14,8 @@ function mapRow(row: Record<string, unknown>): Deliverer {
     status:          row.status as Deliverer['status'],
     isActive:        row.is_active as boolean,
     needsOnboarding: row.needs_onboarding as boolean,
+    needsSwitchTour: row.needs_switch_tour as boolean,
+    termsAcceptedVersion: (row.terms_accepted_version as string | null) ?? null,
     createdAt:       row.created_at as Date,
   }
 }

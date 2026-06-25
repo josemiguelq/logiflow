@@ -7,6 +7,7 @@ import { requireRole, requireScope } from '../../../shared/middleware/rbac'
 import { createPgDelivererRepo } from '../infrastructure/repositories/pg-deliverer-repo'
 import { createPgDeviceTokenRepo } from '../../notifications/infrastructure/repositories/pg-device-token-repo'
 import { assertCanAddDeliverer, invalidateDelivererCount } from '../../../shared/plan-limits'
+import { DELIVERER_TERMS } from '../../legal/deliverer-terms'
 
 const createSchema = z.object({
   name:     z.string().min(1),
@@ -197,7 +198,8 @@ export async function delivererRoutes(app: FastifyInstance) {
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { rows: [d] } = await db.query(
-        `SELECT id, name, username, store_id, status, profile_image_url, needs_onboarding
+        `SELECT id, name, username, store_id, status, profile_image_url, needs_onboarding,
+                needs_switch_tour, terms_accepted_version
          FROM deliverers WHERE id = $1`,
         [req.actor.sub]
       )
@@ -210,9 +212,52 @@ export async function delivererRoutes(app: FastifyInstance) {
         status:          d.status as string,
         profileImageUrl: d.profile_image_url as string | null,
         needsOnboarding: d.needs_onboarding as boolean,
+        needsSwitchTour: d.needs_switch_tour as boolean,
+        termsAccepted:   (d.terms_accepted_version as string | null) === DELIVERER_TERMS.version,
       }
     }
   )
+
+  // ── Termo de uso do entregador ────────────────────────────────────────────
+  // Texto servido do backend (versionado em deliverer-terms.ts). `accepted` diz
+  // se a versão aceita pelo entregador é a atual.
+  app.get('/deliverer/terms', { preHandler: requireDeliverer }, async (req) => {
+    const { rows: [d] } = await db.query(
+      'SELECT terms_accepted_version FROM deliverers WHERE id = $1',
+      [req.actor.sub]
+    )
+    return {
+      version:  DELIVERER_TERMS.version,
+      content:  DELIVERER_TERMS.content,
+      accepted: (d?.terms_accepted_version as string | null) === DELIVERER_TERMS.version,
+    }
+  })
+
+  // Registra o aceite (auditável: versão, data, IP, user-agent) e marca a versão
+  // aceita no entregador.
+  app.post('/deliverer/terms/accept', { preHandler: requireDeliverer }, async (req, reply) => {
+    const version   = DELIVERER_TERMS.version
+    const userAgent = req.headers['user-agent'] ?? null
+    await db.query(
+      `INSERT INTO deliverer_terms_acceptance (deliverer_id, store_id, version, ip, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.actor.sub, req.actor.storeId, version, req.ip, userAgent]
+    )
+    await db.query(
+      'UPDATE deliverers SET terms_accepted_version = $1, terms_accepted_at = now() WHERE id = $2',
+      [version, req.actor.sub]
+    )
+    return reply.send({ ok: true, version })
+  })
+
+  // Marca o guia (coach-mark) do switch de disponibilidade como visto.
+  app.post('/deliverer/onboarding/switch-tour/seen', { preHandler: requireDeliverer }, async (req, reply) => {
+    await db.query(
+      'UPDATE deliverers SET needs_switch_tour = false WHERE id = $1',
+      [req.actor.sub]
+    )
+    return reply.send({ ok: true })
+  })
 
   // Deliverer updates own profile (name, photo, password) and clears onboarding flag
   const profileSchema = z.object({

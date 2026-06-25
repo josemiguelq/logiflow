@@ -22,5 +22,7 @@ export interface Deliverer {
   status: 'AVAILABLE' | 'ON_ROUTE' | 'OFFLINE'
   isActive: boolean
   needsOnboarding: boolean
+  needsSwitchTour: boolean
+  termsAcceptedVersion: string | null
   createdAt: Date
 }
