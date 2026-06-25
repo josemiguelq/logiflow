@@ -3,6 +3,18 @@ import { notificationQueue } from '../../../../shared/infra/queue'
 
 const MIN_DISTANCE_METERS = 50
 const MIN_TIME_SECONDS    = 60
+const MAX_SAVED_POINTS    = 200
+
+// Reduz um array já ordenado para no máximo `max` pontos, pegando amostras
+// igualmente espaçadas e sempre mantendo o primeiro e o último ponto, de modo
+// a preservar o formato do trajeto.
+function downsample<T>(items: T[], max: number): T[] {
+  if (items.length <= max) return items
+  const out: T[] = []
+  const stride = (items.length - 1) / (max - 1)
+  for (let i = 0; i < max; i++) out.push(items[Math.round(i * stride)]!)
+  return out
+}
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6_371_000
@@ -69,10 +81,13 @@ export function createPgTrackingRepo(db: DB) {
       )
       if (statusRows[0]?.status === 'OFFLINE') return 0
 
-      // Process in chronological order, re-using the same dedup logic
-      const sorted = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+      // Process in chronological order, re-using the same dedup logic.
+      // Lotes grandes (entregador muito tempo offline) são amostrados para no
+      // máximo MAX_SAVED_POINTS antes de gravar, preservando o trajeto.
+      const sorted  = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+      const sampled = downsample(sorted, MAX_SAVED_POINTS)
       let saved = 0
-      for (const p of sorted) {
+      for (const p of sampled) {
         const ok = await this.recordLocation(delivererId, p.lat, p.lng, p.recordedAt)
         if (ok) saved++
       }

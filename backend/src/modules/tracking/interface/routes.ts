@@ -16,7 +16,7 @@ const batchSchema = z.object({
     lat:        z.number(),
     lng:        z.number(),
     recordedAt: z.string().datetime(),
-  })).min(1).max(200),
+  })).min(1).max(5000),
 })
 
 export async function trackingRoutes(app: FastifyInstance) {
