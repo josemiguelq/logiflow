@@ -62,6 +62,18 @@ class ApiClient {
           if (err.response?.statusCode == 401) {
             onUnauthorized?.call();
           }
+          // Erros de conexão (ex.: "Failed host lookup: '<host>'") vazam a URL da
+          // API. Substituímos por um erro genérico/limpo — o tipo é preservado
+          // para que isNoInternetError() continue funcionando rio abaixo.
+          if (isNoInternetError(err)) {
+            handler.next(DioException(
+              requestOptions: err.requestOptions,
+              type: DioExceptionType.connectionError,
+              error: null,
+              message: kNoInternetMessage,
+            ));
+            return;
+          }
           handler.next(err);
         },
       ),

@@ -475,24 +475,50 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     }
 
     ref.invalidate(storeSettingsProvider);
-    final settings = await ref.read(storeSettingsProvider.future);
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _DeliveryConfirmSheet(
-        order: widget.order,
-        requireDeliveryCode: settings.requireDeliveryCode,
-        requireDeliveryPhoto: settings.requireDeliveryPhoto,
-        maxProofPhotos: settings.maxProofPhotos,
-        requireProximity: settings.deliveryRequireProximity,
-        proximityMeters: settings.delayProximityMeters,
-        onDelivered: widget.onDelivered,
-      ),
-    );
+    try {
+      final settings = await ref.read(storeSettingsProvider.future);
+      if (!mounted) return;
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => _DeliveryConfirmSheet(
+          order: widget.order,
+          requireDeliveryCode: settings.requireDeliveryCode,
+          requireDeliveryPhoto: settings.requireDeliveryPhoto,
+          maxProofPhotos: settings.maxProofPhotos,
+          requireProximity: settings.deliveryRequireProximity,
+          proximityMeters: settings.delayProximityMeters,
+          onDelivered: widget.onDelivered,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final noInternet = isNoInternetError(e);
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(
+            noInternet ? Icons.wifi_off_rounded : Icons.error_outline,
+            size: 48,
+            color: noInternet ? const Color(0xFFEA580C) : Colors.red.shade400,
+          ),
+          title: Text(noInternet ? 'Sem conexão' : 'Erro'),
+          content: Text(
+            noInternet ? kNoInternetMessage : 'Não foi possível carregar as configurações. Tente novamente.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 
@@ -616,14 +642,18 @@ class _DeliveryConfirmSheet extends StatefulWidget {
 class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
+  final _collectedAmountCtrl = TextEditingController();
   final List<XFile> _photos = [];
   bool _loading = false;
+  bool _collectPayment = false;
+  String _collectedMethod = 'cash';
   String? _error;
 
   @override
   void dispose() {
     _codeCtrl.dispose();
     _noteCtrl.dispose();
+    _collectedAmountCtrl.dispose();
     super.dispose();
   }
 
@@ -676,6 +706,14 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     if (widget.requireDeliveryPhoto && _photos.isEmpty) {
       setState(() => _error = 'Foto de comprovante é obrigatória');
       return;
+    }
+    if (_collectPayment) {
+      final amountText = _collectedAmountCtrl.text.trim();
+      final amount = double.tryParse(amountText.replaceAll(',', '.'));
+      if (amount == null || amount <= 0) {
+        setState(() => _error = 'Informe o valor recebido');
+        return;
+      }
     }
     // Proximidade: valida a distância até o endereço antes de concluir.
     Position? pos;
@@ -737,7 +775,13 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
           if (note.isNotEmpty) 'note': note,
-          if (widget.order.isCash) 'cashCollected': true,
+          if (widget.order.isCash || widget.order.cashAmount != null)
+            'cashCollected': true,
+          if (_collectPayment && _collectedAmountCtrl.text.trim().isNotEmpty)
+            'collectedAmount': double.tryParse(
+                _collectedAmountCtrl.text.trim().replaceAll(',', '.')),
+          if (_collectPayment && _collectedAmountCtrl.text.trim().isNotEmpty)
+            'collectedMethod': _collectedMethod,
         },
       );
 
@@ -752,6 +796,85 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         _loading = false;
       });
     }
+  }
+
+  Widget _buildPaymentCollection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _collectPayment = !_collectPayment),
+          child: Row(
+            children: [
+              Icon(
+                _collectPayment
+                    ? Icons.check_box
+                    : Icons.check_box_outline_blank,
+                size: 22,
+                color: _collectPayment
+                    ? const Color(0xFF16A34A)
+                    : Colors.grey.shade400,
+              ),
+              const SizedBox(width: 8),
+              Text('Recebi pagamento',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        if (_collectPayment) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _collectedAmountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Valor recebido (R\$)',
+              hintText: '0,00',
+              prefixIcon: const Icon(Icons.attach_money),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            ),
+            style: const TextStyle(
+                fontFamily: 'monospace', fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _methodChip('cash', 'Dinheiro'),
+              const SizedBox(width: 10),
+              _methodChip('pix', 'Pix'),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _methodChip(String value, String label) {
+    final selected = _collectedMethod == value;
+    return GestureDetector(
+      onTap: () => setState(() => _collectedMethod = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: selected ? AppTheme.primary : const Color(0xFFD1D5DB),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : Colors.grey.shade700,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -783,50 +906,36 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 16),
 
-          // Payment info
+          // Payment info — cobrança pelo entregador
           if (widget.order.paymentMethod != 'prepaid') ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: widget.order.isCash
-                    ? const Color(0xFFFFFBEB)
-                    : const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: widget.order.isCash
-                      ? const Color(0xFFF59E0B)
-                      : const Color(0xFF93C5FD),
+            if (widget.order.cashAmount != null && widget.order.cashAmount! > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFF59E0B)),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    widget.order.isCash
-                        ? Icons.payments_outlined
-                        : Icons.credit_card_outlined,
-                    size: 20,
-                    color: widget.order.isCash
-                        ? const Color(0xFFD97706)
-                        : const Color(0xFF3B82F6),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      widget.order.isCash
-                          ? 'Cobrar R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro'
-                          : 'Pagamento no cartão',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: widget.order.isCash
-                            ? const Color(0xFF92400E)
-                            : const Color(0xFF1E40AF),
+                child: Row(
+                  children: [
+                    const Icon(Icons.payments_outlined,
+                        size: 20, color: Color(0xFFD97706)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Cobrar R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Color(0xFF92400E),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            const SizedBox(height: 12),
+            _buildPaymentCollection(),
             const SizedBox(height: 16),
           ],
 

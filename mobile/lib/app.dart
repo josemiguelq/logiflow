@@ -8,6 +8,7 @@ import 'core/models/route.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/onboarding/setup_screen.dart';
+import 'features/legal/terms_screen.dart';
 import 'features/orders/order_selection_screen.dart';
 import 'features/orders/route_planning_screen.dart';
 import 'features/orders/pickup_confirmation_screen.dart';
@@ -15,6 +16,9 @@ import 'features/delivery/delivery_screen.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/gamification/gamification_screen.dart';
 import 'features/tracking/location_service.dart';
+import 'core/models/announcement.dart';
+import 'features/announcements/announcement_service.dart';
+import 'features/announcements/announcement_popup.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -29,7 +33,11 @@ final _router = GoRouter(
     if (session == null) {
       return loc == '/login' ? null : '/login';
     }
-    if (loc == '/login') {
+    // Aceite de termos é obrigatório antes de qualquer uso.
+    if (!session.termsAccepted) {
+      return loc == '/termos' ? null : '/termos';
+    }
+    if (loc == '/termos' || loc == '/login') {
       return session.needsOnboarding ? '/setup' : '/orders';
     }
     if (session.needsOnboarding && loc != '/setup') {
@@ -39,6 +47,7 @@ final _router = GoRouter(
   },
   routes: [
     GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+    GoRoute(path: '/termos', builder: (_, __) => const TermsScreen()),
     GoRoute(path: '/setup', builder: (_, __) => const SetupScreen()),
     GoRoute(path: '/orders', builder: (_, __) => const OrderSelectionScreen()),
     GoRoute(
@@ -66,13 +75,15 @@ class LogiFlowApp extends ConsumerStatefulWidget {
   ConsumerState<LogiFlowApp> createState() => _LogiFlowAppState();
 }
 
-class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
+class _LogiFlowAppState extends ConsumerState<LogiFlowApp> with WidgetsBindingObserver {
   StreamSubscription<bool>? _gpsSub;
   bool _locationDialogOpen = false;
+  bool _announcementOpen = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Avisa em popup quando o GPS é desligado durante o uso e fecha quando volta.
     _gpsSub = ref.read(locationServiceProvider).gpsEnabledStream.listen((enabled) {
@@ -84,28 +95,75 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
       }
     });
 
-    // Inicia rastreamento caso já haja sessão ao abrir o app
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final session = ref.read(authProvider);
-      if (session != null) {
-        final issue = await ref
-            .read(locationServiceProvider)
-            .startTracking(delivererId: session.id);
-        if (issue != null) _showLocationDialog(issue);
-      }
+    // Sincroniza o rastreamento com a sessão ao abrir o app.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncTracking(ref.read(authProvider));
+      _checkAnnouncements();
     });
 
-    // Responde a login / logout
+    // Responde a login / logout e a mudanças de status (switch de disponibilidade).
     ref.listenManual<DelivererSession?>(authProvider, (previous, next) async {
-      final tracking = ref.read(locationServiceProvider);
-      if (next != null) {
-        final issue = await tracking.startTracking(delivererId: next.id);
-        if (issue != null) _showLocationDialog(issue);
-      } else {
-        tracking.stopTracking();
+      if (next == null) {
+        ref.read(locationServiceProvider).stopTracking();
         _router.go('/login');
+        return;
+      }
+      // Só reage quando login OU status mudaram, evitando trabalho redundante.
+      if (previous?.id != next.id || previous?.status != next.status) {
+        await _syncTracking(next);
       }
     });
+  }
+
+  // Rastreio só acontece quando o entregador está disponível (online).
+  // OFFLINE → para de enviar; AVAILABLE → (re)inicia (idempotente via _started).
+  Future<void> _syncTracking(DelivererSession? session) async {
+    final tracking = ref.read(locationServiceProvider);
+    if (session != null && session.status != 'OFFLINE') {
+      final issue = await tracking.startTracking(delivererId: session.id);
+      if (issue != null) _showLocationDialog(issue);
+    } else {
+      tracking.stopTracking();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Ao voltar do segundo plano, checa se há comunicados novos.
+    if (state == AppLifecycleState.resumed) _checkAnnouncements();
+  }
+
+  // Mostra os comunicados não lidos num popup carrossel. Usa cache para abrir
+  // rápido e depois reconcilia com a rede. Só roda para entregador já dentro do
+  // app (logado, termos aceitos, onboarding concluído) e evita empilhar popups.
+  // Toda a checagem é blindada: um request lento/erro nunca atrapalha a navegação.
+  Future<void> _checkAnnouncements() async {
+    if (_announcementOpen) return;
+    final session = ref.read(authProvider);
+    if (session == null || !session.termsAccepted || session.needsOnboarding) return;
+
+    final service = ref.read(announcementServiceProvider);
+
+    Future<void> present(List<Announcement> items) async {
+      final ctx = _navigatorKey.currentContext;
+      if (ctx == null || items.isEmpty || _announcementOpen) return;
+      _announcementOpen = true;
+      try {
+        await showAnnouncementsCarousel(ctx, items, onRead: service.markRead);
+      } finally {
+        _announcementOpen = false;
+      }
+    }
+
+    try {
+      // 1) cache (instantâneo)
+      await present(await service.cachedAnnouncements());
+      // 2) rede (com timeout); só abre se o popup do cache não estiver aberto
+      final fresh = await service.fetchAnnouncements();
+      await present(fresh);
+    } catch (_) {
+      // Offline, timeout ou qualquer erro: silencioso, não bloqueia a navegação.
+    }
   }
 
   void _showLocationDialog(LocationPermissionIssue issue) {
@@ -119,6 +177,7 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _gpsSub?.cancel();
     super.dispose();
   }

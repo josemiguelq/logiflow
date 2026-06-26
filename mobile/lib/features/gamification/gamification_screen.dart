@@ -210,7 +210,32 @@ class _GamificationScreenState extends ConsumerState<GamificationScreen> {
           error: (e, __) => ListView(children: [
             Padding(
               padding: const EdgeInsets.all(40),
-              child: Center(child: Text('Erro ao carregar: $e')),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isNoInternetError(e) ? Icons.wifi_off_rounded : Icons.error_outline,
+                      size: 48,
+                      color: isNoInternetError(e) ? const Color(0xFFEA580C) : Colors.red.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      isNoInternetError(e)
+                          ? kNoInternetMessage
+                          : 'Erro ao carregar. Tente novamente.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => ref.invalidate(_achievementsProvider(_month)),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Tentar novamente'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ]),
           data: (d) => ListView(
@@ -553,7 +578,16 @@ class _DayDetailSheet extends ConsumerWidget {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (e, __) => Text('Erro: $e'),
+              error: (e, __) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    isNoInternetError(e) ? kNoInternetMessage : 'Erro ao carregar detalhes.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+              ),
               data: (d) => d.achievements.isEmpty
                   ? Text('Nenhuma conquista neste dia.',
                       style: TextStyle(color: Colors.grey.shade600))

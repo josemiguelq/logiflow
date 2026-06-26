@@ -13,6 +13,8 @@ class Order {
   final String paymentMethod;   // 'prepaid' | 'cash' | 'card'
   final double? cashAmount;
   final bool cashCollected;
+  final double? collectedAmount;
+  final String? collectedMethod; // 'cash' | 'pix'
   final DateTime? createdAt;    // criação do pedido (base do tempo em "Preparando")
   final DateTime? pickedUpAt;   // retirada (base do tempo "em rota")
 
@@ -31,6 +33,8 @@ class Order {
     this.paymentMethod = 'prepaid',
     this.cashAmount,
     this.cashCollected = false,
+    this.collectedAmount,
+    this.collectedMethod,
     this.createdAt,
     this.pickedUpAt,
   });
@@ -53,10 +57,12 @@ class Order {
       customerLat:     (c['lat'] as num?)?.toDouble(),
       customerLng:     (c['lng'] as num?)?.toDouble(),
       notes:           j['notes'] as String?,
-      paymentMethod:   j['paymentMethod'] as String? ?? 'prepaid',
-      cashAmount:      (j['cashAmount'] as num?)?.toDouble(),
-      cashCollected:   j['cashCollected'] as bool? ?? false,
-      createdAt:       DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal(),
+      paymentMethod:    j['paymentMethod'] as String? ?? 'prepaid',
+      cashAmount:       (j['cashAmount'] as num?)?.toDouble(),
+      cashCollected:    j['cashCollected'] as bool? ?? false,
+      collectedAmount:  (j['collectedAmount'] as num?)?.toDouble(),
+      collectedMethod:  j['collectedMethod'] as String?,
+      createdAt:        DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal(),
       pickedUpAt:      DateTime.tryParse(j['pickedUpAt'] as String? ?? '')?.toLocal(),
     );
   }
@@ -76,6 +82,8 @@ class Order {
         paymentMethod:   paymentMethod,
         cashAmount:      cashAmount,
         cashCollected:   cashCollected,
+        collectedAmount: collectedAmount,
+        collectedMethod: collectedMethod,
         createdAt:       createdAt,
         pickedUpAt:      pickedUpAt,
       );

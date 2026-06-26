@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/map_tiles.dart';
@@ -93,6 +94,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 
   StreamSubscription<WsMessage>? _wsSub;
   Timer? _delayTicker;
+  final GlobalKey _switchKey = GlobalKey();
 
   @override
   void initState() {
@@ -101,6 +103,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     _delayTicker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    // Guia (coach-mark) do switch de disponibilidade — uma única vez.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowSwitchTour());
     try {
       final locationService = ref.read(locationServiceProvider);
       _wsSub = locationService.messageStream.listen(
@@ -142,6 +146,51 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       Sentry.captureException(e, stackTrace: st,
           hint: Hint.withMap({'context': 'OrderSelectionScreen.initState'}));
     }
+  }
+
+  // Mostra o spotlight no switch de disponibilidade na 1ª vez (flag do backend).
+  void _maybeShowSwitchTour() {
+    if (!mounted) return;
+    final session = ref.read(authProvider);
+    if (session == null || !session.needsSwitchTour) return;
+    if (_switchKey.currentContext == null) return;
+
+    void markSeen() => ref.read(authProvider.notifier).markSwitchTourSeen();
+
+    TutorialCoachMark(
+      colorShadow: Colors.black,
+      textSkip: 'Entendi',
+      onFinish: markSeen,
+      onSkip: () { markSeen(); return true; },
+      targets: [
+        TargetFocus(
+          identify: 'availability-switch',
+          keyTarget: _switchKey,
+          shape: ShapeLightFocus.RRect,
+          radius: 8,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) => const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Sua disponibilidade',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text(
+                    'Este é o seu switch de disponibilidade. Ligado: você recebe pedidos e '
+                    'compartilha sua localização durante as entregas. Desligado: o app não '
+                    'registra nada e você não recebe pedidos.',
+                    style: TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    ).show(context: context);
   }
 
   @override
@@ -277,6 +326,10 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
     final preparingList = preparing.value ?? [];
     final isOffline     = session?.status == 'OFFLINE';
     final isLoading     = routes.isLoading || preparing.isLoading;
+    // Sem internet: os providers falharam por conexão e não há dados em cache.
+    final noInternet    = (routes.hasError && isNoInternetError(routes.error)) ||
+                          (preparing.hasError && isNoInternetError(preparing.error));
+    final showOffline   = noInternet && routeList.isEmpty && preparingList.isEmpty;
 
     final firstName = session?.name.split(' ').first ?? '';
 
@@ -304,6 +357,7 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                 )
               : Switch(
+                  key: _switchKey,
                   value: !isOffline,
                   activeColor: const Color(0xFF16A34A),
                   onChanged: (_) => _toggleStatus(session?.status ?? 'AVAILABLE'),
@@ -313,6 +367,8 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
+          : showOffline
+          ? _OfflineState(onRetry: _refresh)
           : Stack(
               children: [
                 // ── Main content ─────────────────────────────────────
@@ -576,6 +632,52 @@ class _OrderSelectionScreenState extends ConsumerState<OrderSelectionScreen> {
 // ── widgets ──────────────────────────────────────────────────────────────────
 
 // ── widgets ──────────────────────────────────────────────────────────────────
+
+// Estado exibido quando não há conexão com a internet. Nunca mostra detalhes
+// técnicos (URL/host) — apenas uma mensagem genérica e um botão de tentar de novo.
+class _OfflineState extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _OfflineState({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/images/no-internet.png',
+              width: 160,
+              height: 160,
+              // Enquanto o PNG não estiver presente, mostra um ícone como fallback.
+              errorBuilder: (_, __, ___) =>
+                  Icon(Icons.wifi_off_rounded, size: 96, color: Colors.grey.shade400),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Sem conexão com a internet',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              kNoInternetMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Tentar novamente'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _MapToggle extends StatelessWidget {
   final bool value;
