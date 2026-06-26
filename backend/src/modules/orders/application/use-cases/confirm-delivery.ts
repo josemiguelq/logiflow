@@ -69,6 +69,12 @@ export async function confirmDelivery(
     }
   }
 
+  // Dinheiro só pode ser recebido em um único pagamento por entrega (Pix e cartão
+  // podem se repetir). Validado no servidor para não depender só do cliente.
+  if (payments && payments.filter(p => p.method === 'cash').length > 1) {
+    throw new Error('Só é permitido um pagamento em dinheiro por entrega')
+  }
+
   if (photoUrls && photoUrls.length > 0) {
     for (let i = 0; i < photoUrls.length; i++) {
       await orderRepo.addProof(orderId, photoUrls[i]!, lat, lng, i + 1)

@@ -31,6 +31,18 @@ type Actor = {
   role?:   string
 }
 
+// Anexa o Correlation-Id (vindo do header do cliente) à transação atual do
+// New Relic. Consultável em NRQL: SELECT * FROM Transaction WHERE correlationId = '...'.
+export function addCorrelationId(correlationId: string): void {
+  const nr = agent()
+  if (!nr) return
+  try {
+    nr.addCustomAttributes({ correlationId })
+  } catch {
+    /* non-fatal */
+  }
+}
+
 // Anexa o ator à transação atual do New Relic. As chaves ficam consultáveis em
 // NRQL, ex.: SELECT * FROM Transaction WHERE actor.id = '...'.
 export function addActorContext(actor: Actor): void {

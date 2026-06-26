@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'app.dart';
+import 'core/api/api_client.dart';
 import 'core/auth/auth_provider.dart';
 import 'core/push/push_notification_service.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -18,6 +19,8 @@ void main() async {
     },
     appRunner: () async {
       await Firebase.initializeApp();
+      // Prefixo do Correlation-Id (plataforma + versão + build) para os requests.
+      await initCorrelationId();
       // Capture Flutter widget-tree errors (build, layout, paint)
       final originalOnError = FlutterError.onError;
       FlutterError.onError = (FlutterErrorDetails details) {

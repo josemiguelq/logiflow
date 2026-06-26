@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -639,23 +640,62 @@ class _DeliveryConfirmSheet extends StatefulWidget {
   State<_DeliveryConfirmSheet> createState() => _DeliveryConfirmSheetState();
 }
 
+class _PaymentLine {
+  final TextEditingController amountCtrl = TextEditingController();
+  String method = 'cash';
+}
+
 class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
-  final _collectedAmountCtrl = TextEditingController();
+  // Lista dinâmica de pagamentos recebidos (ex.: Pix + dinheiro na mesma entrega).
+  final List<_PaymentLine> _payments = [];
   final List<XFile> _photos = [];
   bool _loading = false;
   bool _collectPayment = false;
-  String _collectedMethod = 'cash';
   String? _error;
 
   @override
   void dispose() {
     _codeCtrl.dispose();
     _noteCtrl.dispose();
-    _collectedAmountCtrl.dispose();
+    for (final p in _payments) {
+      p.amountCtrl.dispose();
+    }
     super.dispose();
   }
+
+  void _togglePayment() {
+    setState(() {
+      _collectPayment = !_collectPayment;
+      if (_collectPayment && _payments.isEmpty) {
+        _payments.add(_PaymentLine());
+      }
+    });
+  }
+
+  void _addPaymentLine() => setState(() {
+        final line = _PaymentLine();
+        // Dinheiro só pode haver um; se já existe, o novo começa em Pix.
+        if (_payments.any((p) => p.method == 'cash')) line.method = 'pix';
+        _payments.add(line);
+      });
+
+  void _removePaymentLine(int index) {
+    setState(() {
+      _payments[index].amountCtrl.dispose();
+      _payments.removeAt(index);
+      if (_payments.isEmpty) _collectPayment = false;
+    });
+  }
+
+  double get _paymentsTotal => _payments.fold(
+        0,
+        (sum, p) =>
+            sum +
+            (double.tryParse(p.amountCtrl.text.trim().replaceAll(',', '.')) ??
+                0),
+      );
 
   Future<void> _takePhoto() async {
     if (_photos.length >= widget.maxProofPhotos) return;
@@ -708,9 +748,12 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       return;
     }
     if (_collectPayment) {
-      final amountText = _collectedAmountCtrl.text.trim();
-      final amount = double.tryParse(amountText.replaceAll(',', '.'));
-      if (amount == null || amount <= 0) {
+      final hasValid = _payments.any((p) {
+        final amount =
+            double.tryParse(p.amountCtrl.text.trim().replaceAll(',', '.'));
+        return amount != null && amount > 0;
+      });
+      if (!hasValid) {
         setState(() => _error = 'Informe o valor recebido');
         return;
       }
@@ -766,6 +809,19 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         photoUrls.add('data:image/jpeg;base64,${base64Encode(bytes)}');
       }
 
+      // Monta a lista de pagamentos válidos (valor > 0).
+      final payments = _collectPayment
+          ? _payments
+              .map((p) => {
+                    'amount': double.tryParse(
+                        p.amountCtrl.text.trim().replaceAll(',', '.')),
+                    'method': p.method,
+                  })
+              .where((p) => (p['amount'] as double?) != null &&
+                  (p['amount'] as double) > 0)
+              .toList()
+          : <Map<String, dynamic>>[];
+
       final note = _noteCtrl.text.trim();
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
@@ -777,12 +833,14 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           if (note.isNotEmpty) 'note': note,
           if (widget.order.isCash || widget.order.cashAmount != null)
             'cashCollected': true,
-          if (_collectPayment && _collectedAmountCtrl.text.trim().isNotEmpty)
-            'collectedAmount': double.tryParse(
-                _collectedAmountCtrl.text.trim().replaceAll(',', '.')),
-          if (_collectPayment && _collectedAmountCtrl.text.trim().isNotEmpty)
-            'collectedMethod': _collectedMethod,
+          if (payments.isNotEmpty) 'payments': payments,
         },
+        options: Options(
+          // Uploads de fotos em base64 podem demorar; evita timeout que levaria
+          // o entregador a reenviar e (antes) duplicar registros.
+          sendTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 60),
+        ),
       );
 
       widget.onDelivered();
@@ -803,7 +861,7 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => setState(() => _collectPayment = !_collectPayment),
+          onTap: _togglePayment,
           child: Row(
             children: [
               Icon(
@@ -824,45 +882,130 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         ),
         if (_collectPayment) ...[
           const SizedBox(height: 12),
-          TextField(
-            controller: _collectedAmountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Valor recebido (R\$)',
-              hintText: '0,00',
-              prefixIcon: const Icon(Icons.attach_money),
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          for (int i = 0; i < _payments.length; i++) ...[
+            _buildPaymentLine(i),
+            const SizedBox(height: 12),
+          ],
+          // Botão para registrar mais um pagamento (ex.: parte Pix, parte dinheiro).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _addPaymentLine,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Adicionar pagamento'),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF16A34A),
+                  padding: EdgeInsets.zero),
             ),
-            style: const TextStyle(
-                fontFamily: 'monospace', fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _methodChip('cash', 'Dinheiro'),
-              const SizedBox(width: 10),
-              _methodChip('pix', 'Pix'),
-            ],
-          ),
+          if (_payments.length > 1) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Total',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(
+                  'R\$ ${_paymentsTotal.toStringAsFixed(2).replaceAll('.', ',')}',
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF16A34A)),
+                ),
+              ],
+            ),
+          ],
         ],
       ],
     );
   }
 
-  Widget _methodChip(String value, String label) {
-    final selected = _collectedMethod == value;
+  Widget _buildPaymentLine(int index) {
+    final line = _payments[index];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: line.amountCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}), // atualiza o total
+                decoration: InputDecoration(
+                  labelText: 'Valor recebido',
+                  hintText: '0,00',
+                  prefixText: 'R\$ ',
+                  prefixStyle: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF111827)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 14),
+                ),
+                style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+            if (_payments.length > 1)
+              IconButton(
+                onPressed: () => _removePaymentLine(index),
+                icon: const Icon(Icons.delete_outline),
+                color: Colors.red.shade400,
+                tooltip: 'Remover',
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _methodChip(index, 'cash', 'Dinheiro'),
+            const SizedBox(width: 10),
+            _methodChip(index, 'pix', 'Pix'),
+            const SizedBox(width: 10),
+            _methodChip(index, 'card', 'Cartão'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // Dinheiro só pode ser recebido em um único pagamento (não dá para receber
+  // "troco" em dois caixas). Pix e cartão podem se repetir à vontade.
+  bool _cashTakenBy(int exceptIndex) => _payments
+      .asMap()
+      .entries
+      .any((e) => e.key != exceptIndex && e.value.method == 'cash');
+
+  Widget _methodChip(int index, String value, String label) {
+    final selected = _payments[index].method == value;
+    final blocked = value == 'cash' && !selected && _cashTakenBy(index);
     return GestureDetector(
-      onTap: () => setState(() => _collectedMethod = value),
+      onTap: blocked
+          ? null
+          : () => setState(() => _payments[index].method = value),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.primary : Colors.transparent,
+          color: selected
+              ? AppTheme.primary
+              : blocked
+                  ? Colors.grey.shade100
+                  : Colors.transparent,
           borderRadius: BorderRadius.circular(100),
           border: Border.all(
-            color: selected ? AppTheme.primary : const Color(0xFFD1D5DB),
+            color: selected
+                ? AppTheme.primary
+                : blocked
+                    ? const Color(0xFFE5E7EB)
+                    : const Color(0xFFD1D5DB),
           ),
         ),
         child: Text(
@@ -870,7 +1013,11 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : Colors.grey.shade700,
+            color: selected
+                ? Colors.white
+                : blocked
+                    ? Colors.grey.shade400
+                    : Colors.grey.shade700,
           ),
         ),
       ),

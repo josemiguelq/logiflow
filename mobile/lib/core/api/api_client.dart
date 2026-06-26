@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Detecta se um erro é falta de conexão com a internet (timeout/socket),
 /// para diferenciar de erros do servidor e mostrar um aviso adequado.
@@ -30,6 +32,39 @@ const String _baseUrl = String.fromEnvironment(
   defaultValue: 'https://api-logiflow.quisbert.com.br',
 );
 
+/// Prefixo do Correlation-Id que identifica a plataforma e o build do app.
+/// Ex.: android 1.1.1+5 => "and-1.1.1-5". Definido uma vez no startup; cada
+/// request acrescenta um sufixo aleatório (".say5d") para ficar único.
+String _correlationPrefix = 'app';
+
+Future<void> initCorrelationId() async {
+  try {
+    final info = await PackageInfo.fromPlatform();
+    final platform = Platform.isAndroid
+        ? 'and'
+        : Platform.isIOS
+            ? 'ios'
+            : 'oth';
+    _correlationPrefix = '$platform-${info.version}-${info.buildNumber}';
+  } catch (_) {
+    // Best-effort: se falhar, mantém o fallback e segue sem quebrar o app.
+  }
+}
+
+const _correlationChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+final _rand = Random();
+
+String _newCorrelationId() {
+  final suffix = String.fromCharCodes(
+    Iterable.generate(
+      5,
+      (_) => _correlationChars
+          .codeUnitAt(_rand.nextInt(_correlationChars.length)),
+    ),
+  );
+  return '$_correlationPrefix.$suffix';
+}
+
 String get wsBaseUrl =>
     _baseUrl.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
 
@@ -56,6 +91,7 @@ class ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          options.headers['Correlation-Id'] = _newCorrelationId();
           handler.next(options);
         },
         onError: (err, handler) {

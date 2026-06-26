@@ -22,6 +22,7 @@ import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
 import { announcementRoutes } from './modules/announcements/interface/routes'
 import { wsHub } from './shared/infra/websocket'
+import { addCorrelationId } from './shared/infra/observability'
 
 // Versão do build (gerada em dist/version.json pelo `npm run build`). Lida uma
 // vez no carregamento do módulo; em dev (tsx, sem version.json) cai no fallback.
@@ -38,11 +39,22 @@ export function buildApp() {
     // Render (e proxies em geral) ficam à frente do app: confiar no
     // x-forwarded-for para que req.ip seja o IP real do cliente.
     trustProxy: true,
+    // Usa o Correlation-Id do cliente (mobile) como id do request. Assim TODOS
+    // os logs daquele request no stdout carregam `correlationId: and-1.1.1-5.say5d`.
+    // Sem o header (ex.: web), o Fastify gera um id próprio.
+    requestIdHeader: 'correlation-id',
+    requestIdLogLabel: 'correlationId',
     logger: {
       transport: process.env.NODE_ENV !== 'production'
         ? { target: 'pino-pretty' }
         : undefined,
     },
+  })
+
+  // Encaminha o Correlation-Id para o New Relic (custom attribute consultável
+  // em NRQL). req.id já é o header do cliente ou um id gerado pelo Fastify.
+  app.addHook('onRequest', async (req) => {
+    addCorrelationId(String(req.id))
   })
 
   const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean) ?? []
@@ -65,7 +77,7 @@ export function buildApp() {
       cb(new Error('Not allowed by CORS'), false)
     },
     credentials:    true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tracking-Code'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tracking-Code', 'Correlation-Id'],
     methods:        ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
 
