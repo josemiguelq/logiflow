@@ -8,6 +8,7 @@
 
 type NewRelicApi = {
   addCustomAttributes: (atts: Record<string, string | number | boolean>) => void
+  recordCustomEvent: (eventType: string, atts: Record<string, string | number | boolean>) => void
 }
 
 let cached: NewRelicApi | null | undefined
@@ -29,6 +30,22 @@ type Actor = {
   sub:     string
   storeId: string
   role?:   string
+}
+
+// Registra um evento custom no New Relic, consultável em NRQL pelo eventType.
+// Ex.: para desconexões do WhatsApp → SELECT * FROM WhatsAppDisconnect SINCE 1 day ago.
+// Best-effort: nunca lança (não pode quebrar o fluxo que o chamou).
+export function recordCustomEvent(
+  eventType: string,
+  attributes: Record<string, string | number | boolean>,
+): void {
+  const nr = agent()
+  if (!nr) return
+  try {
+    nr.recordCustomEvent(eventType, attributes)
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // Anexa o Correlation-Id (vindo do header do cliente) à transação atual do

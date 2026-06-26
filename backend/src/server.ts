@@ -90,7 +90,7 @@ function buildStatusMessage(
 async function start() {
   const app            = buildApp()
   app.log.info({ buildTime }, '[boot] version')
-  const whatsapp       = createBaileysProvider(db)
+  const whatsapp       = createBaileysProvider(db, app.log)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
   const pushProvider   = createFcmProvider()

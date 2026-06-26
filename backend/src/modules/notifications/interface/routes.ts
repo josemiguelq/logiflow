@@ -6,7 +6,7 @@ import { requireScope } from '../../../shared/middleware/rbac'
 import { createBaileysProvider } from '../infrastructure/baileys/baileys-provider'
 
 export async function notificationRoutes(app: FastifyInstance) {
-  const whatsapp = createBaileysProvider(db)
+  const whatsapp = createBaileysProvider(db, app.log)
 
   app.get(
     '/whatsapp/status',
