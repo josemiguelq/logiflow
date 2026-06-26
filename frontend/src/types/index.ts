@@ -122,6 +122,11 @@ export interface Order {
     lat?: number
     lng?: number
   }>
+  payments?: Array<{
+    amount: number
+    method: 'cash' | 'pix' | 'card'
+    createdAt: string
+  }>
   deliveredOffTarget?: boolean
 }
 

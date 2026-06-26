@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
@@ -28,6 +28,15 @@ const LOG_ACTION_LABEL: Record<string, string> = {
   NOTE_CHANGED:      'Observação alterada',
   ADDRESS_CHANGED:   'Endereço alterado',
 }
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  cash: 'Dinheiro',
+  pix:  'Pix',
+  card: 'Cartão',
+}
+
+const formatBRL = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 const STATUS_STEP_LABEL: Record<string, string> = {
   CREATED:          'Criação',
@@ -275,6 +284,31 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <p className="rounded-lg bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
                 {order.deliveryNote}
               </p>
+            </section>
+          )}
+
+          {order.payments && order.payments.length > 0 && (
+            <section className="border-t border-gray-100 pt-4">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Pagamentos recebidos
+              </h2>
+              <div className="space-y-1.5">
+                {order.payments.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2 text-green-800">
+                      <Wallet className="h-4 w-4 text-green-500" />
+                      {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
+                    </span>
+                    <span className="font-semibold text-green-900">{formatBRL(p.amount)}</span>
+                  </div>
+                ))}
+                {order.payments.length > 1 && (
+                  <div className="flex items-center justify-between px-3 pt-1 text-sm font-bold text-gray-900">
+                    <span>Total</span>
+                    <span>{formatBRL(order.payments.reduce((s, p) => s + p.amount, 0))}</span>
+                  </div>
+                )}
+              </div>
             </section>
           )}
 

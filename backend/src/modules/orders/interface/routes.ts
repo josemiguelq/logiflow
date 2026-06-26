@@ -996,6 +996,12 @@ export async function orderRoutes(app: FastifyInstance) {
     lng:              z.number().optional(),
     note:             z.string().max(500).optional(),
     cashCollected:    z.boolean().optional(),
+    // Múltiplos pagamentos recebidos na mesma entrega (ex.: Pix + dinheiro).
+    payments:         z.array(z.object({
+                        amount: z.number().positive(),
+                        method: z.enum(['cash', 'pix', 'card']),
+                      })).optional(),
+    // Compatibilidade retroativa: clientes antigos enviam um único pagamento.
     collectedAmount:  z.number().positive().optional(),
     collectedMethod:  z.enum(['cash', 'pix']).optional(),
   })
@@ -1076,21 +1082,23 @@ export async function orderRoutes(app: FastifyInstance) {
         }
       }
 
+      // Normaliza pagamentos: usa a lista nova quando presente; senão converte o
+      // par antigo collectedAmount/collectedMethod num único pagamento.
+      const payments = body.payments?.length
+        ? body.payments
+        : body.collectedAmount != null
+          ? [{ amount: body.collectedAmount, method: (body.collectedMethod ?? 'cash') as 'cash' | 'pix' | 'card' }]
+          : undefined
+
       try {
         const order = await confirmDelivery(
           { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub,
             requireDeliveryCode, code: body.code, photoUrls: uploadedUrls,
             lat: body.lat, lng: body.lng, note: body.note,
-            enforceOrder, requireProximity, proximityMeters },
+            enforceOrder, requireProximity, proximityMeters, payments,
+            cashCollected: body.cashCollected },
           { orderRepo, log: req.log }
         )
-
-        if (body.cashCollected || body.collectedAmount != null) {
-          await db.query(
-            `UPDATE orders SET cash_collected = TRUE, collected_amount = $2, collected_method = $3 WHERE id = $1`,
-            [id, body.collectedAmount ?? null, body.collectedMethod ?? null]
-          )
-        }
 
         // Auditoria + resumo de tempos: registra a entrega e calcula os
         // segmentos entre cada mudança de status a partir do log completo.

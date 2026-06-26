@@ -96,6 +96,8 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
         proof?.lat, proof?.lng,
       )
     })(),
+    payments: ((row.payments as Array<{ amount: number; method: string; createdAt: string }> | null) ?? [])
+      .map(p => ({ amount: Number(p.amount), method: p.method as 'cash' | 'pix' | 'card', createdAt: p.createdAt })),
   }
 }
 
@@ -115,7 +117,13 @@ const WITH_JOINS = `
          json_build_object('photoUrl', p.photo_url, 'lat', p.lat, 'lng', p.lng)
          ORDER BY p.photo_index ASC, p.created_at ASC
        ), '[]'::json)
-     FROM proof_of_delivery p WHERE p.order_id = o.id) AS proofs
+     FROM proof_of_delivery p WHERE p.order_id = o.id) AS proofs,
+    (SELECT COALESCE(
+       json_agg(
+         json_build_object('amount', pay.amount, 'method', pay.method, 'createdAt', pay.created_at)
+         ORDER BY pay.created_at ASC
+       ), '[]'::json)
+     FROM order_payments pay WHERE pay.order_id = o.id) AS payments
   FROM orders o
   JOIN customers c   ON c.id = o.customer_id
   LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
@@ -301,6 +309,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       if (extra.outForDeliveryAt)            { sets.push(`out_for_delivery_at = $${idx++}`); params.push(extra.outForDeliveryAt) }
       if (extra.deliveredAt)                 { sets.push(`delivered_at = $${idx++}`);  params.push(extra.deliveredAt) }
       if (extra.deliveryNote !== undefined)  { sets.push(`delivery_note = $${idx++}`); params.push(extra.deliveryNote) }
+      if (extra.cashCollected !== undefined) { sets.push(`cash_collected = $${idx++}`); params.push(extra.cashCollected) }
 
       const { rows } = await db.query(
         `UPDATE orders SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
@@ -349,10 +358,23 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     },
 
     async addProof(orderId, photoUrl, lat, lng, photoIndex = 1) {
+      // Idempotente: o endpoint de entrega pode ser reenviado (timeout no app).
+      // O caminho no storage é determinístico por índice, então a mesma foto no
+      // mesmo índice sempre mapeia para a mesma linha.
       await db.query(
         `INSERT INTO proof_of_delivery (order_id, photo_url, lat, lng, photo_index)
-         VALUES ($1,$2,$3,$4,$5)`,
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (order_id, photo_index)
+           DO UPDATE SET photo_url = EXCLUDED.photo_url, lat = EXCLUDED.lat, lng = EXCLUDED.lng`,
         [orderId, photoUrl, lat ?? null, lng ?? null, photoIndex]
+      )
+    },
+
+    async addPayment(orderId, payment, delivererId) {
+      await db.query(
+        `INSERT INTO order_payments (order_id, amount, method, created_by)
+         VALUES ($1,$2,$3,$4)`,
+        [orderId, payment.amount, payment.method, delivererId ?? null]
       )
     },
 

@@ -1,4 +1,5 @@
 import { IOrderRepository } from '../ports'
+import { PaymentMethod } from '../../domain/entities'
 import { haversineMeters } from '../../../../shared/utils/geo'
 
 interface Deps {
@@ -11,6 +12,7 @@ export async function confirmDelivery(
     orderId, storeId, delivererId, code, photoUrls, lat, lng,
     requireDeliveryCode = true, note,
     enforceOrder = false, requireProximity = false, proximityMeters = 100,
+    payments, cashCollected,
   }: {
     orderId: string
     storeId: string
@@ -24,6 +26,8 @@ export async function confirmDelivery(
     enforceOrder?: boolean
     requireProximity?: boolean
     proximityMeters?: number
+    payments?: { amount: number; method: PaymentMethod }[]
+    cashCollected?: boolean
   },
   { orderRepo, log }: Deps
 ) {
@@ -71,8 +75,19 @@ export async function confirmDelivery(
     }
   }
 
+  // Pagamentos recebidos: grava cada um na tabela order_payments. Só registra
+  // quando o pedido ainda não foi entregue, para que um reenvio da requisição
+  // (timeout no app) não duplique os pagamentos. (As fotos já são idempotentes.)
+  if (order.status !== 'DELIVERED' && payments && payments.length > 0) {
+    for (const p of payments) {
+      await orderRepo.addPayment(orderId, p, delivererId)
+    }
+  }
+
+  const collected = (payments && payments.length > 0) || cashCollected
   return orderRepo.updateStatus(orderId, 'DELIVERED', {
     deliveredAt:  new Date(),
     deliveryNote: note || undefined,
+    cashCollected: collected ? true : undefined,
   })
 }

@@ -1,4 +1,4 @@
-import { Order, OrderWithDetails, OrderStatus, OrderLogEntry, OrderSummary } from '../domain/entities'
+import { Order, OrderWithDetails, OrderStatus, OrderLogEntry, OrderSummary, PaymentMethod } from '../domain/entities'
 
 export interface IOrderRepository {
   findById(id: string, storeId: string): Promise<OrderWithDetails | null>
@@ -17,6 +17,8 @@ export interface IOrderRepository {
   transitionToOutForDelivery(id: string): Promise<Order | null>
   assignDeliverer(id: string, delivererId: string, routePosition: number): Promise<Order>
   addProof(orderId: string, photoUrl: string, lat?: number, lng?: number, photoIndex?: number): Promise<void>
+  // Registra um pagamento recebido na entrega (auditoria: created_by = entregador).
+  addPayment(orderId: string, payment: { amount: number; method: PaymentMethod }, delivererId?: string): Promise<void>
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
   findInTransit(): Promise<InTransitOrder[]>

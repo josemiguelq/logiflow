@@ -40,6 +40,14 @@ export interface Order {
   summary?: OrderSummary
 }
 
+// Pagamento recebido na entrega. Um pedido pode ter vários (ex.: Pix + dinheiro).
+export type PaymentMethod = 'cash' | 'pix' | 'card'
+export interface OrderPayment {
+  amount: number
+  method: PaymentMethod
+  createdAt: string  // ISO timestamp
+}
+
 // Entrada de auditoria: quem fez, quando e o quê.
 export interface OrderLogEntry {
   at:       string   // ISO timestamp
@@ -82,6 +90,8 @@ export interface OrderWithDetails extends Order {
   }>
   // Entregue a mais de 100m do local esperado (comprovante x endereço/override).
   deliveredOffTarget?: boolean
+  // Pagamentos recebidos na entrega (vazio quando não houve coleta).
+  payments: OrderPayment[]
 }
 
 export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
