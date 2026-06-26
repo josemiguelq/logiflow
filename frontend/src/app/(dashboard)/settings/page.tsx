@@ -383,7 +383,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
             { label: 'Exigir foto na entrega',    desc: 'O entregador deve fotografar a entrega no app',                value: requirePhoto,          set: setRequirePhoto },
             { label: 'Exigir código de coleta',  desc: 'Entregador confirma retirada com o código da rota',            value: requirePickupCode,     set: setRequirePickupCode },
             { label: 'Exigir código de entrega', desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode,   set: setRequireDeliveryCode },
-            { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago, dinheiro, cartão)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
+            { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago ou pagar na entrega)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
             { label: 'Permitir entrega apenas quando estiver perto', desc: 'Bloqueia concluir a entrega se o entregador estiver além da distância máxima. Desativado, apenas avisa.', value: requireProximity, set: setRequireProximity },
             { label: 'Forçar ordem das entregas', desc: 'Obriga o entregador a seguir a ordem da rota, sem pular paradas.', value: enforceOrder, set: setEnforceOrder },
             ...(features.customerRatingsEnabled

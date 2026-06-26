@@ -422,6 +422,8 @@ export async function orderRoutes(app: FastifyInstance) {
   const createSchema = z.object({
     customerId:      z.string().uuid(),
     notes:           z.string().optional(),
+    paymentMethod:   z.enum(['prepaid', 'cash', 'card']).default('prepaid'),
+    cashAmount:      z.number().positive().optional(),
     lat:             z.number().optional(),
     lng:             z.number().optional(),
     deliveryAddress: z.string().optional(),
@@ -453,6 +455,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
+          paymentMethod: body.paymentMethod, cashAmount: body.cashAmount,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         { orderRepo }
       )
