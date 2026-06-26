@@ -9,6 +9,7 @@
 type NewRelicApi = {
   addCustomAttributes: (atts: Record<string, string | number | boolean>) => void
   recordCustomEvent: (eventType: string, atts: Record<string, string | number | boolean>) => void
+  noticeError: (error: Error, customAttributes?: Record<string, string | number | boolean>) => void
 }
 
 let cached: NewRelicApi | null | undefined
@@ -30,6 +31,23 @@ type Actor = {
   sub:     string
   storeId: string
   role?:   string
+}
+
+// Reporta um erro ao New Relic com o stack trace real e atributos extras
+// (correlationId, rota, statusCode). Assim, em vez de um genérico "HttpError 409",
+// o erro aparece com mensagem + stack + contexto em Errors Inbox / NRQL.
+// Best-effort: nunca lança.
+export function noticeError(
+  error: Error,
+  attributes?: Record<string, string | number | boolean>,
+): void {
+  const nr = agent()
+  if (!nr) return
+  try {
+    nr.noticeError(error, attributes)
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // Registra um evento custom no New Relic, consultável em NRQL pelo eventType.

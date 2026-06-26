@@ -22,7 +22,7 @@ import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
 import { announcementRoutes } from './modules/announcements/interface/routes'
 import { wsHub } from './shared/infra/websocket'
-import { addCorrelationId } from './shared/infra/observability'
+import { addCorrelationId, noticeError, recordCustomEvent } from './shared/infra/observability'
 
 // Versão do build (gerada em dist/version.json pelo `npm run build`). Lida uma
 // vez no carregamento do módulo; em dev (tsx, sem version.json) cai no fallback.
@@ -55,6 +55,66 @@ export function buildApp() {
   // em NRQL). req.id já é o header do cliente ou um id gerado pelo Fastify.
   app.addHook('onRequest', async (req) => {
     addCorrelationId(String(req.id))
+  })
+
+  // Requests cujo erro já foi tratado pelo onError (erros lançados), para o
+  // onResponse não logar duas vezes a mesma falha.
+  const handledErrors = new WeakSet<object>()
+
+  // Erros LANÇADOS (throw / reply.send(err) / validação / 500 inesperado):
+  // loga o stack completo no stdout (correlacionado pelo correlationId) e
+  // reporta ao New Relic com a mensagem + stack reais (não o genérico "HttpError").
+  app.addHook('onError', async (req, _reply, err) => {
+    handledErrors.add(req)
+    const statusCode = (err as { statusCode?: number }).statusCode ?? 500
+    const route = req.routeOptions?.url ?? req.url
+    const payload = { err, statusCode, route, method: req.method }
+    if (statusCode >= 500) req.log.error(payload, '[error] request failed')
+    else req.log.warn(payload, '[error] request rejected')
+    noticeError(err, {
+      correlationId: String(req.id),
+      statusCode,
+      method: req.method,
+      route,
+    })
+  })
+
+  // Respostas de erro montadas à mão (ex.: reply.code(409).send({ error })) não
+  // passam pelo onError. No onSend temos o corpo, então conseguimos extrair a
+  // mensagem real e dar visibilidade a TODAS as respostas 4xx/5xx: log no stdout
+  // + evento agregável no New Relic. NRQL:
+  //   SELECT * FROM HttpErrorResponse WHERE statusCode = 409 SINCE 1 day ago
+  app.addHook('onSend', async (req, reply, payload) => {
+    const statusCode = reply.statusCode
+    if (statusCode < 400) return payload
+
+    let message = ''
+    if (typeof payload === 'string' && payload.length > 0) {
+      try {
+        const body = JSON.parse(payload) as { error?: unknown; message?: unknown }
+        message = String(body.error ?? body.message ?? '')
+      } catch {
+        message = payload.slice(0, 200)
+      }
+    }
+    const route = req.routeOptions?.url ?? req.url
+
+    // onError já logou (com stack) os erros lançados; aqui evitamos duplicar e
+    // cobrimos as respostas de erro construídas manualmente.
+    if (!handledErrors.has(req)) {
+      req.log.warn(
+        { statusCode, route, method: req.method, error: message },
+        '[response] error status',
+      )
+    }
+    recordCustomEvent('HttpErrorResponse', {
+      correlationId: String(req.id),
+      statusCode,
+      method: req.method,
+      route,
+      message,
+    })
+    return payload
   })
 
   const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean) ?? []
