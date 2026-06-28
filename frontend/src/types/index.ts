@@ -168,6 +168,14 @@ export interface DeliveryRoute {
   finishedAt?: string
   deliverer: { id: string; name: string; username: string }
   orders: RouteOrderItem[]
+  log?: RouteLogEntry[]
+}
+
+export interface RouteLogEntry {
+  at:       string
+  by:       { type: 'store_user' | 'deliverer' | 'system'; id?: string; name?: string }
+  action:   string
+  details?: Record<string, unknown>
 }
 
 export interface StoreUser {

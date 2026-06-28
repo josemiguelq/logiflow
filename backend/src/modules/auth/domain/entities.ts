@@ -5,7 +5,8 @@ export interface StoreUser {
   storeId: string
   name: string
   email: string
-  passwordHash: string
+  passwordHash: string | null   // null para usuários que logam só via Google
+  googleSub?: string | null     // id da conta Google vinculada (login com Google)
   role: StoreUserRole
   active: boolean
   createdAt: Date

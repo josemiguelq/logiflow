@@ -1,5 +1,5 @@
 import { DB } from '../../../../shared/db/client'
-import { DeliveryRoute, RouteStatus, RouteWithDetails, RouteOrderItem } from '../../domain/entities'
+import { DeliveryRoute, RouteStatus, RouteWithDetails, RouteOrderItem, RouteLogEntry } from '../../domain/entities'
 import { isDeliveredOffTarget } from '../../../../shared/utils/geo'
 
 function mapRoute(r: Record<string, unknown>): DeliveryRoute {
@@ -26,7 +26,17 @@ const LIST_JOIN = `
 `
 
 export function createPgRouteRepo(db: DB) {
+  // Anexa uma entrada ao log JSONB da rota (mesmo padrão de orders.appendLog).
+  const appendLog = async (routeId: string, entry: RouteLogEntry): Promise<void> => {
+    await db.query(
+      `UPDATE routes SET log = COALESCE(log, '[]'::jsonb) || $2::jsonb WHERE id = $1`,
+      [routeId, JSON.stringify([entry])]
+    )
+  }
+
   return {
+    appendLog,
+
     async findByStore(
       storeId: string,
       page = 1,
@@ -69,6 +79,7 @@ export function createPgRouteRepo(db: DB) {
             username: (r as Record<string, unknown>).deliverer_username as string,
           },
           orders: [],
+          log: [],   // listagem fica leve; o log completo só vem no detalhe
         })),
         total,
       }
@@ -115,6 +126,7 @@ export function createPgRouteRepo(db: DB) {
       return {
         ...mapRoute(r),
         orderCount: Number(r.order_count ?? 0),
+        log: (r.log as RouteLogEntry[] | null) ?? [],
         deliverer: {
           id:       r.deliverer_id as string,
           name:     r.deliverer_name as string,
@@ -161,6 +173,7 @@ export function createPgRouteRepo(db: DB) {
           username: (r as Record<string, unknown>).deliverer_username as string,
         },
         orders: [],
+        log: [],
       }))
     },
 
@@ -205,19 +218,31 @@ export function createPgRouteRepo(db: DB) {
 
     async checkAndFinish(routeId: string, storeId: string): Promise<boolean> {
       const { rows } = await db.query(
-        `SELECT COUNT(*) FILTER (WHERE status NOT IN ('DELIVERED','CANCELLED')) AS pending
+        `SELECT
+           COUNT(*)                                                      AS total,
+           COUNT(*) FILTER (WHERE status NOT IN ('DELIVERED','CANCELLED')) AS pending
          FROM orders WHERE route_id = $1`,
         [routeId]
       )
+      const total   = Number((rows[0] as Record<string, unknown>)?.total ?? 0)
       const pending = Number((rows[0] as Record<string, unknown>)?.pending ?? 0)
       if (pending > 0) return false
 
-      await db.query(
+      const { rowCount } = await db.query(
         `UPDATE routes
          SET status = 'FINISHED', finished_at = COALESCE(finished_at, now())
          WHERE id = $1 AND store_id = $2 AND status != 'FINISHED'`,
         [routeId, storeId]
       )
+      // Registra a finalização automática só quando ESTA chamada efetivou a mudança.
+      if (rowCount) {
+        await appendLog(routeId, {
+          at:     new Date().toISOString(),
+          by:     { type: 'system' },
+          action: 'FINISHED',
+          details: { trigger: total === 0 ? 'auto_empty' : 'auto_all_done' },
+        }).catch(() => { /* non-fatal */ })
+      }
       return true
     },
   }

@@ -8,6 +8,8 @@ import { DEFAULT_ROLE_SCOPES } from '../../../shared/scopes'
 import { createPgStoreUserRepo } from '../infrastructure/repositories/pg-store-user-repo'
 import { createPgDelivererAuthRepo } from '../infrastructure/repositories/pg-deliverer-auth-repo'
 import { loginStoreUser } from '../application/use-cases/login-store-user'
+import { loginStoreUserGoogle, EMAIL_NOT_REGISTERED } from '../application/use-cases/login-store-user-google'
+import { verifyGoogleIdToken } from '../../../shared/auth/google'
 import { loginDeliverer } from '../application/use-cases/login-deliverer'
 import { loginDelivererV2 } from '../application/use-cases/login-deliverer-v2'
 import { isValidDocument, onlyDigits } from '../../../shared/utils/document'
@@ -19,6 +21,10 @@ const loginSchema = z.object({
   email:    z.string().email().optional(),
   username: z.string().optional(),
   password: z.string().min(1),
+})
+
+const googleLoginSchema = z.object({
+  credential: z.string().min(1),
 })
 
 export async function authRoutes(app: FastifyInstance) {
@@ -42,6 +48,30 @@ export async function authRoutes(app: FastifyInstance) {
     return (row?.scopes as string[] | undefined) ?? DEFAULT_ROLE_SCOPES[role] ?? []
   }
 
+  // Registra a sessão (IP + dispositivo), atualiza o último login e revoga sessões
+  // anteriores do mesmo IP+dispositivo (uma ativa por dispositivo). Reusado pelo
+  // login por senha e pelo login com Google — a sessão é sempre o nosso JWT (jti).
+  async function registerSession(
+    jti: string,
+    user: { id: string; storeId: string },
+    req: { ip: string; headers: Record<string, unknown> }
+  ) {
+    const ip = req.ip
+    const ua = String(req.headers['user-agent'] ?? '').slice(0, 400)
+    await db.query(
+      `UPDATE store_user_sessions SET revoked_at = now()
+       WHERE store_user_id = $1 AND ip = $2 AND user_agent = $3 AND revoked_at IS NULL`,
+      [user.id, ip, ua]
+    ).catch(() => { /* non-fatal */ })
+    await db.query(
+      `INSERT INTO store_user_sessions (id, store_user_id, store_id, ip, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [jti, user.id, user.storeId, ip, ua]
+    ).catch(() => { /* non-fatal */ })
+    await db.query(`UPDATE store_users SET last_login_at = now() WHERE id = $1`, [user.id])
+      .catch(() => { /* non-fatal */ })
+  }
+
   app.post('/auth/store/login', async (req, reply) => {
     const body = loginSchema.parse(req.body)
     if (!body.email) return reply.code(400).send({ error: 'email required' })
@@ -53,28 +83,38 @@ export async function authRoutes(app: FastifyInstance) {
         { storeUserRepo, signJwt, getScopes }
       )
       await clearLoginFailures('store', body.email)
-
-      // Registra a sessão (IP + dispositivo), atualiza o último login e revoga
-      // sessões anteriores do mesmo IP+dispositivo (uma ativa por dispositivo).
-      const ip = req.ip
-      const ua = (req.headers['user-agent'] ?? '').slice(0, 400)
-      const uid = result.user.id
-      await db.query(
-        `UPDATE store_user_sessions SET revoked_at = now()
-         WHERE store_user_id = $1 AND ip = $2 AND user_agent = $3 AND revoked_at IS NULL`,
-        [uid, ip, ua]
-      ).catch(() => { /* non-fatal */ })
-      await db.query(
-        `INSERT INTO store_user_sessions (id, store_user_id, store_id, ip, user_agent)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [jti, uid, result.user.storeId, ip, ua]
-      ).catch(() => { /* non-fatal */ })
-      await db.query(`UPDATE store_users SET last_login_at = now() WHERE id = $1`, [uid])
-        .catch(() => { /* non-fatal */ })
-
+      await registerSession(jti, result.user, req)
       return result
     } catch {
       await registerLoginFailure('store', body.email)
+      return reply.code(401).send({ error: 'Invalid credentials' })
+    }
+  })
+
+  // Login com Google: verifica o ID token (uma vez), autentica usuário já cadastrado
+  // e emite o nosso JWT/sessão (revogável). Não cria usuário — só o owner cadastra.
+  app.post('/auth/store/login/google', async (req, reply) => {
+    const body = googleLoginSchema.parse(req.body)
+    let identity
+    try {
+      identity = await verifyGoogleIdToken(body.credential)
+    } catch {
+      return reply.code(401).send({ error: 'Falha ao validar a conta Google' })
+    }
+    const jti = randomUUID()
+    try {
+      const result = await loginStoreUserGoogle(
+        { email: identity.email, sub: identity.sub, jti },
+        { storeUserRepo, signJwt, getScopes }
+      )
+      await registerSession(jti, result.user, req)
+      return result
+    } catch (err) {
+      if ((err as Error).message === EMAIL_NOT_REGISTERED) {
+        return reply.code(403).send({
+          error: 'E-mail não cadastrado. Solicite ao administrador da loja que cadastre seu acesso.',
+        })
+      }
       return reply.code(401).send({ error: 'Invalid credentials' })
     }
   })
@@ -139,11 +179,13 @@ export async function authRoutes(app: FastifyInstance) {
 
   // Cria loja + papéis (scopes) + usuário OWNER numa transação. Retorna token+user.
   async function createStoreWithOwner(input: {
-    storeName: string; ownerName: string; email: string; password: string
+    storeName: string; ownerName: string; email: string
+    password?: string | null; googleSub?: string | null
     cpfCnpj?: string | null; address?: string | null; lat?: number | null; lng?: number | null
     planId?: string | null
   }) {
-    const hash     = await bcrypt.hash(input.password, 10)
+    // Owner pode usar senha OU Google. Sem senha (só-Google), password_hash fica null.
+    const hash     = input.password ? await bcrypt.hash(input.password, 10) : null
     const username = input.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9_.]/g, '_')
 
     const { storeId, user } = await db.transaction(async (client) => {
@@ -170,10 +212,10 @@ export async function authRoutes(app: FastifyInstance) {
         )
       }
       const { rows: [u] } = await client.query(
-        `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
-         VALUES ($1, $2, $3, $4, $5, 'OWNER')
+        `INSERT INTO store_users (store_id, name, email, username, password_hash, google_sub, role)
+         VALUES ($1, $2, $3, $4, $5, $6, 'OWNER')
          RETURNING id, name, email, role`,
-        [store.id, input.ownerName, input.email, username, hash]
+        [store.id, input.ownerName, input.email, username, hash, input.googleSub ?? null]
       )
       return { storeId: store.id as string, user: u as { id: string; name: string; email: string; role: string } }
     })
@@ -184,17 +226,35 @@ export async function authRoutes(app: FastifyInstance) {
   }
 
   const registerSchema = z.object({
-    storeName: z.string().min(2),
-    ownerName: z.string().min(2),
-    email:     z.string().email(),
-    password:  z.string().min(6),
+    storeName:        z.string().min(2),
+    ownerName:        z.string().min(2).optional(),
+    email:            z.string().email().optional(),
+    password:         z.string().min(6).optional(),
+    googleCredential: z.string().min(1).optional(),
+  }).refine(b => !!b.password !== !!b.googleCredential, {
+    message: 'Informe senha OU login com Google (apenas um)',
+  }).refine(b => !!b.googleCredential || (!!b.email && !!b.ownerName), {
+    message: 'email e ownerName são obrigatórios no cadastro por senha',
   })
 
   app.post('/auth/register', async (req, reply) => {
     const body = registerSchema.parse(req.body)
-    const { rows: [existing] } = await db.query('SELECT id FROM store_users WHERE email = $1', [body.email])
+
+    // Google: a identidade (email/nome/sub) vem do token verificado.
+    let email = body.email, ownerName = body.ownerName, googleSub: string | null = null
+    if (body.googleCredential) {
+      let identity
+      try { identity = await verifyGoogleIdToken(body.googleCredential) }
+      catch { return reply.code(401).send({ error: 'Falha ao validar a conta Google' }) }
+      email = identity.email; ownerName = body.ownerName ?? identity.name; googleSub = identity.sub
+    }
+
+    const { rows: [existing] } = await db.query('SELECT id FROM store_users WHERE email = $1', [email])
     if (existing) return reply.code(409).send({ error: 'E-mail já está em uso' })
-    return reply.code(201).send(await createStoreWithOwner(body))
+    return reply.code(201).send(await createStoreWithOwner({
+      storeName: body.storeName, ownerName: ownerName!, email: email!,
+      password: body.password ?? null, googleSub,
+    }))
   })
 
   // ── Planos ativos (público — usado no wizard de cadastro) ─────────────────
@@ -272,9 +332,14 @@ export async function authRoutes(app: FastifyInstance) {
   })
 
   const convertSchema = z.object({
-    ownerName: z.string().min(2),
-    password:  z.string().min(6),
-    planId:    z.string().uuid().nullable().optional(),
+    ownerName:        z.string().min(2).optional(),
+    password:         z.string().min(6).optional(),
+    googleCredential: z.string().min(1).optional(),
+    planId:           z.string().uuid().nullable().optional(),
+  }).refine(b => !!b.password !== !!b.googleCredential, {
+    message: 'Informe senha OU login com Google (apenas um)',
+  }).refine(b => !!b.googleCredential || !!b.ownerName, {
+    message: 'ownerName é obrigatório no cadastro por senha',
   })
 
   app.post('/auth/prospect/:id/convert', async (req, reply) => {
@@ -286,7 +351,16 @@ export async function authRoutes(app: FastifyInstance) {
     if (p.status === 'CONVERTED') return reply.code(409).send({ error: 'Cadastro já concluído' })
     if (!p.email || !p.store_name) return reply.code(400).send({ error: 'Cadastro incompleto' })
 
-    const { rows: [u] } = await db.query('SELECT id FROM store_users WHERE email = $1', [p.email])
+    // Com Google, o e-mail da conta vira o e-mail de acesso do owner.
+    let email = p.email as string, ownerName = body.ownerName, googleSub: string | null = null
+    if (body.googleCredential) {
+      let identity
+      try { identity = await verifyGoogleIdToken(body.googleCredential) }
+      catch { return reply.code(401).send({ error: 'Falha ao validar a conta Google' }) }
+      email = identity.email; ownerName = body.ownerName ?? identity.name; googleSub = identity.sub
+    }
+
+    const { rows: [u] } = await db.query('SELECT id FROM store_users WHERE email = $1', [email])
     if (u) return reply.code(409).send({ error: 'E-mail já está em uso' })
 
     let planId: string | null = null
@@ -299,12 +373,13 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const result = await createStoreWithOwner({
-      storeName: p.store_name, ownerName: body.ownerName, email: p.email, password: body.password,
+      storeName: p.store_name, ownerName: ownerName!, email,
+      password: body.password ?? null, googleSub,
       cpfCnpj: p.cpf_cnpj, address: p.address, lat: p.lat, lng: p.lng, planId,
     })
     await db.query(
       `UPDATE prospects SET status = 'CONVERTED', owner_name = $2, converted_store_id = $3, updated_at = now() WHERE id = $1`,
-      [id, body.ownerName, result.user.storeId]
+      [id, ownerName, result.user.storeId]
     )
     return reply.code(201).send(result)
   })

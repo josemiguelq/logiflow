@@ -44,6 +44,22 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
   CANCELLED:        'bg-red-50 text-red-700',
 }
 
+const ROUTE_LOG_ACTION_LABEL: Record<string, string> = {
+  CREATED:                 'Rota criada',
+  STARTED:                 'Rota iniciada',
+  FINISHED:                'Rota finalizada',
+  ORDER_ADDED:             'Pedido adicionado',
+  ORDER_RETURNED_TO_QUEUE: 'Pedido devolvido à fila',
+  ORDER_CANCELLED:         'Pedido cancelado',
+  ORDER_DELIVERED:         'Pedido entregue',
+}
+
+function actorLabel(by: { type: string; name?: string }): string {
+  const who  = by.name || (by.type === 'deliverer' ? 'Entregador' : by.type === 'store_user' ? 'Operador' : 'Sistema')
+  const kind = by.type === 'deliverer' ? 'entregador' : by.type === 'store_user' ? 'operador' : 'sistema'
+  return `${who} · ${kind}`
+}
+
 const fmtDateTime = (iso?: string) =>
   iso
     ? new Date(iso).toLocaleString('pt-BR', {
@@ -315,6 +331,43 @@ export default function RouteDetailPage({ params }: Props) {
           </ol>
         </div>
       )}
+
+      {/* Histórico de atualizações (auditoria da rota) */}
+      {route.log && route.log.length > 0 && (() => {
+        const sortedLog = [...route.log].sort(
+          (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
+        )
+        return (
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-700">
+              Histórico de atualizações
+            </h2>
+            <ol className="relative">
+              <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
+              {sortedLog.map((e, i) => {
+                const orderId = e.details?.orderId as string | undefined
+                return (
+                  <li key={i} className="relative pl-6 pb-4 last:pb-0">
+                    <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                      <p className="text-sm font-medium text-gray-900">
+                        {ROUTE_LOG_ACTION_LABEL[e.action] ?? e.action}
+                        {orderId && (
+                          <span className="ml-2 font-mono text-xs font-normal text-gray-400">
+                            #{orderId.slice(-8).toUpperCase()}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-400">{fmtDateTime(e.at)}</p>
+                    </div>
+                    <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
+        )
+      })()}
 
       {/* Orders list */}
       <h2 className="mb-3 text-sm font-semibold text-gray-700 uppercase tracking-wide">

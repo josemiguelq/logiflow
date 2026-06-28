@@ -94,6 +94,21 @@ export async function orderRoutes(app: FastifyInstance) {
       ...(details ? { details } : {}),
     }).catch(() => { /* non-fatal */ })
 
+  // Auditoria da ROTA: registra na rota mudanças de composição (pedido entregue,
+  // devolvido à fila, cancelado, etc.). Best-effort.
+  const logRouteEvent = (
+    routeId: string,
+    actor: { type: string; sub: string; name: string },
+    action: string,
+    details?: Record<string, unknown>,
+  ) =>
+    routeRepo.appendLog(routeId, {
+      at:     new Date().toISOString(),
+      by:     { type: actor.type as 'store_user' | 'deliverer' | 'system', id: actor.sub, name: actor.name },
+      action,
+      ...(details ? { details } : {}),
+    }).catch(() => { /* non-fatal */ })
+
   // Avança um pedido ON_ROUTE para OUT_FOR_DELIVERY (próxima parada da rota).
   // Dispara o mesmo conjunto de efeitos de uma transição normal: log de sistema,
   // broadcast WS, notificação ao cliente e invalidação de cache.
@@ -583,6 +598,7 @@ export async function orderRoutes(app: FastifyInstance) {
         pickupCode:  generateCode(),
       })
       await routeRepo.linkOrders(route.id, [order.id])
+      logRouteEvent(route.id, req.actor, 'CREATED', { orderCount: 1, delivererId: body.delivererId })
 
       logEvent(order.id, req.actor, 'ASSIGNED', { delivererId: body.delivererId })
       wsHub.broadcastOrderUpdate(req.actor.storeId, order)
@@ -621,6 +637,7 @@ export async function orderRoutes(app: FastifyInstance) {
       if (order.delivererId) invalidateDelivererOrders(order.delivererId as string)
 
       if (order.routeId) {
+        logRouteEvent(order.routeId, req.actor, 'ORDER_CANCELLED', { orderId: id })
         await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
       }
 
@@ -966,6 +983,7 @@ export async function orderRoutes(app: FastifyInstance) {
       })
       // Link only the orders actually claimed — not the full original list
       await routeRepo.linkOrders(route.id, claimedIds)
+      logRouteEvent(route.id, req.actor, 'CREATED', { orderCount: claimedIds.length })
 
       // Clear reservations — orders are now ASSIGNED, no longer need soft locks
       if (claimedIds.length > 0) {
@@ -1121,6 +1139,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
         // Auto-finish route when all its orders are delivered/cancelled
         if (order.routeId) {
+          logRouteEvent(order.routeId, req.actor, 'ORDER_DELIVERED', { orderId: id })
           const finished = await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
           // Rota fechou → entregador ficou livre. Se há pedidos prontos esperando,
           // avisa o entregador (push) e o operador (WS) para organizar logo.
@@ -1185,6 +1204,7 @@ export async function orderRoutes(app: FastifyInstance) {
       // entregues/cancelados (ou a rota tiver ficado vazia). checkAndFinish cobre
       // ambos os casos (route_id sem pedidos pendentes → FINISHED).
       if (returnedRouteId) {
+        logRouteEvent(returnedRouteId as string, req.actor, 'ORDER_RETURNED_TO_QUEUE', { orderId: id })
         await routeRepo.checkAndFinish(returnedRouteId as string, req.actor.storeId)
       }
 
@@ -1242,7 +1262,10 @@ export async function orderRoutes(app: FastifyInstance) {
     invalidateStoreOrders(req.actor.storeId)
 
     const routeId = (order as Record<string, unknown>).route_id as string | undefined
-    if (routeId) await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+    if (routeId) {
+      logRouteEvent(routeId, req.actor, 'ORDER_CANCELLED', { orderId: id })
+      await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+    }
 
     return null
   }
