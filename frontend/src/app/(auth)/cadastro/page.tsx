@@ -11,6 +11,9 @@ import { StoreUser } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { maskDocument, stripDocument, isValidDocument } from '@/lib/document'
+import { GoogleLogin } from '@react-oauth/google'
+
+const GOOGLE_ENABLED = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
 const MapPicker = dynamic(() => import('./_map_picker'), {
   ssr: false,
@@ -134,6 +137,22 @@ export default function CadastroPage() {
       const res = await api.post<{ token: string; user: StoreUser }>(
         `/auth/prospect/${prospectId}/convert`,
         { ownerName: ownerName.trim(), password, planId: planId || null }
+      )
+      setSession(res.token, res.user)
+      router.push('/orders')
+    } catch (err: unknown) {
+      setError((err as Error).message ?? 'Erro ao concluir')
+    } finally { setLoading(false) }
+  }
+
+  // Conclui o cadastro com Google: o e-mail/nome da conta Google viram o acesso do owner.
+  async function submitStep3Google(credential?: string) {
+    if (!credential) return
+    setLoading(true); setError('')
+    try {
+      const res = await api.post<{ token: string; user: StoreUser }>(
+        `/auth/prospect/${prospectId}/convert`,
+        { ownerName: ownerName.trim() || undefined, googleCredential: credential, planId: planId || null }
       )
       setSession(res.token, res.user)
       router.push('/orders')
@@ -273,6 +292,28 @@ export default function CadastroPage() {
               <Field label="Confirmar senha">
                 <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" placeholder="Repita a senha" />
               </Field>
+
+              {GOOGLE_ENABLED && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-gray-200" />
+                    <span className="text-xs text-gray-400">ou cadastre-se com</span>
+                    <div className="h-px flex-1 bg-gray-200" />
+                  </div>
+                  <div className="flex justify-center">
+                    <GoogleLogin
+                      onSuccess={(cred) => submitStep3Google(cred.credential)}
+                      onError={() => setError('Erro ao cadastrar com Google')}
+                      text="signup_with"
+                      shape="rectangular"
+                      width="320"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-gray-400">
+                    Com o Google você não precisa definir senha.
+                  </p>
+                </>
+              )}
             </div>
           )}
 

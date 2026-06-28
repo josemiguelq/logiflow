@@ -372,7 +372,8 @@ export async function settingsRoutes(app: FastifyInstance) {
     name:     z.string().min(2),
     email:    z.string().email(),
     username: z.string().min(3).regex(/^[a-z0-9_.]+$/),
-    password: z.string().min(6),
+    // Opcional: usuários que vão logar só com Google podem ser criados sem senha.
+    password: z.string().min(6).optional(),
     role:     z.enum(['MANAGER', 'ASSISTANT']),
   })
 
@@ -386,7 +387,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     )
     if (dup) return reply.code(409).send({ error: 'Email ou username já em uso nesta loja' })
 
-    const hash = await bcrypt.hash(body.password, 10)
+    const hash = body.password ? await bcrypt.hash(body.password, 10) : null
     const { rows: [user] } = await db.query(
       `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, email, username, role, created_at`,

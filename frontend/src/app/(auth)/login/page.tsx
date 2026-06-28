@@ -4,16 +4,33 @@ import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Truck, Eye, EyeOff } from 'lucide-react'
+import { GoogleLogin } from '@react-oauth/google'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+const GOOGLE_ENABLED = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+
 export default function LoginPage() {
-  const router     = useRouter()
-  const { login }  = useAuth()
+  const router                  = useRouter()
+  const { login, loginGoogle }  = useAuth()
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+
+  async function handleGoogle(credential?: string) {
+    if (!credential) return
+    setError('')
+    setLoading(true)
+    try {
+      await loginGoogle(credential)
+      router.push('/orders')
+    } catch (err: unknown) {
+      setError((err as Error).message ?? 'Erro ao entrar com Google')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -85,6 +102,25 @@ export default function LoginPage() {
           <Button type="submit" className="mt-6 w-full" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
           </Button>
+
+          {GOOGLE_ENABLED && (
+            <>
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-xs text-gray-400">ou</span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+              <div className="flex justify-center">
+                <GoogleLogin
+                  onSuccess={(cred) => handleGoogle(cred.credential)}
+                  onError={() => setError('Erro ao entrar com Google')}
+                  text="signin_with"
+                  shape="rectangular"
+                  width="320"
+                />
+              </div>
+            </>
+          )}
 
           <p className="mt-4 text-center text-sm text-gray-500">
             Não tem conta?{' '}
