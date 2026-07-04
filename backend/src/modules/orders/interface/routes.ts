@@ -1109,7 +1109,7 @@ export async function orderRoutes(app: FastifyInstance) {
           : undefined
 
       try {
-        const order = await confirmDelivery(
+        const { order, alreadyDelivered } = await confirmDelivery(
           { orderId: id, storeId: req.actor.storeId, delivererId: req.actor.sub,
             requireDeliveryCode, code: body.code, photoUrls: uploadedUrls,
             lat: body.lat, lng: body.lng, note: body.note,
@@ -1117,6 +1117,10 @@ export async function orderRoutes(app: FastifyInstance) {
             cashCollected: body.cashCollected },
           { orderRepo, log: req.log }
         )
+
+        // Reenvio de um pedido já entregue: responde sucesso sem reprocessar
+        // (sem log/notificação/broadcast/auto-avanço duplicados).
+        if (alreadyDelivered) return order
 
         // Auditoria + resumo de tempos: registra a entrega e calcula os
         // segmentos entre cada mudança de status a partir do log completo.

@@ -35,6 +35,14 @@ export async function confirmDelivery(
   if (!order) throw new Error('Order not found')
   if (order.delivererId !== delivererId) throw new Error('Not your order')
 
+  // Idempotência: se o pedido já foi entregue, não reprocessa. Um reenvio da
+  // requisição (timeout no app → entregador toca "Confirmar" de novo) não deve
+  // duplicar fotos, pagamentos, log de auditoria nem a notificação ao cliente.
+  // Retorna sucesso com o pedido atual para o app fechar a tela normalmente.
+  if (order.status === 'DELIVERED') {
+    return { order, alreadyDelivered: true }
+  }
+
   if (requireDeliveryCode && code && order.deliveryCode.trim() !== code.trim().toUpperCase()) {
     throw new Error('Código de entrega incorreto')
   }
@@ -81,19 +89,19 @@ export async function confirmDelivery(
     }
   }
 
-  // Pagamentos recebidos: grava cada um na tabela order_payments. Só registra
-  // quando o pedido ainda não foi entregue, para que um reenvio da requisição
-  // (timeout no app) não duplique os pagamentos. (As fotos já são idempotentes.)
-  if (order.status !== 'DELIVERED' && payments && payments.length > 0) {
+  // Pagamentos recebidos: grava cada um na tabela order_payments. Reenvios de um
+  // pedido já entregue nem chegam aqui (early-return acima), então não duplicam.
+  if (payments && payments.length > 0) {
     for (const p of payments) {
       await orderRepo.addPayment(orderId, p, delivererId)
     }
   }
 
   const collected = (payments && payments.length > 0) || cashCollected
-  return orderRepo.updateStatus(orderId, 'DELIVERED', {
+  const updated = await orderRepo.updateStatus(orderId, 'DELIVERED', {
     deliveredAt:  new Date(),
     deliveryNote: note || undefined,
     cashCollected: collected ? true : undefined,
   })
+  return { order: updated, alreadyDelivered: false }
 }
