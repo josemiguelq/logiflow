@@ -4,7 +4,7 @@ import { use, useState } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil, ChevronDown } from 'lucide-react'
 import { DeliveryRoute, RouteStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -108,6 +108,7 @@ export default function RouteDetailPage({ params }: Props) {
   )
   const [finishing, setFinishing] = useState(false)
   const [editing, setEditing]     = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [adjustingOrder, setAdjustingOrder] = useState<{ id: string; address: string } | null>(null)
 
   async function forceFinish() {
@@ -332,43 +333,6 @@ export default function RouteDetailPage({ params }: Props) {
         </div>
       )}
 
-      {/* Histórico de atualizações (auditoria da rota) */}
-      {route.log && route.log.length > 0 && (() => {
-        const sortedLog = [...route.log].sort(
-          (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
-        )
-        return (
-          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-700">
-              Histórico de atualizações
-            </h2>
-            <ol className="relative">
-              <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
-              {sortedLog.map((e, i) => {
-                const orderId = e.details?.orderId as string | undefined
-                return (
-                  <li key={i} className="relative pl-6 pb-4 last:pb-0">
-                    <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-                      <p className="text-sm font-medium text-gray-900">
-                        {ROUTE_LOG_ACTION_LABEL[e.action] ?? e.action}
-                        {orderId && (
-                          <span className="ml-2 font-mono text-xs font-normal text-gray-400">
-                            #{orderId.slice(-8).toUpperCase()}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-400">{fmtDateTime(e.at)}</p>
-                    </div>
-                    <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
-        )
-      })()}
-
       {/* Orders list */}
       <h2 className="mb-3 text-sm font-semibold text-gray-700 uppercase tracking-wide">
         Pedidos desta rota
@@ -470,6 +434,59 @@ export default function RouteDetailPage({ params }: Props) {
           ))}
         </div>
       )}
+
+      {/* Histórico de atualizações (auditoria da rota) — colapsável, ao final */}
+      {route.log && route.log.length > 0 && (() => {
+        const sortedLog = [...route.log].sort(
+          (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
+        )
+        return (
+          <div className="mt-6 rounded-2xl border border-gray-200 bg-white">
+            <button
+              onClick={() => setShowHistory(v => !v)}
+              aria-expanded={showHistory}
+              className="flex w-full items-center justify-between gap-2 p-5 text-left"
+            >
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
+                Histórico de atualizações
+                <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium normal-case tracking-normal text-gray-500">
+                  {sortedLog.length}
+                </span>
+              </h2>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${showHistory ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {showHistory && (
+              <div className="px-5 pb-5">
+                <ol className="relative">
+                  <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
+                  {sortedLog.map((e, i) => {
+                    const orderId = e.details?.orderId as string | undefined
+                    return (
+                      <li key={i} className="relative pl-6 pb-4 last:pb-0">
+                        <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                          <p className="text-sm font-medium text-gray-900">
+                            {ROUTE_LOG_ACTION_LABEL[e.action] ?? e.action}
+                            {orderId && (
+                              <span className="ml-2 font-mono text-xs font-normal text-gray-400">
+                                #{orderId.slice(-8).toUpperCase()}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-400">{fmtDateTime(e.at)}</p>
+                        </div>
+                        <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {adjustingOrder && (
         <AdjustAddressModal
