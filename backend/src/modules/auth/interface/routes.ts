@@ -286,11 +286,14 @@ export async function authRoutes(app: FastifyInstance) {
     storeName: z.string().min(2),
     cpfCnpj:   z.string().min(11),
     email:     z.string().email(),
+    phone:     z.string().min(10),
   })
 
   app.post('/auth/prospect', async (req, reply) => {
     const body = prospectStep1.parse(req.body)
     if (!isValidDocument(body.cpfCnpj)) return reply.code(400).send({ error: 'CPF/CNPJ inválido' })
+    const phone = onlyDigits(body.phone)
+    if (phone.length < 10 || phone.length > 11) return reply.code(400).send({ error: 'Telefone inválido' })
     const { rows: [u] } = await db.query('SELECT id FROM store_users WHERE email = $1', [body.email])
     if (u) return reply.code(409).send({ error: 'E-mail já está em uso' })
 
@@ -301,14 +304,14 @@ export async function authRoutes(app: FastifyInstance) {
     )
     if (existing) {
       await db.query(
-        `UPDATE prospects SET store_name = $2, cpf_cnpj = $3, status = 'STEP1', updated_at = now() WHERE id = $1`,
-        [existing.id, body.storeName, doc]
+        `UPDATE prospects SET store_name = $2, cpf_cnpj = $3, phone = $4, status = 'STEP1', updated_at = now() WHERE id = $1`,
+        [existing.id, body.storeName, doc, phone]
       )
       return { id: existing.id }
     }
     const { rows: [p] } = await db.query(
-      `INSERT INTO prospects (store_name, cpf_cnpj, email, status) VALUES ($1, $2, $3, 'STEP1') RETURNING id`,
-      [body.storeName, doc, body.email]
+      `INSERT INTO prospects (store_name, cpf_cnpj, email, phone, status) VALUES ($1, $2, $3, $4, 'STEP1') RETURNING id`,
+      [body.storeName, doc, body.email, phone]
     )
     return { id: p.id }
   })

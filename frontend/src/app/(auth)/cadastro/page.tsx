@@ -11,6 +11,7 @@ import { StoreUser } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { maskDocument, stripDocument, isValidDocument } from '@/lib/document'
+import { maskPhone, stripPhone } from '@/lib/phone'
 import { GoogleLogin } from '@react-oauth/google'
 
 const GOOGLE_ENABLED = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
@@ -63,6 +64,7 @@ export default function CadastroPage() {
   const [storeName, setStoreName] = useState('')
   const [doc, setDoc]             = useState('')
   const [email, setEmail]         = useState('')
+  const [phone, setPhone]         = useState('')
   const [prospectId, setProspectId] = useState('')
 
   // Etapa 2
@@ -88,10 +90,12 @@ export default function CadastroPage() {
     if (storeName.trim().length < 2) return setError('Informe o nome da loja')
     if (!isValidDocument(doc)) return setError('CPF/CNPJ inválido')
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setError('E-mail inválido')
+    if (stripPhone(phone).length < 10) return setError('Telefone inválido')
     setLoading(true); setError('')
     try {
       const res = await api.post<{ id: string }>('/auth/prospect', {
         storeName: storeName.trim(), cpfCnpj: stripDocument(doc), email: email.trim(),
+        phone: stripPhone(phone),
       })
       setProspectId(res.id)
       setStep(1)
@@ -206,6 +210,9 @@ export default function CadastroPage() {
               </Field>
               <Field label="E-mail">
                 <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="seu@email.com" />
+              </Field>
+              <Field label="Telefone de contato">
+                <Input value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} inputMode="tel" placeholder="(11) 99999-9999" />
               </Field>
             </div>
           )}
