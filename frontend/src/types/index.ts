@@ -82,6 +82,7 @@ export interface Order {
   id: string
   storeId: string
   status: OrderStatus
+  routeId?: string
   routePosition?: number
   pickupCode: string
   deliveryCode: string
