@@ -18,9 +18,6 @@ void main() async {
       options.profilesSampleRate = 1.0;
     },
     appRunner: () async {
-      await Firebase.initializeApp();
-      // Prefixo do Correlation-Id (plataforma + versão + build) para os requests.
-      await initCorrelationId();
       // Capture Flutter widget-tree errors (build, layout, paint)
       final originalOnError = FlutterError.onError;
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -55,23 +52,35 @@ void main() async {
         );
       };
 
+      // Sobe o app imediatamente com a splash animada; a init pesada roda atrás
+      // dela (evita a tela branca no cold start e a espera do restore da sessão).
       final container = ProviderContainer();
-      try {
-        await container.read(authProvider.notifier).restoreSession();
-        if (container.read(authProvider) != null) {
-          PushNotificationService.init().ignore();
-        }
-      } catch (e, st) {
-        await Sentry.captureException(e, stackTrace: st,
-            hint: Hint.withMap({'context': 'restoreSession'}));
-      }
-
       runApp(SentryWidget(
         child: UncontrolledProviderScope(
           container: container,
           child: const LogiFlowApp(),
         ),
       ));
+
+      await Firebase.initializeApp();
+      // Prefixo do Correlation-Id (plataforma + versão + build) para os requests.
+      await initCorrelationId();
+      try {
+        await Future.wait([
+          container.read(authProvider.notifier).restoreSession(),
+          // Tempo mínimo para a animação da splash ser vista.
+          Future<void>.delayed(const Duration(milliseconds: 1400)),
+        ]);
+        if (container.read(authProvider) != null) {
+          PushNotificationService.init().ignore();
+        }
+      } catch (e, st) {
+        await Sentry.captureException(e, stackTrace: st,
+            hint: Hint.withMap({'context': 'restoreSession'}));
+      } finally {
+        // Fim da inicialização → o router sai da splash para login/pedidos.
+        container.read(bootstrapDoneProvider.notifier).state = true;
+      }
     },
   );
 }

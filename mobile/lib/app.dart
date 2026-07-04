@@ -13,6 +13,7 @@ import 'features/orders/order_selection_screen.dart';
 import 'features/orders/route_planning_screen.dart';
 import 'features/orders/pickup_confirmation_screen.dart';
 import 'features/delivery/delivery_screen.dart';
+import 'features/splash/splash_screen.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/gamification/gamification_screen.dart';
 import 'features/tracking/location_service.dart';
@@ -22,13 +23,23 @@ import 'features/announcements/announcement_popup.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 
+// Vira true quando a inicialização (Firebase, restore da sessão) termina.
+// Enquanto false, o app fica na splash animada.
+final bootstrapDoneProvider = StateProvider<bool>((_) => false);
+
 final _router = GoRouter(
   navigatorKey: _navigatorKey,
-  initialLocation: '/orders',
+  initialLocation: '/splash',
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
-    final session = container.read(authProvider);
     final loc = state.matchedLocation;
+
+    // Ainda inicializando → mantém na splash.
+    if (!container.read(bootstrapDoneProvider)) {
+      return loc == '/splash' ? null : '/splash';
+    }
+
+    final session = container.read(authProvider);
 
     if (session == null) {
       return loc == '/login' ? null : '/login';
@@ -37,7 +48,7 @@ final _router = GoRouter(
     if (!session.termsAccepted) {
       return loc == '/termos' ? null : '/termos';
     }
-    if (loc == '/termos' || loc == '/login') {
+    if (loc == '/termos' || loc == '/login' || loc == '/splash') {
       return session.needsOnboarding ? '/setup' : '/orders';
     }
     if (session.needsOnboarding && loc != '/setup') {
@@ -46,6 +57,7 @@ final _router = GoRouter(
     return null;
   },
   routes: [
+    GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
     GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
     GoRoute(path: '/termos', builder: (_, __) => const TermsScreen()),
     GoRoute(path: '/setup', builder: (_, __) => const SetupScreen()),
@@ -99,6 +111,11 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> with WidgetsBindingOb
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncTracking(ref.read(authProvider));
       _checkAnnouncements();
+    });
+
+    // Fim da inicialização → re-avalia o router para sair da splash.
+    ref.listenManual<bool>(bootstrapDoneProvider, (_, done) {
+      if (done) _router.refresh();
     });
 
     // Responde a login / logout e a mudanças de status (switch de disponibilidade).
