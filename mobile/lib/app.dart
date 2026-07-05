@@ -14,6 +14,8 @@ import 'features/orders/route_planning_screen.dart';
 import 'features/orders/pickup_confirmation_screen.dart';
 import 'features/delivery/delivery_screen.dart';
 import 'features/splash/splash_screen.dart';
+import 'features/force_update/force_update_screen.dart';
+import 'core/api/api_client.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/gamification/gamification_screen.dart';
 import 'features/tracking/location_service.dart';
@@ -33,6 +35,11 @@ final _router = GoRouter(
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
     final loc = state.matchedLocation;
+
+    // Atualização obrigatória: sobrepõe tudo (inclusive splash/auth).
+    if (container.read(forceUpdateProvider)) {
+      return loc == kForceUpdateDeepLink ? null : kForceUpdateDeepLink;
+    }
 
     // Ainda inicializando → mantém na splash.
     if (!container.read(bootstrapDoneProvider)) {
@@ -58,6 +65,7 @@ final _router = GoRouter(
   },
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
+    GoRoute(path: kForceUpdateDeepLink, builder: (_, __) => const ForceUpdateScreen()),
     GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
     GoRoute(path: '/termos', builder: (_, __) => const TermsScreen()),
     GoRoute(path: '/setup', builder: (_, __) => const SetupScreen()),
@@ -116,6 +124,18 @@ class _LogiFlowAppState extends ConsumerState<LogiFlowApp> with WidgetsBindingOb
     // Fim da inicialização → re-avalia o router para sair da splash.
     ref.listenManual<bool>(bootstrapDoneProvider, (_, done) {
       if (done) _router.refresh();
+    });
+
+    // Deeplink dirigido pelo backend (409 + X-App-Deep-Link). v1: só a tela de
+    // atualização obrigatória é reconhecida (allowlist); outras telas depois.
+    ApiClient.onDeepLink = (deepLink, storeUrl) {
+      if (deepLink == kForceUpdateDeepLink) {
+        ref.read(forceUpdateStoreUrlProvider.notifier).state = storeUrl;
+        ref.read(forceUpdateProvider.notifier).state = true;
+      }
+    };
+    ref.listenManual<bool>(forceUpdateProvider, (_, on) {
+      if (on) _router.refresh();
     });
 
     // Responde a login / logout e a mudanças de status (switch de disponibilidade).
