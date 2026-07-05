@@ -11,6 +11,7 @@ import { WsProvider, useWs } from '@/hooks/WsContext'
 import { formatDelayDuration } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { OperatorAlerts } from '@/components/alerts/operator-alerts'
+import { DynamicManifest } from '@/components/pwa/dynamic-manifest'
 
 interface DeliveryNotif {
   id:            string
@@ -129,6 +130,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const logoUrl     = themeData?.theme?.logoUrl ?? null
   const customTheme = themeData?.features?.customThemeEnabled ?? false
   const storeName   = themeData?.theme?.storeName ?? null
+  const primary     = themeData?.theme?.primary ?? null
   const brandName   = customTheme && storeName ? storeName : 'LogiFlow'
 
   useTheme()
@@ -172,6 +174,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
+
+      <DynamicManifest storeName={storeName} primary={primary} customTheme={customTheme} />
 
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
