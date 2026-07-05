@@ -115,48 +115,53 @@ const INCLUDED_IN_ALL = [
 const PLANS = [
   {
     name: 'Starter',
-    price: 50,
+    price: 80,
     deliverers: 'Até 2 entregadores',
     deliveries: 'Até 1.000 entregas/mês',
     features: [],
     highlight: false,
     badge: null,
+    active: true,
   },
   {
     name: 'Starter + WhatsApp',
-    price: 60,
+    price: 100,
     deliverers: 'Até 2 entregadores',
     deliveries: 'Até 1.000 entregas/mês',
     features: ['Notificações WhatsApp automáticas'],
     highlight: false,
     badge: null,
+    active: false,
   },
   {
     name: 'Pro',
-    price: 80,
+    price: 120,
     deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
     features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros'],
     highlight: false,
     badge: null,
+    active: true,
   },
   {
     name: 'Pro + WhatsApp',
-    price: 100,
+    price: 140,
     deliverers: 'Até 4 entregadores',
     deliveries: 'Sem limite de entregas',
     features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas'],
     highlight: true,
     badge: 'Mais popular',
+    active: false,
   },
   {
     name: 'Pro Premium',
-    price: 120,
+    price: 160,
     deliverers: 'Entregadores ilimitados',
     deliveries: 'Sem limite de entregas',
     features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas'],
     highlight: false,
     badge: null,
+    active: true,
   },
 ]
 
@@ -446,16 +451,26 @@ export default function LandingPage() {
                   )}
                 </div>
 
-                <Link
-                  href="/cadastro"
-                  className={`block rounded-xl py-3 text-center text-sm font-semibold transition-colors ${
-                    plan.highlight
-                      ? 'bg-white text-blue-600 hover:bg-blue-50'
-                      : 'bg-gray-900 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  Começar grátis
-                </Link>
+                {plan.active ? (
+                  <Link
+                    href="/cadastro"
+                    className={`block rounded-xl py-3 text-center text-sm font-semibold transition-colors ${
+                      plan.highlight
+                        ? 'bg-white text-blue-600 hover:bg-blue-50'
+                        : 'bg-gray-900 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    Começar grátis
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="block w-full cursor-not-allowed rounded-xl bg-gray-200 py-3 text-center text-sm font-semibold text-gray-400"
+                  >
+                    Começar grátis
+                  </button>
+                )}
               </div>
             ))}
           </div>
