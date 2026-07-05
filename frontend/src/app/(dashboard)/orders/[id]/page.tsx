@@ -120,6 +120,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               Pedido #{order.id.slice(-8).toUpperCase()}
             </h1>
             <p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p>
+            {order.routeId && (
+                <Link
+                  href={`/routes/${order.routeId}`}
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Ver rota deste pedido
+                </Link>
+              )}
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
@@ -199,16 +208,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     Posição #{order.routePosition}
                   </span>
                 )}
-              </div>
-              {order.routeId && (
-                <Link
-                  href={`/routes/${order.routeId}`}
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-                >
-                  <MapPin className="h-3.5 w-3.5" />
-                  Ver rota deste pedido
-                </Link>
-              )}
+              </div>              
             </section>
           )}
 
