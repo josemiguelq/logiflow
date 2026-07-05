@@ -1085,20 +1085,20 @@ export async function orderRoutes(app: FastifyInstance) {
       const maxPhotos = parseInt((maxRow as Record<string, unknown> | undefined)?.value as string ?? '1', 10) || 1
       const cappedUrls = rawUrls.slice(0, maxPhotos)
 
-      // Upload each photo (base64 data URIs → storage)
-      const uploadedUrls: string[] = []
-      for (let i = 0; i < cappedUrls.length; i++) {
-        const url = cappedUrls[i]!
-        if (url.startsWith('data:')) {
+      // Upload das fotos (base64 → storage) em PARALELO — o loop sequencial
+      // somava a latência de cada upload. Mantém a ordem para o photo_index;
+      // uploads que falham viram null e são descartados.
+      const uploadedUrls = (await Promise.all(
+        cappedUrls.map(async (url, i) => {
+          if (!url.startsWith('data:')) return url
           try {
-            uploadedUrls.push(await uploadBase64(`proof/${id}/${i + 1}`, url))
+            return await uploadBase64(`proof/${id}/${i + 1}`, url)
           } catch (uploadErr) {
             req.log.error({ err: uploadErr }, 'proof photo upload failed — skipping')
+            return null
           }
-        } else {
-          uploadedUrls.push(url)
-        }
-      }
+        })
+      )).filter((u): u is string => u !== null)
 
       // Normaliza pagamentos: usa a lista nova quando presente; senão converte o
       // par antigo collectedAmount/collectedMethod num único pagamento.
