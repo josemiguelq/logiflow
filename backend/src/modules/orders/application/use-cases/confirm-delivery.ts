@@ -1,6 +1,7 @@
 import { IOrderRepository } from '../ports'
-import { PaymentMethod } from '../../domain/entities'
+import { PaymentMethod, OrderLogEntry, OrderWithDetails } from '../../domain/entities'
 import { haversineMeters } from '../../../../shared/utils/geo'
+import { computeSummary } from '../order-summary'
 
 interface Deps {
   orderRepo: IOrderRepository
@@ -12,7 +13,7 @@ export async function confirmDelivery(
     orderId, storeId, delivererId, code, photoUrls, lat, lng,
     requireDeliveryCode = true, note,
     enforceOrder = false, requireProximity = false, proximityMeters = 100,
-    payments, cashCollected,
+    payments, cashCollected, by,
   }: {
     orderId: string
     storeId: string
@@ -28,6 +29,8 @@ export async function confirmDelivery(
     proximityMeters?: number
     payments?: { amount: number; method: PaymentMethod }[]
     cashCollected?: boolean
+    // Autor da ação, para a entrada de auditoria DELIVERED gravada junto à entrega.
+    by: OrderLogEntry['by']
   },
   { orderRepo, log }: Deps
 ) {
@@ -98,10 +101,32 @@ export async function confirmDelivery(
   }
 
   const collected = (payments && payments.length > 0) || cashCollected
-  const updated = await orderRepo.updateStatus(orderId, 'DELIVERED', {
-    deliveredAt:  new Date(),
-    deliveryNote: note || undefined,
+  const deliveredAt = new Date()
+
+  // Auditoria + summary calculados em memória a partir do log já carregado, evitando
+  // reler o pedido (findById pesado) só para computar os segmentos de tempo.
+  const deliveredEntry: OrderLogEntry = { at: deliveredAt.toISOString(), by, action: 'DELIVERED' }
+  const fullLog = [...(order.log ?? []), deliveredEntry]
+  const summary = computeSummary(fullLog)
+
+  await orderRepo.finalizeDelivered(orderId, {
+    deliveredAt,
+    deliveryNote:  note || undefined,
     cashCollected: collected ? true : undefined,
+    logEntry:      deliveredEntry,
+    summary,
   })
-  return { order: updated, alreadyDelivered: false }
+
+  // Objeto enriquecido (com customer/deliverer do findById inicial) para o broadcast
+  // e a resposta — sem uma segunda ida ao banco.
+  const finalized: OrderWithDetails = {
+    ...order,
+    status:        'DELIVERED',
+    deliveredAt,
+    deliveryNote:  note || order.deliveryNote,
+    cashCollected: collected ? true : order.cashCollected,
+    log:           fullLog,
+    summary,
+  }
+  return { order: finalized, alreadyDelivered: false }
 }

@@ -11,6 +11,15 @@ export interface IOrderRepository {
   findPreparing(storeId: string, requestingDelivererId?: string): Promise<OrderWithDetails[]>
   create(data: Omit<Order, 'id' | 'createdAt'>): Promise<Order>
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>
+  // Conclui a entrega num único UPDATE: status DELIVERED + timestamps + append no
+  // log de auditoria + summary de tempos. Evita 3 escritas separadas na mesma linha.
+  finalizeDelivered(id: string, opts: {
+    deliveredAt:    Date
+    deliveryNote?:  string
+    cashCollected?: boolean
+    logEntry:       OrderLogEntry
+    summary:        OrderSummary
+  }): Promise<Order>
   // Marca/desmarca prioridade e ajusta o horário máximo de entrega.
   updatePriority(id: string, isPriority: boolean, maxDeliveryTime: Date | null): Promise<Order>
   // Transição idempotente ON_ROUTE → OUT_FOR_DELIVERY. Retorna o pedido só quando

@@ -97,7 +97,7 @@ async function start() {
   const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
   // ── Notification worker ──────────────────────────────────────────────────
-  createNotificationWorker(async (job) => {
+  const notificationWorker = createNotificationWorker(async (job) => {
     // ── Pickup reminder push (fan-out para vários entregadores livres) ──
     if (job.data.type === 'pickup_reminder') {
       const { storeId, delivererIds, count, minutes } = job.data
@@ -288,6 +288,26 @@ async function start() {
       .catch((err) => app.log.error({ err }, '[sessions] cleanup failed'))
   cleanupSessions()
   setInterval(cleanupSessions, 24 * 60 * 60_000)
+
+  // ── Shutdown gracioso ──────────────────────────────────────────────────────
+  // Deploy/restart: para de aceitar requests, deixa o job em voo terminar e para
+  // de puxar novos. Jobs ainda na fila sobrevivem no Redis e são reprocessados.
+  let shuttingDown = false
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    app.log.info({ signal }, '[shutdown] draining…')
+    try {
+      await app.close()                 // fecha o HTTP server (sem novos requests)
+      await notificationWorker.close()  // deixa o job atual terminar; para de pegar novos
+    } catch (err) {
+      app.log.error({ err }, '[shutdown] error while draining')
+    } finally {
+      process.exit(0)
+    }
+  }
+  process.on('SIGTERM', () => void shutdown('SIGTERM'))
+  process.on('SIGINT',  () => void shutdown('SIGINT'))
 
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)

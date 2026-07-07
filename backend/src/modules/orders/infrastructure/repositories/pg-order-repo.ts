@@ -332,6 +332,27 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return mapOrderRow(rows[0] as Record<string, unknown>)
     },
 
+    async finalizeDelivered(id, { deliveredAt, deliveryNote, cashCollected, logEntry, summary }) {
+      // Status + timestamp + auditoria (append no log) + summary numa escrita só.
+      const { rows } = await db.query(
+        `UPDATE orders SET
+           status         = 'DELIVERED',
+           delivered_at   = $2,
+           delivery_note  = COALESCE($3, delivery_note),
+           cash_collected = COALESCE($4, cash_collected),
+           log            = COALESCE(log, '[]'::jsonb) || $5::jsonb,
+           summary        = $6::jsonb
+         WHERE id = $1
+         RETURNING *`,
+        [
+          id, deliveredAt, deliveryNote ?? null,
+          cashCollected ?? null,
+          JSON.stringify([logEntry]), JSON.stringify(summary),
+        ]
+      )
+      return mapOrderRow(rows[0] as Record<string, unknown>)
+    },
+
     async transitionToOutForDelivery(id) {
       // Guarda atômica: só transiciona quando ainda ON_ROUTE. RETURNING garante que
       // só o chamador que realmente mudou o status dispara efeitos (notificação 1x).

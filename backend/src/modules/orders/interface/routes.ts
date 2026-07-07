@@ -14,7 +14,6 @@ import { assignDeliverer } from '../application/use-cases/assign-deliverer'
 import { confirmPickup } from '../application/use-cases/confirm-pickup'
 import { confirmDelivery } from '../application/use-cases/confirm-delivery'
 import { getStoreSettings } from '../../settings/store-settings-cache'
-import { computeSummary } from '../application/order-summary'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
@@ -1146,7 +1145,8 @@ export async function orderRoutes(app: FastifyInstance) {
             requireDeliveryCode, code: body.code, photoUrls: uploadedUrls,
             lat: body.lat, lng: body.lng, note: body.note,
             enforceOrder, requireProximity, proximityMeters, payments,
-            cashCollected: body.cashCollected },
+            cashCollected: body.cashCollected,
+            by: { type: req.actor.type as 'deliverer', id: req.actor.sub, name: req.actor.name } },
           { orderRepo, log: req.log }
         )
 
@@ -1154,14 +1154,9 @@ export async function orderRoutes(app: FastifyInstance) {
         // (sem log/notificação/broadcast/auto-avanço duplicados).
         if (alreadyDelivered) return order
 
-        // Auditoria + resumo de tempos: registra a entrega e calcula os
-        // segmentos entre cada mudança de status a partir do log completo.
-        await logEvent(id, req.actor, 'DELIVERED')
-        const fullOrder = await orderRepo.findById(id, req.actor.storeId)
-        if (fullOrder?.log) {
-          await orderRepo.setSummary(id, computeSummary(fullOrder.log)).catch(() => { /* non-fatal */ })
-        }
-        wsHub.broadcastOrderUpdate(req.actor.storeId, fullOrder ?? order)
+        // Auditoria + summary já foram gravados junto à entrega (finalizeDelivered),
+        // num único UPDATE — não é preciso reler o pedido aqui.
+        wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         queueNotif(req.actor.storeId, id, 'DELIVERED')
         invalidateDelivererOrders(req.actor.sub)
         invalidateStoreOrders(req.actor.storeId)

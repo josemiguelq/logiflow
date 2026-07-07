@@ -22,6 +22,7 @@ import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
 import { announcementRoutes } from './modules/announcements/interface/routes'
 import { wsHub } from './shared/infra/websocket'
+import { notificationQueue } from './shared/infra/queue'
 import { addCorrelationId, noticeError, recordCustomEvent } from './shared/infra/observability'
 
 // Versão do build (gerada em dist/version.json pelo `npm run build`). Lida uma
@@ -234,7 +235,49 @@ export function buildApp() {
   app.register(announcementRoutes)
 
   app.get('/health', async (_req, reply) => {
-    return reply.type('text/plain').send('ok')
+    // Postgres: conectividade + latência média (3 amostras de SELECT 1, sequenciais,
+    // refletindo o custo real de round-trip até o banco remoto) + estado do pool.
+    const samples: number[] = []
+    let pgConnected = true
+    let pgError: string | undefined
+    try {
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now()
+        await db.query('SELECT 1')
+        samples.push(performance.now() - t0)
+      }
+    } catch (err) {
+      pgConnected = false
+      pgError = (err as Error).message
+    }
+    const round = (n: number) => Math.round(n * 10) / 10
+    const avgLatencyMs = samples.length
+      ? round(samples.reduce((a, b) => a + b, 0) / samples.length)
+      : null
+
+    // Fila de notificações (BullMQ): contagem por estado.
+    let queue: Record<string, number> | { error: string }
+    try {
+      queue = await notificationQueue.getJobCounts(
+        'waiting', 'active', 'completed', 'failed', 'delayed', 'paused',
+      )
+    } catch (err) {
+      queue = { error: (err as Error).message }
+    }
+
+    const healthy = pgConnected
+    reply.code(healthy ? 200 : 503)
+    return {
+      status: healthy ? 'ok' : 'degraded',
+      postgres: {
+        connected:    pgConnected,
+        avgLatencyMs,
+        samplesMs:    samples.map(round),
+        pool:         db.poolStats(),
+        ...(pgError ? { error: pgError } : {}),
+      },
+      queue,
+    }
   })
 
   // Confirma qual build está no ar: buildTime muda a cada deploy novo;
