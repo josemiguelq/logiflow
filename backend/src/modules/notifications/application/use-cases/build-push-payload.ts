@@ -44,6 +44,12 @@ export function buildPushPayload(
         body:  `O pedido de ${customerName} está em rota há mais de 1 hora. Verifique com urgência.`,
         data,
       }
+    case 'PRIORITY_OVERDUE':
+      return {
+        title: 'Pedido prioritário atrasado 👑',
+        body:  `O prazo de entrega do pedido de ${customerName} já passou. Priorize.`,
+        data,
+      }
     default:
       return {
         title: 'Pedido atualizado',

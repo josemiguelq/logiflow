@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { buildApp, buildTime } from './app'
 import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
-import { scanDelayedOrders } from './modules/orders/application/use-cases/scan-delayed-orders'
+import { scanDelayedOrders, scanPriorityOverdue } from './modules/orders/application/use-cases/scan-delayed-orders'
 import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
@@ -263,10 +263,14 @@ async function start() {
   // ── WebSocket heartbeat ──────────────────────────────────────────────────
   startHeartbeat()
 
-  // ── Delay scanner: alerta pedidos em rota parados há muito tempo ─────────
-  const runDelayScan = () =>
+  // ── Delay scanner: alerta pedidos em rota parados há muito tempo, e pedidos
+  //    prioritários cujo horário máximo de entrega estourou ──────────────────
+  const runDelayScan = () => {
     scanDelayedOrders({ orderRepo, notificationQueue, log: app.log })
       .catch((err) => app.log.error({ err }, '[delay-scan] unexpected error'))
+    scanPriorityOverdue({ orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[priority-scan] unexpected error'))
+  }
   runDelayScan()
   setInterval(runDelayScan, 60_000)
 

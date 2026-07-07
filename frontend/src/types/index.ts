@@ -87,6 +87,8 @@ export interface Order {
   pickupCode: string
   deliveryCode: string
   notes?: string
+  isPriority?: boolean
+  maxDeliveryTime?: string
   deliveryNote?: string
   cancelReason?: string
   createdAt: string

@@ -18,6 +18,10 @@ export interface Order {
   pickupCode: string
   deliveryCode: string
   notes?: string
+  // Prioridade: pedido urgente destacado (coroa) e ordenado no topo. maxDeliveryTime é
+  // o horário máximo de entrega (opcional) que dispara alerta quando estourado.
+  isPriority: boolean
+  maxDeliveryTime?: Date
   paymentMethod: 'prepaid' | 'cash' | 'card'
   cashAmount?: number
   cashCollected: boolean

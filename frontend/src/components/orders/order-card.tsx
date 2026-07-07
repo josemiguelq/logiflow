@@ -8,6 +8,7 @@ import { formatDate, getDelayInfo, cancelReasonLabel } from '@/lib/utils'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { DelayFlag } from '@/components/orders/delay-flag'
+import { PriorityBadge } from '@/components/orders/priority-badge'
 import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X, Trash2 } from 'lucide-react'
 
 interface Props {
@@ -84,6 +85,7 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <StatusBadge status={order.status} />
+          {order.isPriority && <PriorityBadge maxDeliveryTime={order.maxDeliveryTime} />}
           {delay.level !== 'none' && <DelayFlag delay={delay} />}
         </div>
       </div>

@@ -90,3 +90,60 @@ export async function scanDelayedOrders({ orderRepo, notificationQueue, log }: D
     if (!liveIds.has(id)) sentAlerts.delete(id)
   }
 }
+
+// Dedup em memória: cada pedido prioritário dispara no máximo 1 alerta de prazo
+// estourado enquanto continuar ativo. Não persiste (mesma semântica de sentAlerts).
+const sentPriorityAlerts = new Set<string>()
+
+/**
+ * Varre os pedidos prioritários ativos cujo horário máximo de entrega já passou e
+ * dispara um alerta (push ao entregador + toast no painel via WS). Um alerta por
+ * pedido enquanto ele permanecer atrasado e ativo.
+ */
+export async function scanPriorityOverdue({ orderRepo, notificationQueue, log }: Deps) {
+  let candidates
+  try {
+    candidates = await orderRepo.findPriorityOverdue()
+  } catch (err) {
+    log.error({ err }, '[priority-scan] failed to query candidates')
+    return
+  }
+
+  const liveIds = new Set<string>()
+
+  for (const o of candidates) {
+    liveIds.add(o.id)
+    if (sentPriorityAlerts.has(o.id)) continue
+
+    const shortId = '#' + o.id.slice(-8).toUpperCase()
+    try {
+      if (o.delivererId) {
+        await notificationQueue.add('push', {
+          type:        'push',
+          delivererId: o.delivererId,
+          orderId:     o.id,
+          storeId:     o.storeId,
+          statusEvent: 'PRIORITY_OVERDUE',
+        })
+      }
+
+      wsHub.broadcastPriorityOverdue(o.storeId, {
+        orderId:       o.id,
+        customerName:  o.customerName,
+        shortId,
+        delivererName: o.delivererName,
+        minutesLate:   Math.floor(o.minutesLate),
+      })
+
+      sentPriorityAlerts.add(o.id)
+      log.info({ orderId: o.id, storeId: o.storeId, minutesLate: Math.floor(o.minutesLate) }, '[priority-scan] alert dispatched')
+    } catch (err) {
+      log.error({ err, orderId: o.id }, '[priority-scan] failed to dispatch alert')
+    }
+  }
+
+  // Limpa do dedup os pedidos que deixaram de estar prioritários/atrasados/ativos.
+  for (const id of sentPriorityAlerts) {
+    if (!liveIds.has(id)) sentPriorityAlerts.delete(id)
+  }
+}

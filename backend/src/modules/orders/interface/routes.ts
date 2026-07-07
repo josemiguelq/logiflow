@@ -437,6 +437,8 @@ export async function orderRoutes(app: FastifyInstance) {
   const createSchema = z.object({
     customerId:      z.string().uuid(),
     notes:           z.string().optional(),
+    isPriority:      z.boolean().optional().default(false),
+    maxDeliveryTime: z.string().datetime().optional(),
     paymentMethod:   z.enum(['prepaid', 'cash', 'card']).default('prepaid'),
     cashAmount:      z.number().positive().optional(),
     lat:             z.number().optional(),
@@ -467,15 +469,23 @@ export async function orderRoutes(app: FastifyInstance) {
       )
       const deliveryCode = (cust?.phone as string | undefined)?.slice(-4) ?? generateCode().slice(0, 4)
 
+      // Prazo só faz sentido quando prioritário.
+      const maxDeliveryTime = body.isPriority && body.maxDeliveryTime
+        ? new Date(body.maxDeliveryTime)
+        : undefined
+
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
+          isPriority: body.isPriority, maxDeliveryTime,
           paymentMethod: body.paymentMethod, cashAmount: body.cashAmount,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         { orderRepo }
       )
 
-      logEvent(order.id, actor, 'CREATED')
+      logEvent(order.id, actor, 'CREATED', body.isPriority
+        ? { isPriority: true, maxDeliveryTime: maxDeliveryTime?.toISOString() ?? null }
+        : undefined)
       wsHub.broadcastOrderUpdate(storeId, order)
       queueNotif(storeId, order.id, 'PREPARING')
       queuePush(storeId, order.id, 'PREPARING')
@@ -662,6 +672,40 @@ export async function orderRoutes(app: FastifyInstance) {
         [note.trim() || null, id]
       )
       logEvent(id, req.actor, 'NOTE_CHANGED', { from: previousNote, to: note.trim() || null })
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+      return updated
+    }
+  )
+
+  // Store user marca/desmarca a prioridade e ajusta o horário máximo de entrega.
+  app.patch(
+    '/orders/:id/priority',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { isPriority, maxDeliveryTime } = z.object({
+        isPriority:      z.boolean(),
+        maxDeliveryTime: z.string().datetime().nullable().optional(),
+      }).parse(req.body)
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+        return reply.code(400).send({ error: 'Não é possível alterar a prioridade de um pedido finalizado' })
+      }
+
+      // Prazo só é guardado quando prioritário.
+      const nextMax = isPriority && maxDeliveryTime ? new Date(maxDeliveryTime) : null
+
+      await orderRepo.updatePriority(id, isPriority, nextMax)
+      logEvent(id, req.actor, 'PRIORITY_CHANGED', {
+        from: { isPriority: order.isPriority, maxDeliveryTime: order.maxDeliveryTime ?? null },
+        to:   { isPriority, maxDeliveryTime: nextMax?.toISOString() ?? null },
+      })
+
       const updated = (await orderRepo.findById(id, req.actor.storeId))!
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       invalidateStoreOrders(req.actor.storeId)
@@ -860,6 +904,9 @@ export async function orderRoutes(app: FastifyInstance) {
             WHERE deliverer_id = $1 AND status = 'DELIVERED'
               AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_deliveries,
          (SELECT count(*) FROM orders, bounds
+            WHERE deliverer_id = $1 AND status = 'DELIVERED' AND is_priority
+              AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_priority_deliveries,
+         (SELECT count(*) FROM orders, bounds
             WHERE cancelled_by_deliverer_id = $1
               AND cancelled_at >= bounds.start_ts AND cancelled_at < bounds.end_ts) AS month_cancelled,
          (SELECT count(*) FROM routes, bounds
@@ -872,9 +919,10 @@ export async function orderRoutes(app: FastifyInstance) {
       month,
       today: { deliveries: Number(row.today_deliveries ?? 0) },
       monthSummary: {
-        deliveries: Number(row.month_deliveries ?? 0),
-        cancelled:  Number(row.month_cancelled ?? 0),
-        routes:     Number(row.month_routes ?? 0),
+        deliveries:         Number(row.month_deliveries ?? 0),
+        priorityDeliveries: Number(row.month_priority_deliveries ?? 0),
+        cancelled:          Number(row.month_cancelled ?? 0),
+        routes:             Number(row.month_routes ?? 0),
       },
     }
   })

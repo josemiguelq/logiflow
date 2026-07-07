@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Search, ChevronDown, X } from 'lucide-react'
+import { Search, ChevronDown, X, Crown } from 'lucide-react'
 import { Order, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
@@ -144,7 +144,16 @@ export default function AllOrdersPage() {
               {orders.map(order => (
                 <tr key={order.id} className="transition-colors hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-700">
-                    #{order.id.slice(-8).toUpperCase()}
+                    <span className="inline-flex items-center gap-1.5">
+                      {order.isPriority && (
+                        <Crown
+                          className="h-3.5 w-3.5 shrink-0 text-amber-500"
+                          fill="currentColor"
+                          aria-label="Pedido prioritário"
+                        />
+                      )}
+                      #{order.id.slice(-8).toUpperCase()}
+                    </span>
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-900">{order.customer.name}</td>
                   <td className="hidden sm:table-cell px-4 py-3 max-w-[220px]">

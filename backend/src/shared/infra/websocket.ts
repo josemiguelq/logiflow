@@ -70,6 +70,20 @@ export const wsHub = {
     this.broadcastToStore(storeId, 'order_delayed', payload)
   },
 
+  // Pedido prioritário cujo horário máximo de entrega estourou — alerta no painel.
+  broadcastPriorityOverdue(
+    storeId: string,
+    payload: {
+      orderId: string
+      customerName: string
+      shortId: string
+      delivererName?: string
+      minutesLate: number
+    }
+  ) {
+    this.broadcastToStore(storeId, 'order_priority_overdue', payload)
+  },
+
   // Entregador ficou livre (rota concluída) e há pedidos prontos esperando —
   // o painel do operador mostra um aviso para organizar/atribuir.
   broadcastDelivererIdleWaiting(

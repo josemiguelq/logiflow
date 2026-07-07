@@ -12,6 +12,8 @@ import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 import { DelayFlag } from '@/components/orders/delay-flag'
+import { PriorityBadge } from '@/components/orders/priority-badge'
+import { PriorityEditor } from '@/components/orders/priority-editor'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 
@@ -132,6 +134,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
+            {order.isPriority && <PriorityBadge maxDeliveryTime={order.maxDeliveryTime} />}
             {delay.level !== 'none' && <DelayFlag delay={delay} />}
             {order.deliveredOffTarget && (
               <span
@@ -210,6 +213,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 )}
               </div>              
             </section>
+          )}
+
+          {!COMPLETED_STATUSES.includes(order.status) && (
+            <PriorityEditor order={order} onChanged={() => mutate()} />
           )}
 
           <section className="border-t border-gray-100 pt-4">
