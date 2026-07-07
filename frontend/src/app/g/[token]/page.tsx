@@ -1,18 +1,27 @@
 'use client'
 
-import { use, useState, useEffect, useCallback } from 'react'
-import { CheckCircle, Loader2, Truck } from 'lucide-react'
+import { use, useState, useEffect, useCallback, useRef } from 'react'
+
+interface YTPlayer { playVideo(): void; destroy(): void }
+interface YTEvent { data: number }
+interface YTPlayerOpts { videoId: string; playerVars?: Record<string, string | number>; events: { onReady?: () => void; onStateChange?: (e: YTEvent) => void } }
+interface YTAPI { Player: { new(el: HTMLElement | string, opts: YTPlayerOpts): YTPlayer }; PlayerState: { ENDED: number; PLAYING: number; PAUSED: number } }
+declare global { interface Window { YT: YTAPI | undefined } }
+import { CheckCircle, Loader2, Truck, Play } from 'lucide-react'
 import { WarrantyPublic } from '@/types'
 import { SignaturePad } from './_signature_pad'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
+function getYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)
+  return m ? m[1] : null
+}
+
 function embedVideoUrl(url: string | null): { type: 'youtube' | 'direct'; src: string } | null {
   if (!url) return null
-  const watchMatch = url.match(/(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]+)/)
-  if (watchMatch) return { type: 'youtube', src: `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&rel=0` }
-  const shortMatch = url.match(/(?:youtu\.be\/)([a-zA-Z0-9_-]+)/)
-  if (shortMatch) return { type: 'youtube', src: `https://www.youtube.com/embed/${shortMatch[1]}?autoplay=1&rel=0` }
+  const id = getYouTubeId(url)
+  if (id) return { type: 'youtube', src: id }
   return { type: 'direct', src: url }
 }
 
@@ -25,6 +34,10 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
   const [signature, setSignature] = useState<string | null>(null)
   const [state,    setState]    = useState<'idle' | 'loading' | 'done' | 'already'>('idle')
   const [error,    setError]    = useState('')
+  const [videoEnded, setVideoEnded]   = useState(false)
+  const [videoPlaying, setVideoPlaying] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const playerRef = useRef<YTPlayer | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -61,8 +74,48 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
 
   useEffect(() => { load() }, [load])
 
+  // YouTube IFrame API setup
+  useEffect(() => {
+    const video = embedVideoUrl(data?.videoUrl ?? null)
+    if (video?.type !== 'youtube' || state === 'already' || state === 'done') return
+
+    const id = video.src
+
+    function initPlayer() {
+      const yt = window.YT
+      if (!yt?.Player) { setTimeout(initPlayer, 200); return }
+      playerRef.current?.destroy()
+      const el = document.getElementById('youtube-player')
+      if (!el) return
+      playerRef.current = new yt.Player(el, {
+        videoId: id,
+        playerVars: { controls: 0, modestbranding: 1, rel: 0, autoplay: 1, playsinline: 1 },
+        events: {
+          onReady: () => { setVideoPlaying(true) },
+          onStateChange: (e) => {
+            if (e.data === yt.PlayerState.ENDED) { setVideoEnded(true); setVideoPlaying(false) }
+            if (e.data === yt.PlayerState.PLAYING) setVideoPlaying(true)
+            if (e.data === yt.PlayerState.PAUSED && !videoEnded) {
+              setTimeout(() => { playerRef.current?.playVideo() }, 100)
+            }
+          },
+        },
+      })
+    }
+
+    if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+      const tag = document.createElement('script')
+      tag.src = 'https://www.youtube.com/iframe_api'
+      document.head.appendChild(tag)
+    }
+
+    initPlayer()
+
+    return () => { playerRef.current?.destroy() }
+  }, [data?.videoUrl, state, videoEnded])
+
   const allRequiredChecked = data?.questions.every(q => !q.required || answers[q.id]) ?? false
-  const canSubmit = allRequiredChecked && !!signature && state === 'idle'
+  const canSubmit = allRequiredChecked && !!signature && state === 'idle' && videoEnded
 
   async function handleConfirm() {
     if (!canSubmit) return
@@ -217,25 +270,52 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
           }
           if (video.type === 'youtube') {
             return (
-              <div className="rounded-2xl overflow-hidden shadow-sm" style={{ aspectRatio: '16/9' }}>
-                <iframe
-                  src={video.src}
-                  title="Vídeo explicativo"
-                  className="w-full h-full"
-                  allow="autoplay; fullscreen"
-                  allowFullScreen
-                />
+              <div className="relative rounded-2xl overflow-hidden shadow-sm" style={{ aspectRatio: '16/9' }}>
+                <div id="youtube-player" className="w-full h-full" />
+                {!videoPlaying && !videoEnded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 shadow-lg">
+                      <Play className="h-6 w-6 text-gray-900 ml-0.5" />
+                    </div>
+                  </div>
+                )}
               </div>
             )
           }
           return (
-            <div className="rounded-2xl overflow-hidden shadow-sm">
-              <video controls className="w-full" src={video.src}>
+            <div className="relative rounded-2xl overflow-hidden shadow-sm">
+              <video
+                ref={videoRef}
+                className="w-full"
+                src={video.src}
+                autoPlay
+                muted
+                playsInline
+                onEnded={() => setVideoEnded(true)}
+                onPlaying={() => setVideoPlaying(true)}
+              >
                 Seu navegador não suporta vídeo.
               </video>
+              {!videoPlaying && !videoEnded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                  <button
+                    onClick={() => videoRef.current?.play()}
+                    className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 shadow-lg"
+                  >
+                    <Play className="h-6 w-6 text-gray-900 ml-0.5" />
+                  </button>
+                </div>
+              )}
             </div>
           )
         })()}
+
+        {/* Video not yet watched indicator */}
+        {!videoEnded && data.videoUrl && (
+          <p className="text-center text-xs text-gray-400 -mt-2">
+            {videoPlaying ? 'A assistir…' : 'Assista ao vídeo completo para continuar'}
+          </p>
+        )}
 
         {/* Questions */}
         <div className="rounded-2xl bg-white p-4 shadow-sm space-y-3">

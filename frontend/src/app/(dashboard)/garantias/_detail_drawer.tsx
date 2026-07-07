@@ -13,6 +13,8 @@ interface Props {
 export function DetailDrawer({ id, onClose }: Props) {
   const [data, setData] = useState<WarrantyListItem | null>(null)
   const [loading, setLoading] = useState(true)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -89,6 +91,41 @@ export function DetailDrawer({ id, onClose }: Props) {
                 <p className="text-xs text-gray-400">
                   {new Date(data.createdAt).toLocaleString('pt-BR')}
                 </p>
+              </div>
+
+              {/* QR Code */}
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">QR Code</p>
+                {qrDataUrl ? (
+                  <div className="space-y-2">
+                    <img src={qrDataUrl} alt="QR Code" className="h-32 w-32 rounded-lg border border-gray-200" />
+                    <button
+                      onClick={() => setQrDataUrl(null)}
+                      className="text-xs font-medium hover:underline"
+                      style={{ color: 'var(--color-primary)' }}
+                    >
+                      Esconder QR
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      setQrLoading(true)
+                      try {
+                        const res = await api.get<{ qrDataUrl: string }>(`/garantias/${data.id}/qrcode`)
+                        setQrDataUrl(res.qrDataUrl)
+                      } finally {
+                        setQrLoading(false)
+                      }
+                    }}
+                    disabled={qrLoading}
+                    className="flex items-center gap-1.5 text-xs font-medium hover:underline transition-colors disabled:opacity-40"
+                    style={{ color: 'var(--color-primary)' }}
+                  >
+                    <QrCode className="h-3.5 w-3.5" />
+                    {qrLoading ? 'Carregando…' : 'Exibir QR Code'}
+                  </button>
+                )}
               </div>
 
               {/* Questions & Answers (only when confirmed) */}
