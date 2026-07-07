@@ -68,7 +68,7 @@ export function SignaturePad({ onChange }: Props) {
     setDrawing(false)
     const canvas = canvasRef.current
     if (!canvas) return
-    onChange(canvas.toDataURL('image/jpeg', 0.4))
+    onChange(canvas.toDataURL('image/png'))
   }
 
   function clear() {

@@ -7,9 +7,10 @@ interface YTEvent { data: number }
 interface YTPlayerOpts { videoId: string; playerVars?: Record<string, string | number>; events: { onReady?: () => void; onStateChange?: (e: YTEvent) => void } }
 interface YTAPI { Player: { new(el: HTMLElement | string, opts: YTPlayerOpts): YTPlayer }; PlayerState: { ENDED: number; PLAYING: number; PAUSED: number } }
 declare global { interface Window { YT: YTAPI | undefined } }
-import { CheckCircle, Loader2, Truck, Play } from 'lucide-react'
+import { CheckCircle, Loader2, Truck, Play, Download } from 'lucide-react'
 import { WarrantyPublic } from '@/types'
 import { SignaturePad } from './_signature_pad'
+import { toPng } from 'html-to-image'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
@@ -36,8 +37,10 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
   const [error,    setError]    = useState('')
   const [videoEnded, setVideoEnded]   = useState(false)
   const [videoPlaying, setVideoPlaying] = useState(false)
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const playerRef = useRef<YTPlayer | null>(null)
+  const receiptRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -144,6 +147,8 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
         setState('idle')
         return
       }
+      const body = await res.json() as { confirmedAt: string }
+      setConfirmedAt(body.confirmedAt)
       setState('done')
     } catch {
       setError('Erro de conexão. Tente novamente.')
@@ -195,7 +200,7 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
             )}
           </div>
         </div>
-        <main className="mx-auto max-w-lg px-4 py-12">
+        <main className="mx-auto max-w-lg px-4 py-12 space-y-6">
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
               <CheckCircle className="h-8 w-8 text-green-500" />
@@ -206,15 +211,106 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
                 Sua confirmação de garantia foi registrada com sucesso.
               </p>
             </div>
-            {data.customerName && (
-              <p className="text-sm text-gray-700 font-medium">{data.customerName}</p>
-            )}
             {state === 'already' && (
               <p className="text-xs text-gray-400">
                 Esta garantia já havia sido confirmada anteriormente.
               </p>
             )}
           </div>
+
+          {state === 'done' && (
+            <>
+              {/* Receipt */}
+              <div
+                ref={receiptRef}
+                className="rounded-2xl bg-white p-6 shadow-sm space-y-4 text-sm"
+              >
+                <div className="text-center border-b border-gray-200 pb-3">
+                  <p className="font-bold text-gray-900 text-base">{brandName}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Comprovante de Confirmação de Garantia</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Cliente</span>
+                    <span className="font-medium text-gray-900 text-right max-w-[60%]">{data.customerName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Peças</span>
+                    <span className="font-medium text-gray-900 text-right max-w-[60%]">{data.parts.join(', ')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Data da Venda</span>
+                    <span className="font-medium text-gray-900">{new Date(data.saleAt).toLocaleString('pt-BR')}</span>
+                  </div>
+                  {(() => {
+                    const dt = confirmedAt ?? data.confirmedAt
+                    if (!dt) return null
+                    return (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Confirmado em</span>
+                        <span className="font-medium text-gray-900">{new Date(dt).toLocaleString('pt-BR')}</span>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {data.questions.length > 0 && (
+                  <div className="border-t border-gray-200 pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Declarações</p>
+                    <div className="space-y-1.5">
+                      {data.questions.map(q => (
+                        <div key={q.id} className="flex items-start gap-2">
+                          <span className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 flex items-center justify-center ${
+                            answers[q.id] ? 'border-green-500 bg-green-50' : 'border-gray-300'
+                          }`}>
+                            {answers[q.id] && <span className="h-1.5 w-1.5 rounded-full bg-green-500" />}
+                          </span>
+                          <p className="text-xs text-gray-700">{q.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(signature ?? data.signaturePath) && (
+                  <div className="border-t border-gray-200 pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Rubrica</p>
+                    <img
+                      src={signature ?? data.signaturePath!}
+                      alt="Rubrica"
+                      className="max-h-16 rounded border border-gray-200 bg-white p-1"
+                    />
+                  </div>
+                )}
+
+                <div className="text-center border-t border-gray-200 pt-3">
+                  <p className="text-[10px] text-gray-400">Este comprovante é válido como confirmação de garantia.</p>
+                </div>
+              </div>
+
+              {/* Download button */}
+              <button
+                onClick={async () => {
+                  if (!receiptRef.current) return
+                  try {
+                    const dataUrl = await toPng(receiptRef.current, { quality: 1, pixelRatio: 2 })
+                    const link = document.createElement('a')
+                    link.download = `comprovante-garantia-${data.customerName?.replace(/\s+/g, '-').toLocaleLowerCase()}.png`
+                    link.href = dataUrl
+                    link.click()
+                  } catch {
+                    // silent
+                  }
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition-colors"
+                style={{ background: 'var(--color-primary)' }}
+              >
+                <Download className="h-4 w-4" />
+                Baixar Comprovante
+              </button>
+            </>
+          )}
         </main>
       </div>
     )
@@ -254,6 +350,9 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
               </span>
             ))}
           </div>
+        </div>
+        <div className="rounded-2xl bg-yellow-50 p-4 shadow-sm">
+            <p className="text-sm text-yellow-800"> A garantia deve ser confirmada apenas depois de ter concordado com os termos e condições. </p>
         </div>
 
         {/* Video */}
