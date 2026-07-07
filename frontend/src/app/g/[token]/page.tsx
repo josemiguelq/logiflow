@@ -71,6 +71,13 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
       setCodeError(null)
       const d: WarrantyPublic = await res.json()
       setData(d)
+      // Apply store theme (para ambos os estados: pendente e já confirmado).
+      if (d.storeTheme) {
+        const r = document.documentElement
+        r.style.setProperty('--color-primary',   d.storeTheme.primary)
+        r.style.setProperty('--color-secondary', d.storeTheme.secondary)
+        r.style.setProperty('--color-accent',    d.storeTheme.accent)
+      }
       if (d.status === 'confirmed') {
         setState('already')
         if (d.answers) {
@@ -80,13 +87,6 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
         }
         if (d.signaturePath) setSignature(d.signaturePath)
         return
-      }
-      // Apply store theme
-      if (d.storeTheme) {
-        const r = document.documentElement
-        r.style.setProperty('--color-primary',   d.storeTheme.primary)
-        r.style.setProperty('--color-secondary', d.storeTheme.secondary)
-        r.style.setProperty('--color-accent',    d.storeTheme.accent)
       }
     } catch {
       setData(null)
@@ -302,7 +302,7 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
             )}
           </div>
 
-          {state === 'done' && (
+          {(state === 'done' || state === 'already') && (
             <>
               {/* Receipt */}
               <div
