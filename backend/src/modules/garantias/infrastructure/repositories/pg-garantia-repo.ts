@@ -26,6 +26,7 @@ function mapWarrantyRow(r: Record<string, unknown>): Warranty {
     id:                r.id as string,
     storeId:           r.store_id as string,
     token:             r.token as string,
+    customerId:        r.customer_id as string | null,
     customerName:      r.customer_name as string,
     parts:             r.parts as string[],
     saleAt:            r.sale_at as Date,
@@ -66,13 +67,20 @@ export function createPgGarantiaRepo(db: DB) {
 
     async create(data: {
       storeId: string
-      customerName: string
+      customerId: string
       parts: string[]
       saleAt: Date
       questionsSnapshot: { id: string; label: string; required: boolean }[]
       createdBy: string | null
       createdByName: string | null
     }): Promise<Warranty> {
+      const { rows: [customer] } = await db.query(
+        'SELECT name FROM customers WHERE id = $1 AND store_id = $2',
+        [data.customerId, data.storeId],
+      )
+      if (!customer) throw new Error('Customer not found')
+      const customerName = (customer as Record<string, unknown>).name as string
+
       let token: string
       let attempts = 0
       do {
@@ -83,12 +91,13 @@ export function createPgGarantiaRepo(db: DB) {
       } while (attempts < 5)
 
       const { rows } = await db.query(
-        `INSERT INTO warranties (store_id, token, customer_name, parts, sale_at, questions_snapshot, created_by, created_by_name)
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8) RETURNING *`,
+        `INSERT INTO warranties (store_id, token, customer_id, customer_name, parts, sale_at, questions_snapshot, created_by, created_by_name)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9) RETURNING *`,
         [
           data.storeId,
           token,
-          data.customerName,
+          data.customerId,
+          customerName,
           JSON.stringify(data.parts),
           data.saleAt,
           JSON.stringify(data.questionsSnapshot),
@@ -116,20 +125,23 @@ export function createPgGarantiaRepo(db: DB) {
       const params: unknown[] = [storeId]
       let paramIdx = 2
 
-      if (filters.customerName) {
-        conditions.push(`translate(customer_name, $${paramIdx}, $${paramIdx + 1}) ILIKE translate($${paramIdx + 2}, $${paramIdx}, $${paramIdx + 1})`)
+      const joinCustomer = !!filters.customerName
+      let joinClause = ''
+      if (joinCustomer) {
+        joinClause = 'JOIN customers c ON c.id = w.customer_id'
+        conditions.push(`translate(c.name, $${paramIdx}, $${paramIdx + 1}) ILIKE translate($${paramIdx + 2}, $${paramIdx}, $${paramIdx + 1})`)
         params.push(ACCENTS, PLAIN, `%${filters.customerName}%`)
         paramIdx += 3
       }
 
       if (filters.dateFrom) {
-        conditions.push(`sale_at >= $${paramIdx}`)
+        conditions.push(`w.sale_at >= $${paramIdx}`)
         params.push(filters.dateFrom)
         paramIdx++
       }
 
       if (filters.dateTo) {
-        conditions.push(`sale_at <= $${paramIdx}`)
+        conditions.push(`w.sale_at <= $${paramIdx}`)
         params.push(filters.dateTo)
         paramIdx++
       }
@@ -137,14 +149,14 @@ export function createPgGarantiaRepo(db: DB) {
       const where = conditions.join(' AND ')
 
       const countResult = await db.query(
-        `SELECT COUNT(*) FROM warranties WHERE ${where}`,
+        `SELECT COUNT(*) FROM warranties w ${joinClause} WHERE ${where}`,
         params,
       )
       const total = parseInt((countResult.rows[0] as Record<string, unknown>).count as string, 10)
       const pages = Math.ceil(total / limit) || 1
 
       const { rows } = await db.query(
-        `SELECT * FROM warranties WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+        `SELECT w.* FROM warranties w ${joinClause} WHERE ${where} ORDER BY w.created_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
         [...params, limit, offset],
       )
 
@@ -170,6 +182,24 @@ export function createPgGarantiaRepo(db: DB) {
         [token],
       )
       return rows[0] ? mapWarrantyRow(rows[0] as Record<string, unknown>) : null
+    },
+
+    async updateQuestionSet(
+      storeId: string,
+      data: {
+        videoUrl: string | null
+        questions: { id: string; label: string; required: boolean }[]
+        updatedBy: string | null
+        updatedByName: string | null
+      },
+    ): Promise<WarrantyQuestionSet> {
+      const { rows } = await db.query(
+        `UPDATE warranty_question_sets
+         SET video_url = $2, questions = $3::jsonb, updated_by = $4, updated_by_name = $5, updated_at = now()
+         WHERE store_id = $1 RETURNING *`,
+        [storeId, data.videoUrl, JSON.stringify(data.questions), data.updatedBy, data.updatedByName],
+      )
+      return mapQuestionSetRow(rows[0] as Record<string, unknown>)
     },
 
     async confirm(

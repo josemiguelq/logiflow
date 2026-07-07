@@ -21,6 +21,7 @@ export interface Warranty {
   id: string
   storeId: string
   token: string
+  customerId: string | null
   customerName: string
   parts: string[]
   saleAt: Date

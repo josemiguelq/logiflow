@@ -10,7 +10,7 @@ import { createPgGarantiaRepo } from '../infrastructure/repositories/pg-garantia
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000'
 
 const createBodySchema = z.object({
-  customerName: z.string().min(1).transform(s => s.trim()),
+  customerId: z.string().uuid(),
   parts: z.array(z.string().min(1)).min(1),
   saleAt: z.string().datetime().optional(),
 })
@@ -78,7 +78,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
 
       const warranty = await repo.create({
         storeId:          req.actor.storeId,
-        customerName:     body.customerName,
+        customerId:       body.customerId,
         parts:            body.parts,
         saleAt:           body.saleAt ? new Date(body.saleAt) : new Date(),
         questionsSnapshot: questionSet.questions,
@@ -109,6 +109,34 @@ export async function garantiaRoutes(app: FastifyInstance) {
         name: req.actor.name,
       })
       return questionSet
+    },
+  )
+
+  const updateConfigSchema = z.object({
+    videoUrl: z.string().url().nullable(),
+    questions: z.array(z.object({
+      id: z.string(),
+      label: z.string().min(1),
+      required: z.boolean(),
+    })).min(1),
+  })
+
+  app.put(
+    '/garantias/config',
+    { preHandler: [requireStoreUser, requireScope('warranties:manage')] },
+    async (req, reply) => {
+      const body = updateConfigSchema.parse(req.body)
+      await repo.getOrCreateQuestionSet(req.actor.storeId, {
+        sub: req.actor.sub,
+        name: req.actor.name,
+      })
+      const updated = await repo.updateQuestionSet(req.actor.storeId, {
+        videoUrl: body.videoUrl,
+        questions: body.questions,
+        updatedBy: req.actor.sub,
+        updatedByName: req.actor.name,
+      })
+      return updated
     },
   )
 
