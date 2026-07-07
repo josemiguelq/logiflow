@@ -30,7 +30,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: listar garantias ───────────────────────────────────────────
   app.get(
     '/garantias',
-    { preHandler: [requireStoreUser, requireScope('garantias:view')] },
+    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
     async (req) => {
       const { customerName, dateFrom, dateTo, page } = req.query as {
         customerName?: string
@@ -50,7 +50,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: detalhe da garantia ────────────────────────────────────────
   app.get(
     '/garantias/:id',
-    { preHandler: [requireStoreUser, requireScope('garantias:view')] },
+    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const warranty = await repo.findById(id, req.actor.storeId)
@@ -67,7 +67,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: criar garantia ─────────────────────────────────────────────
   app.post(
     '/garantias',
-    { preHandler: [requireStoreUser, requireScope('garantias:manage')] },
+    { preHandler: [requireStoreUser, requireScope('warranties:manage')] },
     async (req, reply) => {
       const body = createBodySchema.parse(req.body)
 
@@ -102,7 +102,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: config (question set) ─────────────────────────────────────
   app.get(
     '/garantias/config',
-    { preHandler: [requireStoreUser, requireScope('garantias:view')] },
+    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
     async (req) => {
       const questionSet = await repo.getOrCreateQuestionSet(req.actor.storeId, {
         sub: req.actor.sub,
