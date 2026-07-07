@@ -250,12 +250,31 @@ export default function GarantiasPage() {
                     {item.createdByName ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span
-                      className="text-xs font-medium hover:underline"
-                      style={{ color: 'var(--color-primary)' }}
-                    >
-                      Detalhes
-                    </span>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={e => { e.stopPropagation(); setSelectedId(item.id) }}
+                        className="rounded-lg p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                        title="Detalhes"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={async e => {
+                          e.stopPropagation()
+                          setQrLoading(true)
+                          try {
+                            const res = await api.get<{ qrDataUrl: string; publicUrl: string }>(`/garantias/${item.id}/qrcode`)
+                            setQrItem({ token: item.token, ...res })
+                          } finally {
+                            setQrLoading(false)
+                          }
+                        }}
+                        className="rounded-lg p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                        title="QR Code"
+                      >
+                        <QrCode className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -400,6 +419,42 @@ export default function GarantiasPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {qrItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-bold text-gray-900">QR Code da Garantia</h2>
+            <div className="flex justify-center mb-4">
+              <img src={qrItem.qrDataUrl} alt="QR Code" className="h-48 w-48" />
+            </div>
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              <span className="flex-1 truncate">{qrItem.publicUrl}</span>
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(qrItem.publicUrl)
+                  const btn = document.activeElement
+                  if (btn) {
+                    const orig = btn.textContent
+                    btn.textContent = 'Copiado!'
+                    setTimeout(() => { btn.textContent = orig }, 2000)
+                  }
+                }}
+                className="shrink-0 rounded-md p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
+            <button
+              onClick={() => setQrItem(null)}
+              className="w-full rounded-lg py-2 text-sm font-medium text-white transition-colors"
+              style={{ background: 'var(--color-primary)' }}
+            >
+              Fechar
+            </button>
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { X, Loader2, QrCode, Copy } from 'lucide-react'
 import { api } from '@/lib/api'
 import { WarrantyListItem } from '@/types'
 
