@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
+import { invalidateStoreSettings } from '../../settings/store-settings-cache'
 import { requireDeliverer, requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import {
@@ -214,6 +215,7 @@ export async function gamificationRoutes(app: FastifyInstance) {
           [req.actor.storeId, String(value), name]
         )
       }
+      await invalidateStoreSettings(req.actor.storeId)
       return getConfig(req.actor.storeId)
     }
   )

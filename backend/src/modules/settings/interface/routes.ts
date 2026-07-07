@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
+import { invalidateStoreSettings } from '../store-settings-cache'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
@@ -320,6 +321,9 @@ export async function settingsRoutes(app: FastifyInstance) {
         try { await redis.del(themeCacheKey(storeId)) } catch { /* ignore */ }
       }
     }
+
+    // Invalida o cache de settings da loja (usado no fluxo de entrega etc.).
+    await invalidateStoreSettings(storeId)
 
     return { ok: true }
   })

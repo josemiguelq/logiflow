@@ -13,6 +13,7 @@ import { createOrder } from '../application/use-cases/create-order'
 import { assignDeliverer } from '../application/use-cases/assign-deliverer'
 import { confirmPickup } from '../application/use-cases/confirm-pickup'
 import { confirmDelivery } from '../application/use-cases/confirm-delivery'
+import { getStoreSettings } from '../../settings/store-settings-cache'
 import { computeSummary } from '../application/order-summary'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
@@ -1101,17 +1102,8 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const body = deliverySchema.parse(req.body)
 
-      const { rows: settingRows } = await db.query(
-        `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
-         FROM settings s
-         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
-         WHERE s.name IN ('require_delivery_code', 'enforce_delivery_order',
-                          'delivery_require_proximity', 'delivery_proximity_meters')`,
-        [req.actor.storeId]
-      )
-      const sv = Object.fromEntries(
-        settingRows.map((r: Record<string, unknown>) => [r.name as string, r.value as string])
-      )
+      // Settings resolvidos da loja (cache Redis local, invalidado ao salvar settings).
+      const sv = await getStoreSettings(req.actor.storeId)
       const requireDeliveryCode = sv.require_delivery_code !== 'false'
       const enforceOrder        = sv.enforce_delivery_order === 'true'
       const requireProximity    = sv.delivery_require_proximity === 'true'
@@ -1122,15 +1114,7 @@ export async function orderRoutes(app: FastifyInstance) {
         ? body.photoUrls
         : body.photoUrl ? [body.photoUrl] : []
 
-      // Read max_proof_photos setting
-      const { rows: [maxRow] } = await db.query(
-        `SELECT COALESCE(ssv.value, s.default_value) AS value
-         FROM settings s
-         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
-         WHERE s.name = 'max_proof_photos'`,
-        [req.actor.storeId]
-      )
-      const maxPhotos = parseInt((maxRow as Record<string, unknown> | undefined)?.value as string ?? '1', 10) || 1
+      const maxPhotos = parseInt(sv.max_proof_photos ?? '1', 10) || 1
       const cappedUrls = rawUrls.slice(0, maxPhotos)
 
       // Upload das fotos (base64 → storage) em PARALELO — o loop sequencial
