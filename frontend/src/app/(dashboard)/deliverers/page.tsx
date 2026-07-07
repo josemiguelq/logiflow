@@ -65,14 +65,14 @@ export default function DeliverersPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Entregadores</h1>
           <p className="mt-0.5 text-sm text-gray-500">
             {deliverers.filter((d) => d.isActive).length} ativo(s) · {available} disponível(is) · {onRoute} em rota
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
             <button
               onClick={() => setView('list')}
