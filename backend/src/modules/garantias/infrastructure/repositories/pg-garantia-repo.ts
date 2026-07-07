@@ -184,6 +184,19 @@ export function createPgGarantiaRepo(db: DB) {
       return rows[0] ? mapWarrantyRow(rows[0] as Record<string, unknown>) : null
     },
 
+    // Telefone do cliente vinculado à garantia — usado no gate público
+    // (últimos 4 dígitos). Null se a garantia não tem cliente ou telefone.
+    async findCustomerPhoneByToken(token: string): Promise<string | null> {
+      const { rows } = await db.query(
+        `SELECT c.phone
+         FROM warranties w
+         JOIN customers c ON c.id = w.customer_id
+         WHERE w.token = $1`,
+        [token],
+      )
+      return rows[0] ? ((rows[0] as Record<string, unknown>).phone as string | null) : null
+    },
+
     async updateQuestionSet(
       storeId: string,
       data: {

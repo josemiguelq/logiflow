@@ -7,7 +7,7 @@ interface YTEvent { data: number }
 interface YTPlayerOpts { videoId: string; playerVars?: Record<string, string | number>; events: { onReady?: () => void; onStateChange?: (e: YTEvent) => void } }
 interface YTAPI { Player: { new(el: HTMLElement | string, opts: YTPlayerOpts): YTPlayer }; PlayerState: { ENDED: number; PLAYING: number; PAUSED: number } }
 declare global { interface Window { YT: YTAPI | undefined } }
-import { CheckCircle, Loader2, Truck, Play, Download } from 'lucide-react'
+import { CheckCircle, Loader2, Truck, Play, Download, Lock } from 'lucide-react'
 import { WarrantyPublic } from '@/types'
 import { SignaturePad } from './_signature_pad'
 import { toPng } from 'html-to-image'
@@ -38,17 +38,37 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
   const [videoEnded, setVideoEnded]   = useState(false)
   const [videoPlaying, setVideoPlaying] = useState(false)
   const [confirmedAt, setConfirmedAt] = useState<string | null>(null)
+  // Gate por telefone: senha = 4 últimos dígitos, enviada no header X-Tracking-Code.
+  const [needsCode,  setNeedsCode]  = useState(false)
+  const [phoneHint,  setPhoneHint]  = useState('')
+  const [codeInput,  setCodeInput]  = useState('')
+  const [codeError,  setCodeError]  = useState<string | null>(null)
+  const [verifying,  setVerifying]  = useState(false)
+  const codeRef = useRef<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const playerRef = useRef<YTPlayer | null>(null)
   const receiptRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE}/g/${token}`)
+      const headers: Record<string, string> = {}
+      if (codeRef.current) headers['X-Tracking-Code'] = codeRef.current
+      const res = await fetch(`${BASE}/g/${token}`, { headers })
+      if (res.status === 401) {
+        // Senha exigida (ou incorreta, se já havíamos enviado uma).
+        const d = await res.json().catch(() => ({})) as { phoneHint?: string }
+        if (codeRef.current) { setCodeError('Senha incorreta. Tente novamente.'); codeRef.current = null }
+        setPhoneHint(d.phoneHint ?? '')
+        setNeedsCode(true)
+        setData(null)
+        return
+      }
       if (!res.ok) {
         if (res.status === 404) { setData(null); return }
         throw new Error('Erro ao carregar')
       }
+      setNeedsCode(false)
+      setCodeError(null)
       const d: WarrantyPublic = await res.json()
       setData(d)
       if (d.status === 'confirmed') {
@@ -127,7 +147,10 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
     try {
       const res = await fetch(`${BASE}/g/${token}/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(codeRef.current ? { 'X-Tracking-Code': codeRef.current } : {}),
+        },
         body: JSON.stringify({
           answers: data!.questions.map(q => ({
             questionId: q.id,
@@ -160,10 +183,71 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
     setAnswers(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
+  async function submitCode(e: React.FormEvent) {
+    e.preventDefault()
+    if (codeInput.length !== 4) { setCodeError('Informe os 4 dígitos.'); return }
+    setVerifying(true)
+    setCodeError(null)
+    codeRef.current = codeInput
+    await load()
+    setVerifying(false)
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-900 border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (needsCode) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <form
+          onSubmit={submitCode}
+          className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm"
+        >
+          <div className="mb-4 flex flex-col items-center text-center">
+            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+              <Lock className="h-7 w-7 text-gray-500" />
+            </div>
+            <h1 className="text-lg font-bold text-gray-900">Confirmação protegida</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Para acessar sua garantia, informe os <strong>últimos 4 dígitos do seu telefone</strong>.
+            </p>
+            {phoneHint && (
+              <p className="mt-3 text-sm text-gray-600">
+                Telefone cadastrado:{' '}
+                <span className="font-semibold tracking-wide text-gray-900">{phoneHint}</span>
+              </p>
+            )}
+          </div>
+
+          <input
+            inputMode="numeric"
+            autoFocus
+            maxLength={4}
+            value={codeInput}
+            onChange={(e) => { setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 4)); setCodeError(null) }}
+            placeholder="0000"
+            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] text-gray-900 focus:border-gray-900 focus:outline-none"
+          />
+
+          {codeError && (
+            <p className="mt-2 text-center text-sm text-red-600">{codeError}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={verifying || codeInput.length !== 4}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 transition-colors"
+            style={{ background: 'var(--color-primary, #111827)' }}
+          >
+            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+            {verifying ? 'Verificando…' : 'Acessar garantia'}
+          </button>
+        </form>
       </div>
     )
   }

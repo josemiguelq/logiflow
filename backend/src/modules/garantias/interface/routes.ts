@@ -24,6 +24,34 @@ const answersSchema = z.object({
   signature: z.string().min(1),
 })
 
+// ── Gate público por telefone (últimos 4 dígitos) ──────────────────────────
+// Mesmo padrão do rastreio público (/tracking/:orderId): a senha são os 4
+// últimos dígitos do telefone do cliente, enviada no header X-Tracking-Code.
+function onlyDigits(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '')
+}
+
+function phoneGateOk(phone: string | null, provided: string | undefined): boolean {
+  const expected = onlyDigits(phone).slice(-4)
+  // Sem telefone (ou telefone curto): impossível proteger — libera o acesso.
+  if (expected.length < 4) return true
+  return onlyDigits(provided).slice(-4) === expected
+}
+
+// Máscara para ajudar o cliente a lembrar o telefone: mostra os primeiros
+// dígitos e esconde os 4 últimos, preservando a formatação original.
+// Ex.: "(11) 98765-4321" → "(11) 98765-••••".
+function maskPhoneHint(phone: string | null): string {
+  if (!phone) return ''
+  if (onlyDigits(phone).length < 4) return ''
+  let remaining = 4
+  const chars = phone.split('')
+  for (let i = chars.length - 1; i >= 0 && remaining > 0; i--) {
+    if (/\d/.test(chars[i])) { chars[i] = '•'; remaining-- }
+  }
+  return chars.join('')
+}
+
 export async function garantiaRoutes(app: FastifyInstance) {
   const repo = createPgGarantiaRepo(db)
 
@@ -160,6 +188,18 @@ export async function garantiaRoutes(app: FastifyInstance) {
     const warranty = await repo.findByToken(token)
     if (!warranty) return reply.code(404).send({ error: 'Not found' })
 
+    // Operador autenticado ignora o gate (preview). Cliente informa os 4
+    // últimos dígitos do telefone via header X-Tracking-Code.
+    let isAuthenticated = false
+    try { await req.jwtVerify(); isAuthenticated = true } catch { /* acesso público */ }
+    if (!isAuthenticated) {
+      const phone = await repo.findCustomerPhoneByToken(token)
+      if (!phoneGateOk(phone, req.headers['x-tracking-code'] as string | undefined)) {
+        reply.header('WWW-Authenticate', 'TrackingCode realm="garantia"')
+        return reply.code(401).send({ error: 'password_required', phoneHint: maskPhoneHint(phone) })
+      }
+    }
+
     const questionSet = await repo.getOrCreateQuestionSet(warranty.storeId, {
       sub: null,
       name: null,
@@ -218,6 +258,17 @@ export async function garantiaRoutes(app: FastifyInstance) {
 
     const warranty = await repo.findByToken(token)
     if (!warranty) return reply.code(404).send({ error: 'Not found' })
+
+    // Mesmo gate do GET: o token sozinho não confirma sem os 4 dígitos do telefone.
+    let isAuthenticated = false
+    try { await req.jwtVerify(); isAuthenticated = true } catch { /* acesso público */ }
+    if (!isAuthenticated) {
+      const phone = await repo.findCustomerPhoneByToken(token)
+      if (!phoneGateOk(phone, req.headers['x-tracking-code'] as string | undefined)) {
+        return reply.code(401).send({ error: 'password_required', phoneHint: maskPhoneHint(phone) })
+      }
+    }
+
     if (warranty.status === 'confirmed') {
       return reply.code(409).send({ error: 'Já confirmado' })
     }
