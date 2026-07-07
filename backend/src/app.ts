@@ -234,9 +234,19 @@ export function buildApp() {
   app.register(sessionRoutes)
   app.register(announcementRoutes)
 
-  app.get('/health', async (_req, reply) => {
-    // Postgres: conectividade + latência média (3 amostras de SELECT 1, sequenciais,
-    // refletindo o custo real de round-trip até o banco remoto) + estado do pool.
+  // As checagens do /health são caras (3 round-trips ao Postgres remoto + fila).
+  // Throttle rígido: computa no máximo 1× a cada janela e serve o snapshot em cache
+  // para o resto; requisições concorrentes coalescem num único cálculo (single-flight).
+  // Assim, sob probe frequente ou flood, o banco vê no máximo 1 checagem por janela.
+  const HEALTH_TTL_MS = 10_000
+  type HealthResult = { status: number; body: Record<string, unknown> }
+  let healthCache:    { at: number; result: HealthResult } | null = null
+  let healthInFlight: Promise<HealthResult> | null = null
+
+  const computeHealth = async (): Promise<HealthResult> => {
+    const round = (n: number) => Math.round(n * 10) / 10
+
+    // Postgres: conectividade + latência média (3 amostras sequenciais de SELECT 1).
     const samples: number[] = []
     let pgConnected = true
     let pgError: string | undefined
@@ -250,7 +260,6 @@ export function buildApp() {
       pgConnected = false
       pgError = (err as Error).message
     }
-    const round = (n: number) => Math.round(n * 10) / 10
     const avgLatencyMs = samples.length
       ? round(samples.reduce((a, b) => a + b, 0) / samples.length)
       : null
@@ -265,19 +274,40 @@ export function buildApp() {
       queue = { error: (err as Error).message }
     }
 
-    const healthy = pgConnected
-    reply.code(healthy ? 200 : 503)
     return {
-      status: healthy ? 'ok' : 'degraded',
-      postgres: {
-        connected:    pgConnected,
-        avgLatencyMs,
-        samplesMs:    samples.map(round),
-        pool:         db.poolStats(),
-        ...(pgError ? { error: pgError } : {}),
+      status: pgConnected ? 200 : 503,
+      body: {
+        status: pgConnected ? 'ok' : 'degraded',
+        postgres: {
+          connected:    pgConnected,
+          avgLatencyMs,
+          samplesMs:    samples.map(round),
+          pool:         db.poolStats(),
+          ...(pgError ? { error: pgError } : {}),
+        },
+        queue,
       },
-      queue,
     }
+  }
+
+  app.get('/health', async (_req, reply) => {
+    const now = Date.now()
+
+    // Dentro da janela → devolve o cache sem tocar no banco.
+    if (healthCache && now - healthCache.at < HEALTH_TTL_MS) {
+      reply.code(healthCache.result.status)
+      return { ...healthCache.result.body, cached: true, ageMs: now - healthCache.at }
+    }
+
+    // Fora da janela → recalcula uma vez; concorrentes esperam o mesmo cálculo.
+    if (!healthInFlight) {
+      healthInFlight = computeHealth()
+        .then((result) => { healthCache = { at: Date.now(), result }; return result })
+        .finally(() => { healthInFlight = null })
+    }
+    const result = await healthInFlight
+    reply.code(result.status)
+    return { ...result.body, cached: false }
   })
 
   // Confirma qual build está no ar: buildTime muda a cada deploy novo;
