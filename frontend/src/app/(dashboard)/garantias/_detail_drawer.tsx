@@ -15,22 +15,34 @@ export function DetailDrawer({ id, onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     setLoading(true)
     api.get<WarrantyListItem>(`/garantias/${id}`)
       .then(setData)
       .finally(() => setLoading(false))
+    requestAnimationFrame(() => setVisible(true))
   }, [id])
+
+  function handleClose() {
+    setVisible(false)
+    setTimeout(onClose, 200)
+  }
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md translate-x-0 bg-white shadow-xl transition-transform duration-200">
+      <div
+        className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        onClick={handleClose}
+      />
+      <div
+        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-xl transition-transform duration-200 ${visible ? 'translate-x-0' : 'translate-x-full'}`}
+      >
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
           <h2 className="font-semibold text-gray-900">Detalhes da Garantia</h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="rounded-md p-1 text-gray-400 hover:text-gray-700 transition-colors"
           >
             <X className="h-5 w-5" />
