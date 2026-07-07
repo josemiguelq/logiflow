@@ -194,3 +194,75 @@ export interface AuthState {
   token: string | null
   user: StoreUser | null
 }
+
+export interface WarrantyQuestion {
+  id: string
+  label: string
+  required: boolean
+}
+
+export interface WarrantyAnswer {
+  questionId: string
+  label: string
+  answer: boolean
+}
+
+export interface WarrantyListItem {
+  id: string
+  storeId: string
+  token: string
+  customerName: string
+  parts: string[]
+  saleAt: string
+  status: 'pending' | 'confirmed'
+  questionsSnapshot: WarrantyQuestion[] | null
+  answers: WarrantyAnswer[] | null
+  signaturePath: string | null
+  responseIp: string | null
+  responseUserAgent: string | null
+  confirmedAt: string | null
+  createdBy: string | null
+  createdByName: string | null
+  createdAt: string
+}
+
+export interface PagedWarranties {
+  items: WarrantyListItem[]
+  total: number
+  page: number
+  pages: number
+}
+
+export interface CreateWarrantyResponse {
+  id: string
+  token: string
+  publicUrl: string
+  shortLink: string
+  qrDataUrl: string
+}
+
+export interface WarrantyPublic {
+  status: 'pending' | 'confirmed'
+  customerName: string
+  parts: string[]
+  saleAt: string
+  videoUrl: string | null
+  questions: WarrantyQuestion[]
+  storeTheme: {
+    storeName: string | null
+    logoUrl: string | null
+    primary: string
+    secondary: string
+    accent: string
+  } | null
+  answers?: WarrantyAnswer[]
+  signaturePath?: string | null
+  confirmedAt?: string | null
+}
+
+export interface WarrantyConfig {
+  id: string
+  storeId: string
+  videoUrl: string | null
+  questions: WarrantyQuestion[]
+}

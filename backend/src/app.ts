@@ -21,6 +21,7 @@ import { goalRoutes } from './modules/goals/interface/routes'
 import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
 import { announcementRoutes } from './modules/announcements/interface/routes'
+import { garantiaRoutes } from './modules/garantias/interface/routes'
 import { wsHub } from './shared/infra/websocket'
 import { notificationQueue } from './shared/infra/queue'
 import { addCorrelationId, noticeError, recordCustomEvent } from './shared/infra/observability'
@@ -233,6 +234,7 @@ export function buildApp() {
   app.register(gamificationRoutes)
   app.register(sessionRoutes)
   app.register(announcementRoutes)
+  app.register(garantiaRoutes)
 
   // As checagens do /health são caras (3 round-trips ao Postgres remoto + fila).
   // Throttle rígido: computa no máximo 1× a cada janela e serve o snapshot em cache
