@@ -64,6 +64,20 @@ export async function garantiaRoutes(app: FastifyInstance) {
     },
   )
 
+  // ── Operador: QR code da garantia ────────────────────────────────────────
+  app.get(
+    '/garantias/:id/qrcode',
+    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const warranty = await repo.findById(id, req.actor.storeId)
+      if (!warranty) return reply.code(404).send({ error: 'Not found' })
+      const publicUrl = `${FRONTEND_URL}/g/${warranty.token}`
+      const qrDataUrl = await QRCode.toDataURL(publicUrl)
+      return { qrDataUrl, publicUrl }
+    },
+  )
+
   // ── Operador: criar garantia ─────────────────────────────────────────────
   app.post(
     '/garantias',

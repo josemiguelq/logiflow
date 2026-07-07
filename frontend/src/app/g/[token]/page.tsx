@@ -7,6 +7,15 @@ import { SignaturePad } from './_signature_pad'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
+function embedVideoUrl(url: string | null): { type: 'youtube' | 'direct'; src: string } | null {
+  if (!url) return null
+  const watchMatch = url.match(/(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]+)/)
+  if (watchMatch) return { type: 'youtube', src: `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&rel=0` }
+  const shortMatch = url.match(/(?:youtu\.be\/)([a-zA-Z0-9_-]+)/)
+  if (shortMatch) return { type: 'youtube', src: `https://www.youtube.com/embed/${shortMatch[1]}?autoplay=1&rel=0` }
+  return { type: 'direct', src: url }
+}
+
 export default function PublicGarantiaPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
 
@@ -195,23 +204,38 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
         </div>
 
         {/* Video */}
-        {data.videoUrl ? (
-          <div className="rounded-2xl overflow-hidden shadow-sm">
-            <video
-              controls
-              className="w-full"
-              src={data.videoUrl}
-            >
-              Seu navegador não suporta vídeo.
-            </video>
-          </div>
-        ) : (
-          <div className="rounded-2xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500 text-center">
-              Assista ao vídeo explicativo sobre os cuidados com as peças antes de continuar.
-            </p>
-          </div>
-        )}
+        {(() => {
+          const video = embedVideoUrl(data.videoUrl)
+          if (!video) {
+            return (
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
+                <p className="text-sm text-gray-500 text-center">
+                  Assista ao vídeo explicativo sobre os cuidados com as peças antes de continuar.
+                </p>
+              </div>
+            )
+          }
+          if (video.type === 'youtube') {
+            return (
+              <div className="rounded-2xl overflow-hidden shadow-sm" style={{ aspectRatio: '16/9' }}>
+                <iframe
+                  src={video.src}
+                  title="Vídeo explicativo"
+                  className="w-full h-full"
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
+                />
+              </div>
+            )
+          }
+          return (
+            <div className="rounded-2xl overflow-hidden shadow-sm">
+              <video controls className="w-full" src={video.src}>
+                Seu navegador não suporta vídeo.
+              </video>
+            </div>
+          )
+        })()}
 
         {/* Questions */}
         <div className="rounded-2xl bg-white p-4 shadow-sm space-y-3">

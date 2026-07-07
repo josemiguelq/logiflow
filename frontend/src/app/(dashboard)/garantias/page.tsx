@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import useSWR from 'swr'
-import { Plus, Search, X, Loader2, Minus, Copy, Check, FileText } from 'lucide-react'
+import { Plus, Search, X, Loader2, Minus, Copy, Check, FileText, QrCode } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
 import { PagedWarranties, CreateWarrantyResponse, Customer, WarrantyConfig } from '@/types'
@@ -28,6 +28,8 @@ export default function GarantiasPage() {
   const [copied,    setCopied]    = useState(false)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [qrItem, setQrItem] = useState<{ token: string; qrDataUrl: string; publicUrl: string } | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [configData, setConfigData] = useState<WarrantyConfig | null>(null)
   const [configVideoUrl, setConfigVideoUrl] = useState('')
