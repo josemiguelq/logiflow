@@ -15,6 +15,7 @@ import { trackingRoutes } from './modules/tracking/interface/routes'
 import { notificationRoutes } from './modules/notifications/interface/routes'
 import { settingsRoutes } from './modules/settings/interface/routes'
 import { routeRoutes } from './modules/routes/interface/routes'
+import { autoRouteRoutes } from './modules/auto-routes/interface/routes'
 import { superAdminRoutes } from './modules/super-admin/interface/routes'
 import { analyticsRoutes } from './modules/analytics/interface/routes'
 import { goalRoutes } from './modules/goals/interface/routes'
@@ -228,6 +229,7 @@ export function buildApp() {
   app.register(notificationRoutes)
   app.register(settingsRoutes)
   app.register(routeRoutes)
+  app.register(autoRouteRoutes)
   app.register(superAdminRoutes)
   app.register(analyticsRoutes)
   app.register(goalRoutes)

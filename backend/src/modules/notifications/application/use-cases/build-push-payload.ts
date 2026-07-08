@@ -2,12 +2,24 @@ import type { PushPayload } from '../../domain/push-ports'
 
 export function buildPushPayload(
   statusEvent: string,
-  orderId: string,
+  orderId: string | undefined,
   customerName: string,
 ): PushPayload {
-  const data = { orderId, event: statusEvent }
+  const data = { orderId: orderId ?? '', event: statusEvent }
 
   switch (statusEvent) {
+    case 'AUTO_ROUTE_ASSIGNED':
+      return {
+        title: 'Nova rota atribuída 🛵',
+        body:  'Você é o entregador da vez! Uma nova rota foi criada para você.',
+        data,
+      }
+    case 'AUTO_ROUTE_NEXT':
+      return {
+        title: 'Você é o próximo! 🔔',
+        body:  'Fique preparado — a próxima rota automática será atribuída a você.',
+        data,
+      }
     case 'PREPARING':
       return {
         title: 'Novo pedido disponível 🛒',

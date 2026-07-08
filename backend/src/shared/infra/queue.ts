@@ -26,7 +26,7 @@ export type NotificationJob =
   | {
       type:         'push'
       delivererId?: string
-      orderId:      string
+      orderId?:     string   // opcional: eventos sem pedido (ex.: AUTO_ROUTE_NEXT)
       storeId:      string
       statusEvent:  string
     }

@@ -11,6 +11,7 @@ export const SCOPES = [
   'routes:force_finish',
   'routes:export',
   'routes:delete',
+  'routes:auto_config',
 
   // Customers
   'customers:view',
@@ -69,6 +70,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'routes:force_finish':  'Rotas — forçar finalização',
   'routes:export':        'Rotas — exportar CSV',
   'routes:delete':        'Rotas — excluir rota e todos os pedidos',
+  'routes:auto_config':   'Rotas — configurar criação automática (rodízio)',
   'customers:view':       'Clientes — visualizar',
   'customers:create':     'Clientes — criar',
   'customers:edit':       'Clientes — editar',
@@ -98,7 +100,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Pedidos',        scopes: ['orders:view', 'orders:view_all', 'orders:create', 'orders:cancel', 'orders:delete'] },
-  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
+  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete', 'routes:auto_config'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
   { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track', 'deliverers:delete'] },
   { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete', 'users:reset_password'] },
