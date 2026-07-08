@@ -9,12 +9,13 @@ import { createPgOrderRepo } from '../../orders/infrastructure/repositories/pg-o
 const autoRouteRepo = createPgAutoRouteRepo(db)
 const orderRepo     = createPgOrderRepo(db)
 
-// A partir de startIdx, primeiro entregador online do rodízio (o "da vez").
-function firstOnlineFrom<T extends { online: boolean }>(list: T[], startIdx: number): { entry: T; idx: number } | null {
+// A partir de startIdx, primeiro entregador elegível do rodízio (o "da vez"):
+// online (ativo e não OFFLINE) E sem nenhuma rota ativa.
+function firstEligibleFrom<T extends { eligible: boolean }>(list: T[], startIdx: number): { entry: T; idx: number } | null {
   const len = list.length
   for (let k = 0; k < len; k++) {
     const idx = (startIdx + k) % len
-    if (list[idx].online) return { entry: list[idx], idx }
+    if (list[idx].eligible) return { entry: list[idx], idx }
   }
   return null
 }
@@ -133,11 +134,18 @@ export async function autoRouteRoutes(app: FastifyInstance) {
       if (maxWaitMinutes >= body.waitMinutes) triggerReasons.push('wait_minutes')
       const wouldTrigger = preparing.length > 0 && triggerReasons.length > 0
 
-      // Status atual dos entregadores do rodízio (na ordem informada).
-      let rodizio: { delivererId: string; name: string; online: boolean }[] = []
+      // Status atual dos entregadores do rodízio (na ordem informada). Elegível =
+      // online (ativo e não OFFLINE) E sem nenhuma rota ativa (CREATED/STARTED).
+      let rodizio: { delivererId: string; name: string; eligible: boolean }[] = []
       if (body.delivererIds.length > 0) {
-        const { rows } = await db.query<{ id: string; name: string; status: string; is_active: boolean }>(
-          `SELECT id, name, status, is_active FROM deliverers
+        const { rows } = await db.query<{ id: string; name: string; status: string; is_active: boolean; has_active_route: boolean }>(
+          `SELECT id, name, status, is_active,
+                  EXISTS (
+                    SELECT 1 FROM routes r
+                    WHERE r.deliverer_id = deliverers.id AND r.store_id = deliverers.store_id
+                      AND r.status IN ('CREATED','STARTED')
+                  ) AS has_active_route
+           FROM deliverers
            WHERE store_id = $1 AND deleted_at IS NULL AND id = ANY($2::uuid[])`,
           [storeId, body.delivererIds]
         )
@@ -147,7 +155,7 @@ export async function autoRouteRoutes(app: FastifyInstance) {
           return {
             delivererId: id,
             name:        d?.name ?? '—',
-            online:      !!d && d.is_active && d.status !== 'OFFLINE',
+            eligible:    !!d && d.is_active && d.status !== 'OFFLINE' && !d.has_active_route,
           }
         })
       }
@@ -156,8 +164,8 @@ export async function autoRouteRoutes(app: FastifyInstance) {
       const saved = await autoRouteRepo.getConfig(storeId)
       const len = rodizio.length
       const startIdx = len > 0 ? (((saved?.turnPosition ?? 0) % len) + len) % len : 0
-      const daVezPick = len > 0 ? firstOnlineFrom(rodizio, startIdx) : null
-      const noOnlineDeliverer = len > 0 && daVezPick === null
+      const daVezPick = len > 0 ? firstEligibleFrom(rodizio, startIdx) : null
+      const noEligibleDeliverer = len > 0 && daVezPick === null
 
       const cap = body.maxOrders ?? preparing.length
       const willAssign = wouldTrigger && daVezPick ? preparing.slice(0, cap) : []
@@ -169,7 +177,7 @@ export async function autoRouteRoutes(app: FastifyInstance) {
         preparingCount:  preparing.length,
         maxWaitMinutes:  Math.floor(maxWaitMinutes),
         daVez:           daVezPick ? { delivererId: daVezPick.entry.delivererId, name: daVezPick.entry.name } : null,
-        noOnlineDeliverer,
+        noEligibleDeliverer,
         overflowCount,
         orders: willAssign.map(o => ({
           id:           o.id,

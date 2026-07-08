@@ -30,7 +30,12 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
 
   const getRodizio = async (storeId: string): Promise<RodizioEntry[]> => {
     const { rows } = await db.query(
-      `SELECT sard.deliverer_id, sard.position, d.name, d.status, d.is_active
+      `SELECT sard.deliverer_id, sard.position, d.name, d.status, d.is_active,
+              EXISTS (
+                SELECT 1 FROM routes r
+                WHERE r.deliverer_id = d.id AND r.store_id = sard.store_id
+                  AND r.status IN ('CREATED','STARTED')
+              ) AS has_active_route
        FROM store_auto_route_deliverers sard
        JOIN deliverers d ON d.id = sard.deliverer_id AND d.deleted_at IS NULL
        WHERE sard.store_id = $1
@@ -38,11 +43,12 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
       [storeId]
     )
     return rows.map((r: Record<string, unknown>) => ({
-      delivererId: r.deliverer_id as string,
-      position:    Number(r.position),
-      name:        r.name as string,
-      status:      r.status as string,
-      isActive:    r.is_active as boolean,
+      delivererId:    r.deliverer_id as string,
+      position:       Number(r.position),
+      name:           r.name as string,
+      status:         r.status as string,
+      isActive:       r.is_active as boolean,
+      hasActiveRoute: r.has_active_route as boolean,
     }))
   }
 
@@ -112,7 +118,12 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
 
       const storeIds = cfgRows.map((r: Record<string, unknown>) => r.store_id as string)
       const { rows: rodRows } = await db.query(
-        `SELECT sard.store_id, sard.deliverer_id, sard.position, d.name, d.status, d.is_active
+        `SELECT sard.store_id, sard.deliverer_id, sard.position, d.name, d.status, d.is_active,
+                EXISTS (
+                  SELECT 1 FROM routes r
+                  WHERE r.deliverer_id = d.id AND r.store_id = sard.store_id
+                    AND r.status IN ('CREATED','STARTED')
+                ) AS has_active_route
          FROM store_auto_route_deliverers sard
          JOIN deliverers d ON d.id = sard.deliverer_id AND d.deleted_at IS NULL
          WHERE sard.store_id = ANY($1::uuid[])
@@ -125,11 +136,12 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
         const sid = r.store_id as string
         const list = byStore.get(sid) ?? []
         list.push({
-          delivererId: r.deliverer_id as string,
-          position:    Number(r.position),
-          name:        r.name as string,
-          status:      r.status as string,
-          isActive:    r.is_active as boolean,
+          delivererId:    r.deliverer_id as string,
+          position:       Number(r.position),
+          name:           r.name as string,
+          status:         r.status as string,
+          isActive:       r.is_active as boolean,
+          hasActiveRoute: r.has_active_route as boolean,
         })
         byStore.set(sid, list)
       }

@@ -10,13 +10,15 @@ export interface AutoRouteConfig {
 }
 
 // Entrada do rodízio: um entregador e sua posição na ordem, com o status atual
-// (para o scan pular quem está OFFLINE ao escolher o "entregador da vez").
+// (para o scan pular quem está OFFLINE ou com rota ativa ao escolher o
+// "entregador da vez").
 export interface RodizioEntry {
-  delivererId: string
-  position:    number
-  name:        string
-  status:      string   // AVAILABLE | ON_ROUTE | OFFLINE
-  isActive:    boolean
+  delivererId:    string
+  position:       number
+  name:           string
+  status:         string   // AVAILABLE | ON_ROUTE | OFFLINE
+  isActive:       boolean
+  hasActiveRoute: boolean  // possui rota não finalizada (CREATED | STARTED)
 }
 
 // Config + rodízio de uma loja com auto-rotas ativa (consumido pelo scan).

@@ -24,15 +24,17 @@ interface Deps {
 // dedups de scan-delayed-orders (não persiste; um restart pode reenviar).
 const lastNextByStore = new Map<string, string>()
 
-const isOnline = (e: RodizioEntry) => e.isActive && e.status !== 'OFFLINE'
+// Elegível para receber a rota: online (ativo e não OFFLINE) E sem nenhuma rota
+// ativa (CREATED/STARTED). Quem já está rodando uma rota é pulado.
+const isEligible = (e: RodizioEntry) => e.isActive && e.status !== 'OFFLINE' && !e.hasActiveRoute
 
 // A partir de startIdx, percorre o rodízio ciclicamente e retorna o primeiro
-// entregador online (o "entregador da vez"), com seu índice.
-function firstOnlineFrom(rodizio: RodizioEntry[], startIdx: number): { entry: RodizioEntry; idx: number } | null {
+// entregador elegível (o "entregador da vez"), com seu índice.
+function firstEligibleFrom(rodizio: RodizioEntry[], startIdx: number): { entry: RodizioEntry; idx: number } | null {
   const len = rodizio.length
   for (let k = 0; k < len; k++) {
     const idx = (startIdx + k) % len
-    if (isOnline(rodizio[idx])) return { entry: rodizio[idx], idx }
+    if (isEligible(rodizio[idx])) return { entry: rodizio[idx], idx }
   }
   return null
 }
@@ -89,7 +91,7 @@ export async function scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQue
     const triggered = preparing.length > 0 &&
       (preparing.length >= cfg.queueSize || maxWaitMin >= cfg.waitMinutes)
 
-    const daVez = firstOnlineFrom(rodizio, startIdx)
+    const daVez = firstEligibleFrom(rodizio, startIdx)
 
     let effectiveStart = startIdx
     let justAssignedId: string | null = null
@@ -144,7 +146,7 @@ export async function scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQue
     }
 
     // Push proativo "você é o próximo" a quem virou o entregador da vez.
-    const daVezAfter = firstOnlineFrom(rodizio, effectiveStart)
+    const daVezAfter = firstEligibleFrom(rodizio, effectiveStart)
     if (daVezAfter) {
       const prev = lastNextByStore.get(cfg.storeId)
       const nextId = daVezAfter.entry.delivererId

@@ -18,8 +18,8 @@ interface DryRunResult {
   triggerReasons:    string[]
   preparingCount:    number
   maxWaitMinutes:    number
-  daVez:             { delivererId: string; name: string } | null
-  noOnlineDeliverer: boolean
+  daVez:               { delivererId: string; name: string } | null
+  noEligibleDeliverer: boolean
   overflowCount:     number
   orders: { id: string; shortId: string; customerName: string; address: string; waitMinutes: number; isPriority: boolean }[]
 }
@@ -131,8 +131,7 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
         <div className="max-h-[70vh] space-y-5 overflow-y-auto px-6 py-5">
           <p className="text-sm text-gray-500">
             Cria rotas automaticamente quando a fila de pedidos em preparação cresce, distribuindo o
-            trabalho por um rodízio de entregadores. Antes de bater a condição, qualquer entregador
-            ainda pode retirar os pedidos normalmente.
+            trabalho por um rodízio de entregadores.
           </p>
 
           {/* Toggle ativar */}
@@ -255,10 +254,10 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                     <span>Nada seria criado agora — a fila ainda não atingiu {queueSize} pedidos nem {waitMinutes} min de espera.</span>
                   </div>
-                ) : dry.noOnlineDeliverer ? (
+                ) : dry.noEligibleDeliverer ? (
                   <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700 ring-1 ring-amber-200">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>O gatilho seria atingido, mas nenhum entregador do rodízio está online agora — nenhuma rota seria criada.</span>
+                    <span>O gatilho seria atingido, mas nenhum entregador do rodízio está disponível agora (precisa estar online e sem rota ativa) — nenhuma rota seria criada.</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
