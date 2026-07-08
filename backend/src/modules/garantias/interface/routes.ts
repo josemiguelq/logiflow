@@ -3,7 +3,7 @@ import { z } from 'zod'
 import QRCode from 'qrcode'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
-import { requireScope } from '../../../shared/middleware/rbac'
+import { requireScope, requireFeature } from '../../../shared/middleware/rbac'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
 import { createPgGarantiaRepo, ClientStandingStatus } from '../infrastructure/repositories/pg-garantia-repo'
 
@@ -53,10 +53,22 @@ function maskPhoneHint(phone: string | null): string {
 export async function garantiaRoutes(app: FastifyInstance) {
   const repo = createPgGarantiaRepo(db)
 
+  // Feature "warranties" habilitada para a loja? (gating do fluxo público — o
+  // operador é bloqueado pelo preHandler requireFeature).
+  async function warrantyFeatureOn(storeId: string): Promise<boolean> {
+    const { rows } = await db.query(
+      `SELECT 1 FROM store_features_enabled sfe
+       JOIN features f ON f.id = sfe.feature_id
+       WHERE sfe.store_id = $1 AND f.name = 'warranties' LIMIT 1`,
+      [storeId],
+    )
+    return rows.length > 0
+  }
+
   // ── Operador: listar garantias (1 linha por cliente) ─────────────────────
   app.get(
     '/garantias',
-    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:view')] },
     async (req) => {
       const { customerName, status, page } = req.query as {
         customerName?: string
@@ -77,7 +89,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: config (rascunho + versão atual) ───────────────────────────
   app.get(
     '/garantias/config',
-    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:view')] },
     async (req) => {
       const draft = await repo.getOrCreateQuestionSet(req.actor.storeId, {
         sub: req.actor.sub,
@@ -112,7 +124,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
 
   app.put(
     '/garantias/config',
-    { preHandler: [requireStoreUser, requireScope('warranties:manage')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:manage')] },
     async (req) => {
       const body = updateConfigSchema.parse(req.body)
       await repo.getOrCreateQuestionSet(req.actor.storeId, {
@@ -131,7 +143,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: publicar nova versão dos termos ────────────────────────────
   app.post(
     '/garantias/config/publish',
-    { preHandler: [requireStoreUser, requireScope('warranties:manage')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:manage')] },
     async (req) => {
       // Garante que o rascunho exista antes de publicar.
       await repo.getOrCreateQuestionSet(req.actor.storeId, {
@@ -145,16 +157,14 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: detalhe do cliente (histórico de aceites) ──────────────────
   app.get(
     '/garantias/:customerId',
-    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:view')] },
     async (req, reply) => {
       const { customerId } = req.params as { customerId: string }
       const customer = await repo.getCustomerBasic(req.actor.storeId, customerId)
       if (!customer) return reply.code(404).send({ error: 'Not found' })
 
-      const link = await repo.getOrCreateClientLink(req.actor.storeId, customerId, {
-        sub: req.actor.sub,
-        name: req.actor.name,
-      })
+      // Somente leitura: não cria link ao apenas visualizar o detalhe.
+      const link = await repo.findClientLink(req.actor.storeId, customerId)
       const current = await repo.getCurrentVersion(req.actor.storeId)
       const acceptances = await repo.listAcceptancesByCustomer(req.actor.storeId, customerId)
 
@@ -168,7 +178,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
       return {
         customerId,
         customerName: customer.name,
-        token: link.token,
+        token: link?.token ?? null,
         currentVersion: current?.version ?? null,
         acceptances: resolved,
       }
@@ -178,7 +188,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: QR code do link do cliente ─────────────────────────────────
   app.get(
     '/garantias/:customerId/qrcode',
-    { preHandler: [requireStoreUser, requireScope('warranties:view')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:view')] },
     async (req, reply) => {
       const { customerId } = req.params as { customerId: string }
       const customer = await repo.getCustomerBasic(req.actor.storeId, customerId)
@@ -197,7 +207,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
   // ── Operador: gerar/obter link de garantia do cliente ────────────────────
   app.post(
     '/garantias',
-    { preHandler: [requireStoreUser, requireScope('warranties:manage')] },
+    { preHandler: [requireStoreUser, requireFeature('warranties'), requireScope('warranties:manage')] },
     async (req, reply) => {
       const body = createBodySchema.parse(req.body)
 
@@ -208,6 +218,10 @@ export async function garantiaRoutes(app: FastifyInstance) {
         sub: req.actor.sub,
         name: req.actor.name,
       })
+
+      // Garante que a loja tenha uma versão de termos publicada (bootstrap da
+      // v1 a partir do rascunho) para que o link já funcione ao ser aberto.
+      await repo.ensureCurrentVersion(req.actor.storeId, { sub: req.actor.sub, name: req.actor.name })
 
       const publicUrl = `${FRONTEND_URL}/g/${link.token}`
       const qrDataUrl = await QRCode.toDataURL(publicUrl)
@@ -227,6 +241,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
     const { token } = req.params as { token: string }
     const client = await repo.findClientByToken(token)
     if (!client) return reply.code(404).send({ error: 'Not found' })
+    if (!(await warrantyFeatureOn(client.storeId))) return reply.code(404).send({ error: 'Not found' })
 
     // Operador autenticado ignora o gate (preview). Cliente informa os 4
     // últimos dígitos do telefone via header X-Tracking-Code.
@@ -239,8 +254,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
       }
     }
 
-    const version = await repo.getCurrentVersion(client.storeId)
-    if (!version) return reply.code(404).send({ error: 'no_terms' })
+    const version = await repo.ensureCurrentVersion(client.storeId, { sub: null, name: null })
 
     const acceptance = await repo.getOrCreateAcceptanceForCurrent(
       client.storeId,
@@ -297,6 +311,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
 
     const client = await repo.findClientByToken(token)
     if (!client) return reply.code(404).send({ error: 'Not found' })
+    if (!(await warrantyFeatureOn(client.storeId))) return reply.code(404).send({ error: 'Not found' })
 
     // Mesmo gate do GET: o token sozinho não confirma sem os 4 dígitos do telefone.
     let isAuthenticated = false

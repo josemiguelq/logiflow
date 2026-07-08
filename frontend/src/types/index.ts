@@ -50,6 +50,7 @@ export interface Customer {
   createdAt: string
   updatedAt: string
   audit: CustomerAuditEntry[]
+  warrantyAccepted?: boolean
 }
 
 export interface Deliverer {
@@ -237,7 +238,7 @@ export interface WarrantyAcceptance {
 export interface WarrantyClientDetail {
   customerId: string
   customerName: string
-  token: string
+  token: string | null
   currentVersion: number | null
   acceptances: WarrantyAcceptance[]
 }

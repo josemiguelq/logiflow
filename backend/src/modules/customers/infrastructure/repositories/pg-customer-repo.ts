@@ -32,12 +32,18 @@ function mapRow(r: Record<string, unknown>): Customer {
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
     audit:     (r.audit as CustomerAuditEntry[] | null) ?? [],
+    warrantyAccepted: (r.warranty_accepted as boolean | null) ?? false,
   }
 }
 
 const WITH_ADDRESSES = `
   SELECT c.*,
     (SELECT a.name FROM assistances a WHERE a.id = c.assistance_id) AS assistance_name,
+    EXISTS (
+      SELECT 1 FROM warranty_acceptances wa
+      JOIN warranty_terms_versions v ON v.id = wa.terms_version_id AND v.is_current
+      WHERE wa.customer_id = c.id AND wa.store_id = c.store_id AND wa.status = 'confirmed'
+    ) AS warranty_accepted,
     COALESCE(
       json_agg(
         json_build_object(

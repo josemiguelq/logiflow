@@ -136,6 +136,23 @@ export function createPgGarantiaRepo(db: DB) {
       return rows[0] ? mapVersionRow(rows[0] as Record<string, unknown>) : null
     },
 
+    // Garante que exista uma versão publicada. Se a loja ainda não publicou
+    // nenhuma (ex.: primeira garantia), faz o bootstrap da v1 a partir do
+    // rascunho atual. Versões seguintes continuam exigindo publish explícito.
+    async ensureCurrentVersion(storeId: string, actor: Actor): Promise<WarrantyTermsVersion> {
+      const current = await this.getCurrentVersion(storeId)
+      if (current) return current
+      await this.getOrCreateQuestionSet(storeId, actor)
+      try {
+        return await this.publishVersion(storeId, actor)
+      } catch {
+        // Corrida: outra requisição pode ter publicado a v1 ao mesmo tempo.
+        const again = await this.getCurrentVersion(storeId)
+        if (again) return again
+        throw new Error('failed to bootstrap warranty version')
+      }
+    },
+
     async listVersions(storeId: string): Promise<WarrantyTermsVersion[]> {
       const { rows } = await db.query(
         `SELECT * FROM warranty_terms_versions WHERE store_id = $1 ORDER BY version DESC`,
@@ -181,6 +198,14 @@ export function createPgGarantiaRepo(db: DB) {
         [customerId, storeId],
       )
       return rows[0] ? { id: (rows[0] as Record<string, unknown>).id as string, name: (rows[0] as Record<string, unknown>).name as string } : null
+    },
+
+    async findClientLink(storeId: string, customerId: string): Promise<WarrantyClientLink | null> {
+      const { rows } = await db.query(
+        `SELECT * FROM warranty_client_links WHERE store_id = $1 AND customer_id = $2`,
+        [storeId, customerId],
+      )
+      return rows[0] ? mapLinkRow(rows[0] as Record<string, unknown>) : null
     },
 
     async getOrCreateClientLink(storeId: string, customerId: string, actor: Actor): Promise<WarrantyClientLink> {
@@ -243,8 +268,7 @@ export function createPgGarantiaRepo(db: DB) {
       customer: { id: string; name: string },
       actor: Actor,
     ): Promise<WarrantyAcceptance | null> {
-      const version = await this.getCurrentVersion(storeId)
-      if (!version) return null
+      const version = await this.ensureCurrentVersion(storeId, actor)
 
       // INSERT idempotente: se dois acessos concorrentes chegarem juntos, o
       // UNIQUE (store_id, customer_id, terms_version_id) garante 1 linha só.

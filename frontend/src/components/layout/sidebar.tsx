@@ -39,7 +39,7 @@ const BASE_NAV: {
   { href: '/goals',      label: 'Metas',          icon: Target,        scope: 'goals:view',      feature: null },
   { href: '/users',      label: 'Usuários',      icon: UserCog,       scope: 'users:view',      feature: null },
   { href: '/whatsapp',   label: 'WhatsApp',      icon: MessageSquare, scope: 'whatsapp:view',   feature: 'whatsapp' },
-  { href: '/garantias',  label: 'Garantias',     icon: ShieldCheck,   scope: 'warranties:view',  feature: null },
+  { href: '/garantias',  label: 'Garantias',     icon: ShieldCheck,   scope: 'warranties:view',  feature: 'warranties' },
   { href: '/settings',   label: 'Configurações', icon: Settings,      scope: 'settings:view',   feature: null },
 ]
 

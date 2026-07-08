@@ -56,6 +56,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       customThemeEnabled:     names.includes('custom_theme'),
       csvExportEnabled:       names.includes('csv_export'),
       customerRatingsEnabled: names.includes('customer_ratings'),
+      warrantiesEnabled:      names.includes('warranties'),
     }
   })
 

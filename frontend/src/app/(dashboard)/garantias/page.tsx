@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Plus, Search, X, Loader2, Copy, Check, FileText, QrCode, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useAccess } from '@/hooks/useAccess'
 import { Pagination } from '@/components/ui/pagination'
 import { PagedWarranties, WarrantyClientListItem, CreateWarrantyResponse, Customer, WarrantyConfig } from '@/types'
 import { DetailDrawer } from './_detail_drawer'
@@ -17,6 +19,15 @@ const STATUS_STYLE: Record<WarrantyClientListItem['status'], { label: string; cl
 }
 
 export default function GarantiasPage() {
+  const router = useRouter()
+  const { can, isLoading: accessLoading } = useAccess()
+  const allowed = can({ scope: 'warranties:view', feature: 'warranties' })
+
+  useEffect(() => {
+    if (accessLoading) return
+    if (!allowed) router.replace('/orders')
+  }, [accessLoading, allowed, router])
+
   const [search,   setSearch]   = useState('')
   const [status,   setStatus]   = useState('')
   const [page,     setPage]     = useState(1)
@@ -146,6 +157,8 @@ export default function GarantiasPage() {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  if (accessLoading || !allowed) return null
 
   return (
     <div className="p-4 sm:p-6">

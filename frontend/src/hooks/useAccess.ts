@@ -10,6 +10,7 @@ interface StoreFeatures {
   customThemeEnabled:     boolean
   csvExportEnabled:       boolean
   customerRatingsEnabled: boolean
+  warrantiesEnabled:      boolean
 }
 
 // Maps canonical feature names (from DB) to their boolean flag
@@ -18,6 +19,7 @@ const FEATURE_FLAGS: Record<string, keyof StoreFeatures> = {
   custom_theme:     'customThemeEnabled',
   csv_export:       'csvExportEnabled',
   customer_ratings: 'customerRatingsEnabled',
+  warranties:       'warrantiesEnabled',
 }
 
 export interface AccessCheck {
