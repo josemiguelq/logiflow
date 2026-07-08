@@ -7,6 +7,7 @@ import { MessageSquare, Wifi, WifiOff, QrCode, Power } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useAccess } from '@/hooks/useAccess'
+import { WhatsappNotifySection } from './_notify_section'
 
 const ACCESS = { scope: 'whatsapp:view', feature: 'whatsapp' } as const
 

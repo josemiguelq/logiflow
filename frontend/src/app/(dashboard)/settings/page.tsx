@@ -10,6 +10,8 @@ import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+import { AutoRouteSection } from './_auto_route'
+
 const AddressMap = dynamic(() => import('./_address_map'), {
   ssr: false,
   loading: () => <div className="flex h-full items-center justify-center text-sm text-gray-400">Carregando mapa…</div>,
@@ -96,6 +98,7 @@ export default function SettingsPage() {
           {/* Coluna principal — operações (conteúdo mais extenso) */}
           <div className="space-y-6">
             <OperationsSection onSaved={() => showToast('Configurações salvas')} />
+            <AutoRouteSection onSaved={() => showToast('Configurações salvas')} />
             <WhatsappNotifySection onSaved={() => showToast('Notificações atualizadas')} />
           </div>
 

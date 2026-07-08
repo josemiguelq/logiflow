@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { buildApp, buildTime } from './app'
 import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
 import { scanDelayedOrders, scanPriorityOverdue } from './modules/orders/application/use-cases/scan-delayed-orders'
+import { scanAutoRoutes } from './modules/orders/application/use-cases/scan-auto-routes'
+import { createPgAutoRouteRepo } from './modules/auto-routes/infrastructure/repositories/pg-auto-route-repo'
 import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
@@ -93,6 +95,7 @@ async function start() {
   const whatsapp       = createBaileysProvider(db, app.log)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
+  const autoRouteRepo  = createPgAutoRouteRepo(db)
   const pushProvider   = createFcmProvider()
   const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
@@ -163,13 +166,18 @@ async function start() {
         return
       }
 
-      const order = await orderRepo.findById(orderId, storeId)
-      if (!order) {
-        app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
-        return
+      // Eventos sem pedido (ex.: AUTO_ROUTE_NEXT) não carregam orderId.
+      let customerName = ''
+      if (orderId) {
+        const order = await orderRepo.findById(orderId, storeId)
+        if (!order) {
+          app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
+          return
+        }
+        customerName = order.customer.name
       }
 
-      const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
+      const payload = buildPushPayload(statusEvent, orderId, customerName)
       app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
       try {
         const { successCount, failureCount } = await pushProvider.send(tokens, payload)
@@ -270,6 +278,8 @@ async function start() {
       .catch((err) => app.log.error({ err }, '[delay-scan] unexpected error'))
     scanPriorityOverdue({ orderRepo, notificationQueue, log: app.log })
       .catch((err) => app.log.error({ err }, '[priority-scan] unexpected error'))
+    scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[auto-route] unexpected error'))
   }
   runDelayScan()
   setInterval(runDelayScan, 60_000)
