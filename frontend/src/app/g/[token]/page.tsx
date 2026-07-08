@@ -319,14 +319,6 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
                     <span className="text-gray-500">Cliente</span>
                     <span className="font-medium text-gray-900 text-right max-w-[60%]">{data.customerName}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Peças</span>
-                    <span className="font-medium text-gray-900 text-right max-w-[60%]">{data.parts.join(', ')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Data da Venda</span>
-                    <span className="font-medium text-gray-900">{new Date(data.saleAt).toLocaleString('pt-BR')}</span>
-                  </div>
                   {(() => {
                     const dt = confirmedAt ?? data.confirmedAt
                     if (!dt) return null
@@ -427,13 +419,6 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente</p>
           <p className="mt-1 font-semibold text-gray-900">{data.customerName}</p>
-          <div className="mt-2 flex flex-wrap gap-1">
-            {data.parts.map((part, i) => (
-              <span key={i} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
-                {part}
-              </span>
-            ))}
-          </div>
         </div>
         <div className="rounded-2xl bg-yellow-50 p-4 shadow-sm">
             <p className="text-sm text-yellow-800"> A garantia deve ser confirmada apenas depois de ter concordado com os termos e condições. </p>

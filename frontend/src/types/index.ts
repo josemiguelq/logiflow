@@ -207,14 +207,22 @@ export interface WarrantyAnswer {
   answer: boolean
 }
 
-export interface WarrantyListItem {
-  id: string
-  storeId: string
-  token: string
-  customerId: string | null
+export type WarrantyStandingStatus = 'confirmed' | 'pending' | 'outdated'
+
+// Linha do painel do operador: standing de garantia por cliente.
+export interface WarrantyClientListItem {
+  customerId: string
   customerName: string
-  parts: string[]
-  saleAt: string
+  status: WarrantyStandingStatus
+  currentVersion: number | null
+  lastConfirmedVersion: number | null
+  lastConfirmedAt: string | null
+}
+
+// Um aceite (assinatura) de uma versão específica dos termos.
+export interface WarrantyAcceptance {
+  id: string
+  termsVersion: number
   status: 'pending' | 'confirmed'
   questionsSnapshot: WarrantyQuestion[] | null
   answers: WarrantyAnswer[] | null
@@ -222,13 +230,20 @@ export interface WarrantyListItem {
   responseIp: string | null
   responseUserAgent: string | null
   confirmedAt: string | null
-  createdBy: string | null
-  createdByName: string | null
   createdAt: string
 }
 
+// Detalhe do cliente: link estável + histórico de aceites por versão.
+export interface WarrantyClientDetail {
+  customerId: string
+  customerName: string
+  token: string
+  currentVersion: number | null
+  acceptances: WarrantyAcceptance[]
+}
+
 export interface PagedWarranties {
-  items: WarrantyListItem[]
+  items: WarrantyClientListItem[]
   total: number
   page: number
   pages: number
@@ -245,8 +260,6 @@ export interface CreateWarrantyResponse {
 export interface WarrantyPublic {
   status: 'pending' | 'confirmed'
   customerName: string
-  parts: string[]
-  saleAt: string
   videoUrl: string | null
   questions: WarrantyQuestion[]
   storeTheme: {
@@ -266,4 +279,7 @@ export interface WarrantyConfig {
   storeId: string
   videoUrl: string | null
   questions: WarrantyQuestion[]
+  currentVersion: number | null
+  currentPublishedAt: string | null
+  draftDirty: boolean
 }
