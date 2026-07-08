@@ -18,6 +18,7 @@ import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/priority_badge.dart';
 import '../tracking/location_service.dart';
 import 'order_selection_controller.dart';
 
@@ -1094,6 +1095,10 @@ class _OrderSelectionTile extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (order.isPriority) ...[
+                      const SizedBox(height: 6),
+                      PriorityBadge(order: order),
+                    ],
                     if (delay?.minutes != null) ...[
                       const SizedBox(height: 6),
                       _WaitingBadge(minutes: delay!.minutes!, level: level),
