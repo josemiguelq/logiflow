@@ -342,10 +342,7 @@ export default function LandingPage() {
       {/* ── Auto-routes showcase ── */}
       <section className="border-t border-gray-100 bg-gradient-to-b from-white to-blue-50/50 py-24 px-6" id="rotas-automaticas">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-14 text-center">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-1.5 text-sm font-medium text-blue-700">
-              🔀 Novidade
-            </div>
+          <div className="mb-14 text-center">            
             <h2 className="mb-4 text-4xl font-bold text-gray-900">
               Rotas automáticas com rodízio de entregadores
             </h2>

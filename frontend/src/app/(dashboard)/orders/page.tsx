@@ -119,9 +119,17 @@ export default function OrdersPage() {
     const d = getDelayInfo(o, delayThresholds, now)
     return d.level === 'red' ? 2 : d.level === 'yellow' ? 1 : 0
   }
+  // Fila de "Preparando" no topo: prioritários primeiro, depois os normais;
+  // demais status (em rota, etc.) vêm em seguida.
+  const preparingRank = (o: Order) => {
+    if (o.status !== 'PREPARING') return 0
+    return o.isPriority ? 2 : 1
+  }
   const activeOrders = filteredOrders
     .filter(o => !COMPLETED_STATUSES.includes(o.status))
     .sort((a, b) => {
+      const pa = preparingRank(a), pb = preparingRank(b)
+      if (pa !== pb) return pb - pa
       const ra = delayRank(a), rb = delayRank(b)
       if (ra !== rb) return rb - ra
       if (ra === 0) return 0 // preserva ordem original entre não-atrasados (sort estável)
