@@ -508,6 +508,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
                           <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
                         )}
+                        {e.action === 'CASH_AMOUNT_CHANGED' && e.details && (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {(e.details.from as number) != null ? formatBRL(e.details.from as number) : '(vazio)'} → {(e.details.to as number) != null ? formatBRL(e.details.to as number) : '(vazio)'}
+                          </p>
+                        )}
                         {e.action === 'CANCELLED' && e.details?.reason != null && (
                           <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
                         )}
