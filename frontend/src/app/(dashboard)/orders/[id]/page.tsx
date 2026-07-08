@@ -309,21 +309,38 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 Pagamentos recebidos
               </h2>
               <div className="space-y-1.5">
-                {order.payments.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm">
-                    <span className="flex items-center gap-2 text-green-800">
-                      <Wallet className="h-4 w-4 text-green-500" />
-                      {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
-                    </span>
-                    <span className="font-semibold text-green-900">{formatBRL(p.amount)}</span>
-                  </div>
-                ))}
-                {order.payments.length > 1 && (
-                  <div className="flex items-center justify-between px-3 pt-1 text-sm font-bold text-gray-900">
-                    <span>Total</span>
-                    <span>{formatBRL(order.payments.reduce((s, p) => s + p.amount, 0))}</span>
-                  </div>
-                )}
+                {(() => {
+                  const total = order.payments!.reduce((s, p) => s + p.amount, 0)
+                  const discrepancy = order.cashAmount && order.cashAmount > 0 && total < order.cashAmount
+                  return (
+                    <>
+                      {discrepancy && (
+                        <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800 mb-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                          <span>
+                            Valor recebido ({formatBRL(total)}) menor que o esperado ({formatBRL(order.cashAmount!)}).
+                            {order.deliveryNote && ` Motivo: ${order.deliveryNote}`}
+                          </span>
+                        </div>
+                      )}
+                      {order.payments!.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm">
+                          <span className="flex items-center gap-2 text-green-800">
+                            <Wallet className="h-4 w-4 text-green-500" />
+                            {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
+                          </span>
+                          <span className="font-semibold text-green-900">{formatBRL(p.amount)}</span>
+                        </div>
+                      ))}
+                      {order.payments!.length > 1 && (
+                        <div className="flex items-center justify-between px-3 pt-1 text-sm font-bold text-gray-900">
+                          <span>Total</span>
+                          <span>{formatBRL(total)}</span>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </section>
           )}
