@@ -114,13 +114,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
       <div
         className={`rounded-2xl border p-6 shadow-sm ${
           delay.level === 'red' ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-start justify-between">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
+        <div>
+          <div className="flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">
               Pedido #{order.id.slice(-8).toUpperCase()}
