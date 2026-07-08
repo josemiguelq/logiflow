@@ -417,10 +417,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           )}
 
         </div>
-      </div>
+        </div>
 
       {(order.proofs?.length > 0 || (order.summary?.segments?.length ?? 0) > 0 || (order.log?.length ?? 0) > 0) && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div>
           <div className="space-y-4">
             {order.proofs?.length > 0 && (
               <section>
@@ -534,6 +534,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       )}
+        </div>
       </div>
 
       {adjusting && (
