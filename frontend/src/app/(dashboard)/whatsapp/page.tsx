@@ -172,6 +172,10 @@ export default function WhatsAppPage() {
             <li>1 sessão por loja</li>
           </ul>
         </div>
+
+        <div className="mt-6">
+          <WhatsappNotifySection />
+        </div>
       </div>
     </div>
   )
