@@ -714,6 +714,36 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Store user altera o valor esperado a receber (cash_amount).
+  app.patch(
+    '/orders/:id/cash-amount',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { cashAmount } = z.object({
+        cashAmount: z.number().min(0).nullable(),
+      }).parse(req.body)
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+        return reply.code(400).send({ error: 'Não é possível alterar o valor de um pedido finalizado' })
+      }
+
+      const prev = order.cashAmount ?? null
+      await db.query(
+        `UPDATE orders SET cash_amount = $1 WHERE id = $2`,
+        [cashAmount, id]
+      )
+      logEvent(id, req.actor, 'CASH_AMOUNT_CHANGED', { from: prev, to: cashAmount })
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+      return updated
+    }
+  )
+
   // Store user fixes the delivery address of an order by picking one of the customer's addresses.
   // Writes the override columns (delivery_address/lat/lng) and notifies customer + deliverer.
   app.patch(

@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
@@ -27,8 +27,9 @@ const LOG_ACTION_LABEL: Record<string, string> = {
   DELIVERED:         'Entregue',
   CANCELLED:         'Cancelado',
   RETURNED_TO_QUEUE: 'Devolvido à fila',
-  NOTE_CHANGED:      'Observação alterada',
-  ADDRESS_CHANGED:   'Endereço alterado',
+  NOTE_CHANGED:        'Observação alterada',
+  ADDRESS_CHANGED:     'Endereço alterado',
+  CASH_AMOUNT_CHANGED: 'Valor a receber alterado',
 }
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
@@ -70,6 +71,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     (url: string) => api.get<Order>(url)
   )
   const [adjusting, setAdjusting] = useState(false)
+  const [editingCash, setEditingCash] = useState(false)
+  const [cashValue, setCashValue] = useState('')
   const now        = useNow()
   const thresholds = useDelayThresholds()
 
@@ -300,6 +303,68 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <p className="rounded-lg bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
                 {order.deliveryNote}
               </p>
+            </section>
+          )}
+
+          {(order.cashAmount != null || editingCash) && (
+            <section className="border-t border-gray-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Valor a receber
+                </h2>
+                {!COMPLETED_STATUSES.includes(order.status) && !editingCash && (
+                  <button
+                    onClick={() => {
+                      setCashValue(order.cashAmount != null ? String(order.cashAmount) : '')
+                      setEditingCash(true)
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    <Pen className="h-3 w-3" />
+                    Editar
+                  </button>
+                )}
+              </div>
+              {editingCash ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cashValue}
+                      onChange={e => setCashValue(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm font-medium text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const val = parseFloat(cashValue)
+                      const normalized = !isNaN(val) && val >= 0 ? val : null
+                      try {
+                        await api.patch(`/orders/${id}/cash-amount`, { cashAmount: normalized })
+                        await mutate()
+                      } catch { /* silent */ }
+                      setEditingCash(false)
+                    }}
+                    className="rounded-lg bg-brand-500 px-3 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition-colors"
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    onClick={() => setEditingCash(false)}
+                    className="rounded-lg border border-gray-300 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-gray-900">
+                  {formatBRL(order.cashAmount!)}
+                </p>
+              )}
             </section>
           )}
 
