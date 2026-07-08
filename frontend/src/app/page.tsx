@@ -19,6 +19,11 @@ const FEATURES = [
     desc: 'O entregador organiza a ordem de entrega no app e confirma a rota antes de sair, reduzindo desvios e atrasos.',
   },
   {
+    icon: '🔀',
+    title: 'Rotas automáticas com rodízio',
+    desc: 'Configure um rodízio de entregadores e deixe o sistema montar as rotas sozinho: quando a fila enche ou os pedidos esperam demais, a rota nasce pronta e vai para o "entregador da vez", que é avisado por push.',
+  },
+  {
     icon: '📸',
     title: 'Confirmação com código e foto',
     desc: 'Exija o código de 4 dígitos do destinatário (em todos os planos, ativável pela loja) e, nos planos Pro, também a foto da entrega — garantindo que o pedido chegou ao lugar certo.',
@@ -301,7 +306,7 @@ export default function LandingPage() {
       {/* ── Social proof strip ── */}
       <section className="border-y border-gray-100 bg-gray-50 py-5 px-6">
         <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-sm text-gray-500">
-          {['App nativo para entregadores', 'Rastreamento GPS em tempo real', 'Mapa de clientes', 'Alertas de atraso', 'Notificações WhatsApp', 'Sem limite de entregas'].map(item => (
+          {['App nativo para entregadores', 'Rastreamento GPS em tempo real', 'Rotas automáticas', 'Mapa de clientes', 'Alertas de atraso', 'Notificações WhatsApp', 'Sem limite de entregas'].map(item => (
             <span key={item} className="flex items-center gap-1.5">
               <CheckIcon />
               {item}
@@ -330,6 +335,107 @@ export default function LandingPage() {
                 <p className="text-sm leading-relaxed text-gray-500">{f.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Auto-routes showcase ── */}
+      <section className="border-t border-gray-100 bg-gradient-to-b from-white to-blue-50/50 py-24 px-6" id="rotas-automaticas">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-14 text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-1.5 text-sm font-medium text-blue-700">
+              🔀 Novidade
+            </div>
+            <h2 className="mb-4 text-4xl font-bold text-gray-900">
+              Rotas automáticas com rodízio de entregadores
+            </h2>
+            <p className="mx-auto max-w-2xl text-lg text-gray-500">
+              Pare de montar rota na mão. Configure o rodízio uma vez e o LogiFlow distribui a fila
+              de pedidos sozinho — de forma justa, sem ninguém ficar parado nem sobrecarregado.
+            </p>
+          </div>
+
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            {/* Steps */}
+            <div className="order-2 lg:order-1">
+              <ol className="space-y-6">
+                {[
+                  {
+                    n: '1',
+                    title: 'Defina o rodízio',
+                    desc: 'Ordene seus entregadores. O primeiro que estiver online é o "entregador da vez"; se estiver offline, a vez passa automaticamente ao próximo.',
+                  },
+                  {
+                    n: '2',
+                    title: 'Escolha o gatilho',
+                    desc: 'A rota é criada quando o pedido mais antigo espera além do tempo definido OU quando a fila atinge a quantidade que você configurou.',
+                  },
+                  {
+                    n: '3',
+                    title: 'A rota nasce sozinha',
+                    desc: 'Todos os pedidos em preparação viram uma rota já atribuída ao entregador da vez — respeitando o máximo de pedidos por rota, se você definir um.',
+                  },
+                  {
+                    n: '4',
+                    title: 'Push proativo',
+                    desc: 'Quem recebe a rota é notificado na hora, e o próximo do rodízio recebe um aviso para já ficar preparado.',
+                  },
+                ].map(step => (
+                  <li key={step.n} className="flex gap-4">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                      {step.n}
+                    </div>
+                    <div>
+                      <h3 className="mb-1 font-semibold text-gray-900">{step.title}</h3>
+                      <p className="text-sm leading-relaxed text-gray-500">{step.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-8 flex items-start gap-2 rounded-xl border border-blue-100 bg-white p-4 text-sm text-gray-600 shadow-sm">
+                <span className="text-lg leading-none">🧪</span>
+                <p>
+                  <span className="font-semibold text-gray-900">Simule antes de salvar:</span>{' '}
+                  veja exatamente qual rota seria criada, para quem e com quais pedidos — sem afetar a operação.
+                </p>
+              </div>
+            </div>
+
+            {/* Config screenshot */}
+            <div className="order-1 lg:order-2">
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl shadow-blue-100/50 ring-1 ring-gray-100">
+                <img
+                  src="/screenshots/auto-route.png"
+                  alt="Tela de configuração das rotas automáticas: rodízio de entregadores, tempo de espera e tamanho da fila"
+                  className="w-full"
+                  loading="lazy"
+                />
+              </div>
+              <p className="mt-3 text-center text-sm text-gray-400">
+                Configuração das rotas automáticas, direto na tela de Rotas
+              </p>
+            </div>
+          </div>
+
+          {/* Result screenshot */}
+          <div className="mt-20">
+            <div className="mx-auto mb-6 max-w-2xl text-center">
+              <h3 className="mb-2 text-2xl font-bold text-gray-900">
+                A rota criada aparece pronta no painel
+              </h3>
+              <p className="text-gray-500">
+                Com mapa, ordem de entrega otimizada e todos os pedidos agrupados —
+                o entregador é só sair para rodar.
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-blue-100/50 ring-1 ring-gray-100">
+              <img
+                src="/screenshots/route-details.png"
+                alt="Detalhes de uma rota no painel: mapa com as paradas numeradas, entregador atribuído e lista de pedidos"
+                className="w-full"
+                loading="lazy"
+              />
+            </div>
           </div>
         </div>
       </section>
