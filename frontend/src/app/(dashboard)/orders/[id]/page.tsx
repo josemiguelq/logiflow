@@ -210,7 +210,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <Truck className="h-4 w-4 text-gray-400" />
                 {order.deliverer.name}
                 {order.routePosition !== undefined && (
-                  <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">
+                  <span className="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)' }}>
                     Posição #{order.routePosition}
                   </span>
                 )}
@@ -335,7 +336,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       min="0"
                       value={cashValue}
                       onChange={e => setCashValue(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm font-medium text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm font-medium text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       autoFocus
                     />
                   </div>
@@ -349,7 +350,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       } catch { /* silent */ }
                       setEditingCash(false)
                     }}
-                    className="rounded-lg bg-brand-500 px-3 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition-colors"
+                    className="rounded-lg px-3 py-2.5 text-xs font-bold text-white transition-colors"
+                    style={{ background: 'var(--color-primary)' }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                   >
                     Salvar
                   </button>
