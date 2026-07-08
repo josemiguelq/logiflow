@@ -90,7 +90,7 @@ export function AssistanceCombobox({
           value={query}
           onChange={e => handleChange(e.target.value)}
           onFocus={() => setOpen(true)}
-          placeholder="Buscar assistência..."
+          placeholder="Buscar nome comercial..."
           className="pl-9 pr-8"
           autoComplete="off"
         />

@@ -7,6 +7,7 @@ import { MessageSquare, Wifi, WifiOff, QrCode, Power } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useAccess } from '@/hooks/useAccess'
+import { WhatsappNotifySection } from './_notify_section'
 
 const ACCESS = { scope: 'whatsapp:view', feature: 'whatsapp' } as const
 
@@ -170,6 +171,10 @@ export default function WhatsAppPage() {
             <li>A mensagem inclui link de rastreamento e código de confirmação</li>
             <li>1 sessão por loja</li>
           </ul>
+        </div>
+
+        <div className="mt-6">
+          <WhatsappNotifySection />
         </div>
       </div>
     </div>

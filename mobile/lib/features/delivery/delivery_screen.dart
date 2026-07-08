@@ -737,6 +737,66 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     );
   }
 
+  // Aviso quando o valor recebido é menor que o esperado.
+  // Retorna o motivo preenchido se confirmou, ou null se cancelou.
+  Future<String?> _confirmShortPayment(double collected, double expected) {
+    final noteCtrl = TextEditingController();
+    String? noteError;
+    return showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded,
+              size: 36, color: Color(0xFFEA580C)),
+          title: const Text('Valor recebido menor que o esperado'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Você informou R\$${collected.toStringAsFixed(2)}, mas o '
+                'valor esperado era R\$${expected.toStringAsFixed(2)}. '
+                'O operador será notificado dessa divergência.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: noteCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Motivo (obrigatório)',
+                  errorText: noteError,
+                  border: const OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (noteCtrl.text.trim().isEmpty) {
+                  setDialogState(() => noteError = 'Informe o motivo');
+                  return;
+                }
+                Navigator.pop(ctx, noteCtrl.text.trim());
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEA580C)),
+              child: const Text('Estou ciente'),
+            ),
+          ],
+        ),
+      ),
+    ).then((r) {
+      noteCtrl.dispose();
+      return r;
+    });
+  }
+
   Future<void> _confirm() async {
     final code = _codeCtrl.text.trim().toUpperCase();
     if (widget.requireDeliveryCode && code.length != 4) {
@@ -822,7 +882,20 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               .toList()
           : <Map<String, dynamic>>[];
 
-      final note = _noteCtrl.text.trim();
+      String note = _noteCtrl.text.trim();
+
+      // Alerta quando o valor recebido é menor que o esperado.
+      if (payments.isNotEmpty) {
+        final totalCollected =
+            payments.fold<double>(0, (sum, p) => sum + (p['amount'] as double));
+        final expected = widget.order.cashAmount;
+        if (expected != null && expected > 0 && totalCollected < expected) {
+          final shortNote = await _confirmShortPayment(totalCollected, expected);
+          if (shortNote == null || !mounted) return;
+          note = shortNote;
+        }
+      }
+
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
         data: {

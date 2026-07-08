@@ -11,6 +11,17 @@ export interface IOrderRepository {
   findPreparing(storeId: string, requestingDelivererId?: string): Promise<OrderWithDetails[]>
   create(data: Omit<Order, 'id' | 'createdAt'>): Promise<Order>
   updateStatus(id: string, status: OrderStatus, extra?: Partial<Order>): Promise<Order>
+  // Conclui a entrega num único UPDATE: status DELIVERED + timestamps + append no
+  // log de auditoria + summary de tempos. Evita 3 escritas separadas na mesma linha.
+  finalizeDelivered(id: string, opts: {
+    deliveredAt:    Date
+    deliveryNote?:  string
+    cashCollected?: boolean
+    logEntry:       OrderLogEntry
+    summary:        OrderSummary
+  }): Promise<Order>
+  // Marca/desmarca prioridade e ajusta o horário máximo de entrega.
+  updatePriority(id: string, isPriority: boolean, maxDeliveryTime: Date | null): Promise<Order>
   // Transição idempotente ON_ROUTE → OUT_FOR_DELIVERY. Retorna o pedido só quando
   // ESTE chamada efetuou a mudança (status era ON_ROUTE); null se já avançado.
   // Permite que múltiplos gatilhos (start de rota, start por pedido) notifiquem 1x só.
@@ -22,6 +33,8 @@ export interface IOrderRepository {
   submitRating(orderId: string, rating: number, comment?: string): Promise<void>
   getPublic(id: string): Promise<PublicOrderView | null>
   findInTransit(): Promise<InTransitOrder[]>
+  // Pedidos prioritários ativos cujo horário máximo de entrega já passou.
+  findPriorityOverdue(): Promise<PriorityOverdueOrder[]>
   // Auditoria: anexa uma entrada ao log JSONB do pedido.
   appendLog(orderId: string, entry: OrderLogEntry): Promise<void>
   // Grava o resumo de tempos do pedido (na entrega).
@@ -47,6 +60,16 @@ export interface InTransitOrder {
   minutes:       number       // minutos desde picked_up_at
   transitYellowMin: number    // limiares da loja (resolvidos com default)
   transitRedMin:    number
+}
+
+export interface PriorityOverdueOrder {
+  id:             string
+  storeId:        string
+  delivererId?:   string
+  customerName:   string
+  delivererName?: string
+  maxDeliveryTime: Date
+  minutesLate:    number       // minutos desde max_delivery_time
 }
 
 export interface OrderFilters {

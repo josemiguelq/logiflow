@@ -10,6 +10,8 @@ class Order {
   final double? customerLat;
   final double? customerLng;
   final String? notes;           // nota cadastrada pelo usuário web
+  final bool isPriority;         // pedido prioritário (coroa)
+  final DateTime? maxDeliveryTime; // horário máximo de entrega (prazo), quando prioritário
   final String paymentMethod;   // 'prepaid' | 'cash' | 'card'
   final double? cashAmount;
   final bool cashCollected;
@@ -28,6 +30,8 @@ class Order {
     this.customerLat,
     this.customerLng,
     this.notes,
+    this.isPriority = false,
+    this.maxDeliveryTime,
     this.paymentMethod = 'prepaid',
     this.cashAmount,
     this.cashCollected = false,
@@ -36,6 +40,9 @@ class Order {
   });
 
   bool get isCash => paymentMethod == 'cash' && cashAmount != null && cashAmount! > 0;
+
+  // Prazo de entrega já estourou (só faz sentido quando prioritário e com prazo).
+  bool get isOverdue => maxDeliveryTime != null && DateTime.now().isAfter(maxDeliveryTime!);
 
   String get shortId => id.substring(id.length - 8).toUpperCase();
 
@@ -53,6 +60,8 @@ class Order {
       customerLat:     (c['lat'] as num?)?.toDouble(),
       customerLng:     (c['lng'] as num?)?.toDouble(),
       notes:           j['notes'] as String?,
+      isPriority:       j['isPriority'] as bool? ?? false,
+      maxDeliveryTime:  DateTime.tryParse(j['maxDeliveryTime'] as String? ?? '')?.toLocal(),
       paymentMethod:    j['paymentMethod'] as String? ?? 'prepaid',
       cashAmount:       (j['cashAmount'] as num?)?.toDouble(),
       cashCollected:    j['cashCollected'] as bool? ?? false,
@@ -73,6 +82,8 @@ class Order {
         customerLat:     customerLat,
         customerLng:     customerLng,
         notes:           notes,
+        isPriority:      isPriority,
+        maxDeliveryTime: maxDeliveryTime,
         paymentMethod:   paymentMethod,
         cashAmount:      cashAmount,
         cashCollected:   cashCollected,

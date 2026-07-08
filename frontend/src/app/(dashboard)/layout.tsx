@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Menu, Truck, CheckCircle2, X, MapPin, Clock } from 'lucide-react'
+import { Menu, Truck, CheckCircle2, X, MapPin, Clock, Crown } from 'lucide-react'
 import useSWR from 'swr'
 import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,11 +11,12 @@ import { WsProvider, useWs } from '@/hooks/WsContext'
 import { formatDelayDuration } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { OperatorAlerts } from '@/components/alerts/operator-alerts'
+import { DynamicManifest } from '@/components/pwa/dynamic-manifest'
 
 interface DeliveryNotif {
   id:            string
   orderId:       string
-  type:          'DELIVERED' | 'OUT_FOR_DELIVERY' | 'DELAYED_YELLOW' | 'DELAYED_RED'
+  type:          'DELIVERED' | 'OUT_FOR_DELIVERY' | 'DELAYED_YELLOW' | 'DELAYED_RED' | 'PRIORITY_OVERDUE'
   customerName:  string
   shortId:       string
   delivererName?: string
@@ -126,9 +127,37 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     })
   }, [on, dismiss])
 
+  // ── Prazo de pedido prioritário estourado ──
+  useEffect(() => {
+    return on('order_priority_overdue', (data) => {
+      const d = data as {
+        orderId: string
+        customerName?: string
+        shortId?: string
+        delivererName?: string
+        minutesLate?: number
+      }
+      const id = `priority-${d.orderId}`
+      const notif: DeliveryNotif = {
+        id,
+        orderId:       d.orderId,
+        type:          'PRIORITY_OVERDUE',
+        customerName:  d.customerName ?? 'Cliente',
+        shortId:       d.shortId ?? '#' + d.orderId.slice(-8).toUpperCase(),
+        delivererName: d.delivererName,
+        minutes:       d.minutesLate,
+      }
+      setNotifs(prev => [...prev.filter(n => n.id !== id), notif])
+      const existing = timers.current.get(id)
+      if (existing) clearTimeout(existing)
+      timers.current.set(id, setTimeout(() => dismiss(id), NOTIF_TTL))
+    })
+  }, [on, dismiss])
+
   const logoUrl     = themeData?.theme?.logoUrl ?? null
   const customTheme = themeData?.features?.customThemeEnabled ?? false
   const storeName   = themeData?.theme?.storeName ?? null
+  const primary     = themeData?.theme?.primary ?? null
   const brandName   = customTheme && storeName ? storeName : 'LogiFlow'
 
   useTheme()
@@ -173,6 +202,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      <DynamicManifest storeName={storeName} primary={primary} customTheme={customTheme} />
+
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <OperatorAlerts />
@@ -187,22 +218,25 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           const delivered = n.type === 'DELIVERED'
           const delayed   = n.type === 'DELAYED_YELLOW' || n.type === 'DELAYED_RED'
           const delayedRed = n.type === 'DELAYED_RED'
-          const Icon  = delivered ? CheckCircle2 : delayed ? Clock : Truck
+          const priority  = n.type === 'PRIORITY_OVERDUE'
+          const Icon  = delivered ? CheckCircle2 : priority ? Crown : delayed ? Clock : Truck
           const title = delivered
             ? 'Pedido entregue'
-            : delayed
-              ? (delayedRed ? 'Entrega muito atrasada 🚨' : 'Entrega atrasada ⏰')
-              : 'Saiu para entrega'
+            : priority
+              ? 'Prazo de prioridade estourado 👑'
+              : delayed
+                ? (delayedRed ? 'Entrega muito atrasada 🚨' : 'Entrega atrasada ⏰')
+                : 'Saiu para entrega'
           const iconWrap = delivered
             ? 'bg-green-500/15'
-            : delayedRed
+            : priority || delayedRed
               ? 'bg-red-500/20'
               : delayed
                 ? 'bg-yellow-500/15'
                 : 'bg-orange-500/15'
           const iconColor = delivered
             ? 'text-green-400'
-            : delayedRed
+            : priority || delayedRed
               ? 'text-red-400'
               : delayed
                 ? 'text-yellow-400'
@@ -225,6 +259,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 {delayed && n.minutes != null && (
                   <p className="mt-0.5 text-xs text-gray-400">
                     Em rota há {formatDelayDuration(n.minutes)}
+                  </p>
+                )}
+                {priority && n.minutes != null && (
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Atrasado há {formatDelayDuration(n.minutes)}
                   </p>
                 )}
                 <p className="mt-0.5 truncate text-sm text-gray-300">

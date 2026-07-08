@@ -13,7 +13,7 @@ import { createOrder } from '../application/use-cases/create-order'
 import { assignDeliverer } from '../application/use-cases/assign-deliverer'
 import { confirmPickup } from '../application/use-cases/confirm-pickup'
 import { confirmDelivery } from '../application/use-cases/confirm-delivery'
-import { computeSummary } from '../application/order-summary'
+import { getStoreSettings } from '../../settings/store-settings-cache'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
@@ -437,6 +437,8 @@ export async function orderRoutes(app: FastifyInstance) {
   const createSchema = z.object({
     customerId:      z.string().uuid(),
     notes:           z.string().optional(),
+    isPriority:      z.boolean().optional().default(false),
+    maxDeliveryTime: z.string().datetime().optional(),
     paymentMethod:   z.enum(['prepaid', 'cash', 'card']).default('prepaid'),
     cashAmount:      z.number().positive().optional(),
     lat:             z.number().optional(),
@@ -467,15 +469,23 @@ export async function orderRoutes(app: FastifyInstance) {
       )
       const deliveryCode = (cust?.phone as string | undefined)?.slice(-4) ?? generateCode().slice(0, 4)
 
+      // Prazo só faz sentido quando prioritário.
+      const maxDeliveryTime = body.isPriority && body.maxDeliveryTime
+        ? new Date(body.maxDeliveryTime)
+        : undefined
+
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
+          isPriority: body.isPriority, maxDeliveryTime,
           paymentMethod: body.paymentMethod, cashAmount: body.cashAmount,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         { orderRepo }
       )
 
-      logEvent(order.id, actor, 'CREATED')
+      logEvent(order.id, actor, 'CREATED', body.isPriority
+        ? { isPriority: true, maxDeliveryTime: maxDeliveryTime?.toISOString() ?? null }
+        : undefined)
       wsHub.broadcastOrderUpdate(storeId, order)
       queueNotif(storeId, order.id, 'PREPARING')
       queuePush(storeId, order.id, 'PREPARING')
@@ -662,6 +672,70 @@ export async function orderRoutes(app: FastifyInstance) {
         [note.trim() || null, id]
       )
       logEvent(id, req.actor, 'NOTE_CHANGED', { from: previousNote, to: note.trim() || null })
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+      return updated
+    }
+  )
+
+  // Store user marca/desmarca a prioridade e ajusta o horário máximo de entrega.
+  app.patch(
+    '/orders/:id/priority',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { isPriority, maxDeliveryTime } = z.object({
+        isPriority:      z.boolean(),
+        maxDeliveryTime: z.string().datetime().nullable().optional(),
+      }).parse(req.body)
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+        return reply.code(400).send({ error: 'Não é possível alterar a prioridade de um pedido finalizado' })
+      }
+
+      // Prazo só é guardado quando prioritário.
+      const nextMax = isPriority && maxDeliveryTime ? new Date(maxDeliveryTime) : null
+
+      await orderRepo.updatePriority(id, isPriority, nextMax)
+      logEvent(id, req.actor, 'PRIORITY_CHANGED', {
+        from: { isPriority: order.isPriority, maxDeliveryTime: order.maxDeliveryTime ?? null },
+        to:   { isPriority, maxDeliveryTime: nextMax?.toISOString() ?? null },
+      })
+
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+      return updated
+    }
+  )
+
+  // Store user altera o valor esperado a receber (cash_amount).
+  app.patch(
+    '/orders/:id/cash-amount',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { cashAmount } = z.object({
+        cashAmount: z.number().min(0).nullable(),
+      }).parse(req.body)
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+        return reply.code(400).send({ error: 'Não é possível alterar o valor de um pedido finalizado' })
+      }
+
+      const prev = order.cashAmount ?? null
+      await db.query(
+        `UPDATE orders SET cash_amount = $1 WHERE id = $2`,
+        [cashAmount, id]
+      )
+      logEvent(id, req.actor, 'CASH_AMOUNT_CHANGED', { from: prev, to: cashAmount })
       const updated = (await orderRepo.findById(id, req.actor.storeId))!
       wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
       invalidateStoreOrders(req.actor.storeId)
@@ -860,6 +934,9 @@ export async function orderRoutes(app: FastifyInstance) {
             WHERE deliverer_id = $1 AND status = 'DELIVERED'
               AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_deliveries,
          (SELECT count(*) FROM orders, bounds
+            WHERE deliverer_id = $1 AND status = 'DELIVERED' AND is_priority
+              AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_priority_deliveries,
+         (SELECT count(*) FROM orders, bounds
             WHERE cancelled_by_deliverer_id = $1
               AND cancelled_at >= bounds.start_ts AND cancelled_at < bounds.end_ts) AS month_cancelled,
          (SELECT count(*) FROM routes, bounds
@@ -872,9 +949,10 @@ export async function orderRoutes(app: FastifyInstance) {
       month,
       today: { deliveries: Number(row.today_deliveries ?? 0) },
       monthSummary: {
-        deliveries: Number(row.month_deliveries ?? 0),
-        cancelled:  Number(row.month_cancelled ?? 0),
-        routes:     Number(row.month_routes ?? 0),
+        deliveries:         Number(row.month_deliveries ?? 0),
+        priorityDeliveries: Number(row.month_priority_deliveries ?? 0),
+        cancelled:          Number(row.month_cancelled ?? 0),
+        routes:             Number(row.month_routes ?? 0),
       },
     }
   })
@@ -1053,17 +1131,8 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const body = deliverySchema.parse(req.body)
 
-      const { rows: settingRows } = await db.query(
-        `SELECT s.name, COALESCE(ssv.value, s.default_value) AS value
-         FROM settings s
-         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
-         WHERE s.name IN ('require_delivery_code', 'enforce_delivery_order',
-                          'delivery_require_proximity', 'delivery_proximity_meters')`,
-        [req.actor.storeId]
-      )
-      const sv = Object.fromEntries(
-        settingRows.map((r: Record<string, unknown>) => [r.name as string, r.value as string])
-      )
+      // Settings resolvidos da loja (cache Redis local, invalidado ao salvar settings).
+      const sv = await getStoreSettings(req.actor.storeId)
       const requireDeliveryCode = sv.require_delivery_code !== 'false'
       const enforceOrder        = sv.enforce_delivery_order === 'true'
       const requireProximity    = sv.delivery_require_proximity === 'true'
@@ -1074,31 +1143,23 @@ export async function orderRoutes(app: FastifyInstance) {
         ? body.photoUrls
         : body.photoUrl ? [body.photoUrl] : []
 
-      // Read max_proof_photos setting
-      const { rows: [maxRow] } = await db.query(
-        `SELECT COALESCE(ssv.value, s.default_value) AS value
-         FROM settings s
-         LEFT JOIN store_setting_values ssv ON ssv.setting_id = s.id AND ssv.store_id = $1
-         WHERE s.name = 'max_proof_photos'`,
-        [req.actor.storeId]
-      )
-      const maxPhotos = parseInt((maxRow as Record<string, unknown> | undefined)?.value as string ?? '1', 10) || 1
+      const maxPhotos = parseInt(sv.max_proof_photos ?? '1', 10) || 1
       const cappedUrls = rawUrls.slice(0, maxPhotos)
 
-      // Upload each photo (base64 data URIs → storage)
-      const uploadedUrls: string[] = []
-      for (let i = 0; i < cappedUrls.length; i++) {
-        const url = cappedUrls[i]!
-        if (url.startsWith('data:')) {
+      // Upload das fotos (base64 → storage) em PARALELO — o loop sequencial
+      // somava a latência de cada upload. Mantém a ordem para o photo_index;
+      // uploads que falham viram null e são descartados.
+      const uploadedUrls = (await Promise.all(
+        cappedUrls.map(async (url, i) => {
+          if (!url.startsWith('data:')) return url
           try {
-            uploadedUrls.push(await uploadBase64(`proof/${id}/${i + 1}`, url))
+            return await uploadBase64(`proof/${id}/${i + 1}`, url)
           } catch (uploadErr) {
             req.log.error({ err: uploadErr }, 'proof photo upload failed — skipping')
+            return null
           }
-        } else {
-          uploadedUrls.push(url)
-        }
-      }
+        })
+      )).filter((u): u is string => u !== null)
 
       // Normaliza pagamentos: usa a lista nova quando presente; senão converte o
       // par antigo collectedAmount/collectedMethod num único pagamento.
@@ -1114,7 +1175,8 @@ export async function orderRoutes(app: FastifyInstance) {
             requireDeliveryCode, code: body.code, photoUrls: uploadedUrls,
             lat: body.lat, lng: body.lng, note: body.note,
             enforceOrder, requireProximity, proximityMeters, payments,
-            cashCollected: body.cashCollected },
+            cashCollected: body.cashCollected,
+            by: { type: req.actor.type as 'deliverer', id: req.actor.sub, name: req.actor.name } },
           { orderRepo, log: req.log }
         )
 
@@ -1122,14 +1184,9 @@ export async function orderRoutes(app: FastifyInstance) {
         // (sem log/notificação/broadcast/auto-avanço duplicados).
         if (alreadyDelivered) return order
 
-        // Auditoria + resumo de tempos: registra a entrega e calcula os
-        // segmentos entre cada mudança de status a partir do log completo.
-        await logEvent(id, req.actor, 'DELIVERED')
-        const fullOrder = await orderRepo.findById(id, req.actor.storeId)
-        if (fullOrder?.log) {
-          await orderRepo.setSummary(id, computeSummary(fullOrder.log)).catch(() => { /* non-fatal */ })
-        }
-        wsHub.broadcastOrderUpdate(req.actor.storeId, fullOrder ?? order)
+        // Auditoria + summary já foram gravados junto à entrega (finalizeDelivered),
+        // num único UPDATE — não é preciso reler o pedido aqui.
+        wsHub.broadcastOrderUpdate(req.actor.storeId, order)
         queueNotif(req.actor.storeId, id, 'DELIVERED')
         invalidateDelivererOrders(req.actor.sub)
         invalidateStoreOrders(req.actor.storeId)

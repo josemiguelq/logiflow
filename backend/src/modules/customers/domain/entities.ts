@@ -34,4 +34,6 @@ export interface Customer {
   createdAt: Date
   updatedAt: Date
   audit: CustomerAuditEntry[]
+  // Cliente já assinou a versão ATUAL dos termos de garantia da loja.
+  warrantyAccepted: boolean
 }

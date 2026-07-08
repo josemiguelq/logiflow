@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog, BarChart2, Clock, Target, User, Megaphone,
+  Package, Users, Truck, MessageSquare, Settings, LogOut, X, Route, UserCog, BarChart2, Clock, Target, User, Megaphone, ShieldCheck,
 } from 'lucide-react'
 import useSWR from 'swr'
 import { cn } from '@/lib/utils'
@@ -39,6 +39,7 @@ const BASE_NAV: {
   { href: '/goals',      label: 'Metas',          icon: Target,        scope: 'goals:view',      feature: null },
   { href: '/users',      label: 'Usuários',      icon: UserCog,       scope: 'users:view',      feature: null },
   { href: '/whatsapp',   label: 'WhatsApp',      icon: MessageSquare, scope: 'whatsapp:view',   feature: 'whatsapp' },
+  { href: '/garantias',  label: 'Garantias',     icon: ShieldCheck,   scope: 'warranties:view',  feature: 'warranties' },
   { href: '/settings',   label: 'Configurações', icon: Settings,      scope: 'settings:view',   feature: null },
 ]
 

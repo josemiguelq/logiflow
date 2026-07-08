@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Download, Eye, Loader2, ChevronDown, Trash2 } from 'lucide-react'
+import { Download, Eye, Loader2, ChevronDown, Trash2, Shuffle } from 'lucide-react'
 import { DeliveryRoute, RouteStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { useAccess } from '@/hooks/useAccess'
+import { AutoRouteModal } from './_auto_route_modal'
 
 const STATUS_LABEL: Record<RouteStatus, string> = {
   CREATED:  'Criada',
@@ -193,6 +194,7 @@ export default function RoutesPage() {
   const { data: deliverers = [] } = useSWR('/deliverers', (u: string) => api.get<Deliverer[]>(u))
   const [exporting,     setExporting]     = useState(false)
   const [deletingRoute, setDeletingRoute] = useState<DeliveryRoute | null>(null)
+  const [showAutoRoute, setShowAutoRoute] = useState(false)
 
   function clearFilters() {
     setDelivererId('')
@@ -225,16 +227,27 @@ export default function RoutesPage() {
             {total} rota{total !== 1 ? 's' : ''} {hasFilters ? 'encontrada' + (total !== 1 ? 's' : '') : 'no total'}
           </p>
         </div>
-        {features.csvExportEnabled && can({ scope: 'routes:export' }) && (
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-          >
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {exporting ? 'Exportando…' : 'Baixar CSV'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {can({ scope: 'routes:auto_config' }) && (
+            <button
+              onClick={() => setShowAutoRoute(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Shuffle className="h-4 w-4" />
+              Rotas automáticas
+            </button>
+          )}
+          {features.csvExportEnabled && can({ scope: 'routes:export' }) && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting ? 'Exportando…' : 'Baixar CSV'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filtros — aplicam-se à lista e à exportação */}
@@ -429,6 +442,13 @@ export default function RoutesPage() {
           route={deletingRoute}
           onClose={() => setDeletingRoute(null)}
           onDeleted={() => { setDeletingRoute(null); mutate() }}
+        />
+      )}
+
+      {showAutoRoute && (
+        <AutoRouteModal
+          onClose={() => setShowAutoRoute(false)}
+          onSaved={() => { setShowAutoRoute(false); mutate() }}
         />
       )}
     </div>

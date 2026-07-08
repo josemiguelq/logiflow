@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
@@ -12,6 +12,8 @@ import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 import { DelayFlag } from '@/components/orders/delay-flag'
+import { PriorityBadge } from '@/components/orders/priority-badge'
+import { PriorityEditor } from '@/components/orders/priority-editor'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 
@@ -25,8 +27,9 @@ const LOG_ACTION_LABEL: Record<string, string> = {
   DELIVERED:         'Entregue',
   CANCELLED:         'Cancelado',
   RETURNED_TO_QUEUE: 'Devolvido à fila',
-  NOTE_CHANGED:      'Observação alterada',
-  ADDRESS_CHANGED:   'Endereço alterado',
+  NOTE_CHANGED:        'Observação alterada',
+  ADDRESS_CHANGED:     'Endereço alterado',
+  CASH_AMOUNT_CHANGED: 'Valor a receber alterado',
 }
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
@@ -68,6 +71,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     (url: string) => api.get<Order>(url)
   )
   const [adjusting, setAdjusting] = useState(false)
+  const [editingCash, setEditingCash] = useState(false)
+  const [cashValue, setCashValue] = useState('')
   const now        = useNow()
   const thresholds = useDelayThresholds()
 
@@ -120,9 +125,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               Pedido #{order.id.slice(-8).toUpperCase()}
             </h1>
             <p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p>
+            {order.routeId && (
+                <Link
+                  href={`/routes/${order.routeId}`}
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Ver rota deste pedido
+                </Link>
+              )}
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
+            {order.isPriority && <PriorityBadge maxDeliveryTime={order.maxDeliveryTime} />}
             {delay.level !== 'none' && <DelayFlag delay={delay} />}
             {order.deliveredOffTarget && (
               <span
@@ -195,21 +210,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <Truck className="h-4 w-4 text-gray-400" />
                 {order.deliverer.name}
                 {order.routePosition !== undefined && (
-                  <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">
+                  <span className="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)' }}>
                     Posição #{order.routePosition}
                   </span>
                 )}
-              </div>
-              {order.routeId && (
-                <Link
-                  href={`/routes/${order.routeId}`}
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-                >
-                  <MapPin className="h-3.5 w-3.5" />
-                  Ver rota deste pedido
-                </Link>
-              )}
+              </div>              
             </section>
+          )}
+
+          {!COMPLETED_STATUSES.includes(order.status) && (
+            <PriorityEditor order={order} onChanged={() => mutate()} />
           )}
 
           <section className="border-t border-gray-100 pt-4">
@@ -296,27 +307,109 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
+          {(order.cashAmount != null || editingCash) && (
+            <section className="border-t border-gray-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Valor a receber
+                </h2>
+                {!COMPLETED_STATUSES.includes(order.status) && !editingCash && (
+                  <button
+                    onClick={() => {
+                      setCashValue(order.cashAmount != null ? String(order.cashAmount) : '')
+                      setEditingCash(true)
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    <Pen className="h-3 w-3" />
+                    Editar
+                  </button>
+                )}
+              </div>
+              {editingCash ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cashValue}
+                      onChange={e => setCashValue(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm font-medium text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const val = parseFloat(cashValue)
+                      const normalized = !isNaN(val) && val >= 0 ? val : null
+                      try {
+                        await api.patch(`/orders/${id}/cash-amount`, { cashAmount: normalized })
+                        await mutate()
+                      } catch { /* silent */ }
+                      setEditingCash(false)
+                    }}
+                    className="rounded-lg px-3 py-2.5 text-xs font-bold text-white transition-colors"
+                    style={{ background: 'var(--color-primary)' }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    onClick={() => setEditingCash(false)}
+                    className="rounded-lg border border-gray-300 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-gray-900">
+                  {formatBRL(order.cashAmount!)}
+                </p>
+              )}
+            </section>
+          )}
+
           {order.payments && order.payments.length > 0 && (
             <section className="border-t border-gray-100 pt-4">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Pagamentos recebidos
               </h2>
               <div className="space-y-1.5">
-                {order.payments.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm">
-                    <span className="flex items-center gap-2 text-green-800">
-                      <Wallet className="h-4 w-4 text-green-500" />
-                      {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
-                    </span>
-                    <span className="font-semibold text-green-900">{formatBRL(p.amount)}</span>
-                  </div>
-                ))}
-                {order.payments.length > 1 && (
-                  <div className="flex items-center justify-between px-3 pt-1 text-sm font-bold text-gray-900">
-                    <span>Total</span>
-                    <span>{formatBRL(order.payments.reduce((s, p) => s + p.amount, 0))}</span>
-                  </div>
-                )}
+                {(() => {
+                  const total = order.payments!.reduce((s, p) => s + p.amount, 0)
+                  const discrepancy = order.cashAmount && order.cashAmount > 0 && total < order.cashAmount
+                  return (
+                    <>
+                      {discrepancy && (
+                        <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800 mb-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                          <span>
+                            Valor recebido ({formatBRL(total)}) menor que o esperado ({formatBRL(order.cashAmount!)}).
+                            {order.deliveryNote && ` Motivo: ${order.deliveryNote}`}
+                          </span>
+                        </div>
+                      )}
+                      {order.payments!.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm">
+                          <span className="flex items-center gap-2 text-green-800">
+                            <Wallet className="h-4 w-4 text-green-500" />
+                            {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
+                          </span>
+                          <span className="font-semibold text-green-900">{formatBRL(p.amount)}</span>
+                        </div>
+                      ))}
+                      {order.payments!.length > 1 && (
+                        <div className="flex items-center justify-between px-3 pt-1 text-sm font-bold text-gray-900">
+                          <span>Total</span>
+                          <span>{formatBRL(total)}</span>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </section>
           )}
@@ -414,6 +507,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         )}
                         {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
                           <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
+                        )}
+                        {e.action === 'CASH_AMOUNT_CHANGED' && e.details && (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {(e.details.from as number) != null ? formatBRL(e.details.from as number) : '(vazio)'} → {(e.details.to as number) != null ? formatBRL(e.details.to as number) : '(vazio)'}
+                          </p>
                         )}
                         {e.action === 'CANCELLED' && e.details?.reason != null && (
                           <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>

@@ -6,6 +6,7 @@ import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/priority_badge.dart';
 
 class PickupConfirmationScreen extends ConsumerStatefulWidget {
   final DelivererRoute route;
@@ -274,6 +275,10 @@ class _OrderSummaryTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis),
                   ),
                 ]),
+                if (order.isPriority) ...[
+                  const SizedBox(height: 4),
+                  PriorityBadge(order: order),
+                ],
               ],
             ),
           ),

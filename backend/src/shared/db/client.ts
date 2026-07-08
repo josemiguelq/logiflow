@@ -24,6 +24,11 @@ export const db = {
   query: pool.query.bind(pool),
   connect: pool.connect.bind(pool),
 
+  // Estado do pool de conexões (para o /health).
+  poolStats() {
+    return { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }
+  },
+
   async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await pool.connect()
     try {

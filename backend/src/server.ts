@@ -1,7 +1,9 @@
 import 'dotenv/config'
 import { buildApp, buildTime } from './app'
 import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
-import { scanDelayedOrders } from './modules/orders/application/use-cases/scan-delayed-orders'
+import { scanDelayedOrders, scanPriorityOverdue } from './modules/orders/application/use-cases/scan-delayed-orders'
+import { scanAutoRoutes } from './modules/orders/application/use-cases/scan-auto-routes'
+import { createPgAutoRouteRepo } from './modules/auto-routes/infrastructure/repositories/pg-auto-route-repo'
 import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
@@ -93,11 +95,12 @@ async function start() {
   const whatsapp       = createBaileysProvider(db, app.log)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
+  const autoRouteRepo  = createPgAutoRouteRepo(db)
   const pushProvider   = createFcmProvider()
   const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
   // ── Notification worker ──────────────────────────────────────────────────
-  createNotificationWorker(async (job) => {
+  const notificationWorker = createNotificationWorker(async (job) => {
     // ── Pickup reminder push (fan-out para vários entregadores livres) ──
     if (job.data.type === 'pickup_reminder') {
       const { storeId, delivererIds, count, minutes } = job.data
@@ -163,13 +166,18 @@ async function start() {
         return
       }
 
-      const order = await orderRepo.findById(orderId, storeId)
-      if (!order) {
-        app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
-        return
+      // Eventos sem pedido (ex.: AUTO_ROUTE_NEXT) não carregam orderId.
+      let customerName = ''
+      if (orderId) {
+        const order = await orderRepo.findById(orderId, storeId)
+        if (!order) {
+          app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
+          return
+        }
+        customerName = order.customer.name
       }
 
-      const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
+      const payload = buildPushPayload(statusEvent, orderId, customerName)
       app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
       try {
         const { successCount, failureCount } = await pushProvider.send(tokens, payload)
@@ -263,10 +271,16 @@ async function start() {
   // ── WebSocket heartbeat ──────────────────────────────────────────────────
   startHeartbeat()
 
-  // ── Delay scanner: alerta pedidos em rota parados há muito tempo ─────────
-  const runDelayScan = () =>
+  // ── Delay scanner: alerta pedidos em rota parados há muito tempo, e pedidos
+  //    prioritários cujo horário máximo de entrega estourou ──────────────────
+  const runDelayScan = () => {
     scanDelayedOrders({ orderRepo, notificationQueue, log: app.log })
       .catch((err) => app.log.error({ err }, '[delay-scan] unexpected error'))
+    scanPriorityOverdue({ orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[priority-scan] unexpected error'))
+    scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[auto-route] unexpected error'))
+  }
   runDelayScan()
   setInterval(runDelayScan, 60_000)
 
@@ -284,6 +298,26 @@ async function start() {
       .catch((err) => app.log.error({ err }, '[sessions] cleanup failed'))
   cleanupSessions()
   setInterval(cleanupSessions, 24 * 60 * 60_000)
+
+  // ── Shutdown gracioso ──────────────────────────────────────────────────────
+  // Deploy/restart: para de aceitar requests, deixa o job em voo terminar e para
+  // de puxar novos. Jobs ainda na fila sobrevivem no Redis e são reprocessados.
+  let shuttingDown = false
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    app.log.info({ signal }, '[shutdown] draining…')
+    try {
+      await app.close()                 // fecha o HTTP server (sem novos requests)
+      await notificationWorker.close()  // deixa o job atual terminar; para de pegar novos
+    } catch (err) {
+      app.log.error({ err }, '[shutdown] error while draining')
+    } finally {
+      process.exit(0)
+    }
+  }
+  process.on('SIGTERM', () => void shutdown('SIGTERM'))
+  process.on('SIGINT',  () => void shutdown('SIGINT'))
 
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)

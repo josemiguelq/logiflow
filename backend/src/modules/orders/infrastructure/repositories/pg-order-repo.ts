@@ -1,6 +1,6 @@
 import { DB } from '../../../../shared/db/client'
 import { Order, OrderStatus, OrderWithDetails, OrderLogEntry, OrderSummary } from '../../domain/entities'
-import { IOrderRepository, OrderFilters, PublicOrderView, InTransitOrder } from '../../application/ports'
+import { IOrderRepository, OrderFilters, PublicOrderView, InTransitOrder, PriorityOverdueOrder } from '../../application/ports'
 import { isDeliveredOffTarget } from '../../../../shared/utils/geo'
 
 function mapOrderRow(row: Record<string, unknown>): Order {
@@ -16,6 +16,8 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     pickupCode:      row.pickup_code as string,
     deliveryCode:    row.delivery_code as string,
     notes:           row.notes as string | undefined,
+    isPriority:      (row.is_priority as boolean) ?? false,
+    maxDeliveryTime: row.max_delivery_time as Date | undefined,
     paymentMethod:   (row.payment_method as string ?? 'prepaid') as 'prepaid' | 'cash' | 'card',
     cashAmount:      row.cash_amount != null ? Number(row.cash_amount) : undefined,
     cashCollected:   (row.cash_collected as boolean) ?? false,
@@ -49,6 +51,8 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     pickupCode:      row.pickup_code as string,
     deliveryCode:    row.delivery_code as string,
     notes:           row.notes as string | undefined,
+    isPriority:      (row.is_priority as boolean) ?? false,
+    maxDeliveryTime: row.max_delivery_time as Date | undefined,
     paymentMethod:   (row.payment_method as string ?? 'prepaid') as 'prepaid' | 'cash' | 'card',
     cashAmount:      row.cash_amount != null ? Number(row.cash_amount) : undefined,
     cashCollected:   (row.cash_collected as boolean) ?? false,
@@ -165,7 +169,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `${WITH_JOINS}
          WHERE ${conditions.join(' AND ')}
-         ORDER BY o.created_at DESC
+         ORDER BY o.is_priority DESC, o.max_delivery_time ASC NULLS LAST, o.created_at DESC
          LIMIT $${idx++} OFFSET $${idx}`,
         params
       )
@@ -273,7 +277,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
              OR o.reserved_by = $2
              OR o.reserved_at < now() - interval '2 minutes'
            )
-         ORDER BY o.created_at ASC`,
+         ORDER BY o.is_priority DESC, o.max_delivery_time ASC NULLS LAST, o.created_at ASC`,
         [storeId, requestingDelivererId ?? null]
       )
       return rows.map(mapRow)
@@ -283,21 +287,31 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `INSERT INTO orders
            (store_id, customer_id, created_by_user_id, status, pickup_code, delivery_code,
-            notes, payment_method, cash_amount,
+            notes, is_priority, max_delivery_time, payment_method, cash_amount,
             lat, lng, delivery_address, delivery_lat, delivery_lng)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING *`,
         [
           data.storeId, data.customerId, data.createdByUserId,
           data.status, data.pickupCode, data.deliveryCode,
           data.notes ?? null,
+          data.isPriority ?? false,
+          data.maxDeliveryTime ?? null,
           (data as Record<string, unknown>).paymentMethod ?? 'prepaid',
           (data as Record<string, unknown>).cashAmount ?? null,
           data.lat ?? null, data.lng ?? null,
           data.deliveryAddress ?? null, data.deliveryLat ?? null, data.deliveryLng ?? null,
         ]
       )
-      return rows[0] as Order
+      return mapOrderRow(rows[0] as Record<string, unknown>)
+    },
+
+    async updatePriority(id, isPriority, maxDeliveryTime) {
+      const { rows } = await db.query(
+        `UPDATE orders SET is_priority = $2, max_delivery_time = $3 WHERE id = $1 RETURNING *`,
+        [id, isPriority, maxDeliveryTime]
+      )
+      return mapOrderRow(rows[0] as Record<string, unknown>)
     },
 
     async updateStatus(id, status, extra = {}) {
@@ -314,6 +328,27 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `UPDATE orders SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
         params
+      )
+      return mapOrderRow(rows[0] as Record<string, unknown>)
+    },
+
+    async finalizeDelivered(id, { deliveredAt, deliveryNote, cashCollected, logEntry, summary }) {
+      // Status + timestamp + auditoria (append no log) + summary numa escrita só.
+      const { rows } = await db.query(
+        `UPDATE orders SET
+           status         = 'DELIVERED',
+           delivered_at   = $2,
+           delivery_note  = COALESCE($3, delivery_note),
+           cash_collected = COALESCE($4, cash_collected),
+           log            = COALESCE(log, '[]'::jsonb) || $5::jsonb,
+           summary        = $6::jsonb
+         WHERE id = $1
+         RETURNING *`,
+        [
+          id, deliveredAt, deliveryNote ?? null,
+          cashCollected ?? null,
+          JSON.stringify([logEntry]), JSON.stringify(summary),
+        ]
       )
       return mapOrderRow(rows[0] as Record<string, unknown>)
     },
@@ -449,6 +484,37 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         minutes:          Number(r.minutes),
         transitYellowMin: parseInt(r.transit_yellow_min as string, 10),
         transitRedMin:    parseInt(r.transit_red_min as string, 10),
+      }))
+    },
+
+    async findPriorityOverdue() {
+      // Pedidos prioritários ativos cujo horário máximo de entrega já passou.
+      const { rows } = await db.query(
+        `SELECT
+           o.id,
+           o.store_id,
+           o.deliverer_id,
+           o.max_delivery_time,
+           c.name AS customer_name,
+           d.name AS deliverer_name,
+           EXTRACT(EPOCH FROM (now() - o.max_delivery_time)) / 60 AS minutes_late
+         FROM orders o
+         JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN deliverers d ON d.id = o.deliverer_id
+         WHERE o.is_priority
+           AND o.max_delivery_time IS NOT NULL
+           AND now() > o.max_delivery_time
+           AND o.status NOT IN ('DELIVERED', 'CANCELLED')`,
+        []
+      )
+      return rows.map((r): PriorityOverdueOrder => ({
+        id:              r.id as string,
+        storeId:         r.store_id as string,
+        delivererId:     (r.deliverer_id as string | null) ?? undefined,
+        customerName:    r.customer_name as string,
+        delivererName:   (r.deliverer_name as string | null) ?? undefined,
+        maxDeliveryTime: r.max_delivery_time as Date,
+        minutesLate:     Number(r.minutes_late),
       }))
     },
 

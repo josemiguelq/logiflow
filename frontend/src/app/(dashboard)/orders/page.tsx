@@ -25,6 +25,13 @@ const STATUSES: (OrderStatus | '')[] = [
 
 const COMPLETED_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELLED']
 
+function paymentDiscrepancy(order: Order): { collected: number; expected: number } | null {
+  if (!order.cashAmount || order.cashAmount <= 0) return null
+  const collected = order.payments?.reduce((s, p) => s + p.amount, 0) ?? 0
+  if (collected >= order.cashAmount) return null
+  return { collected, expected: order.cashAmount }
+}
+
 export default function OrdersPage() {
     const { on, onReconnect } = useWs()
   const router     = useRouter()
@@ -502,6 +509,14 @@ export default function OrdersPage() {
                             </td>
                             <td className="px-4 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
+                                {paymentDiscrepancy(order) && (
+                                  <span
+                                    className="inline-flex"
+                                    title={`Valor recebido (${paymentDiscrepancy(order)!.collected.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) menor que o esperado (${paymentDiscrepancy(order)!.expected.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`}
+                                  >
+                                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                                  </span>
+                                )}
                                 <Link
                                   href={`/orders/${order.id}`}
                                   className="text-xs font-medium hover:underline"

@@ -81,22 +81,82 @@ export function createPgTrackingRepo(db: DB) {
       )
       if (statusRows[0]?.status === 'OFFLINE') return 0
 
-      // Process in chronological order, re-using the same dedup logic.
-      // Lotes grandes (entregador muito tempo offline) são amostrados para no
-      // máximo MAX_SAVED_POINTS antes de gravar, preservando o trajeto.
+      // Ordem cronológica; lotes grandes (muito tempo offline) são amostrados
+      // para no máximo MAX_SAVED_POINTS, preservando o formato do trajeto.
       const sorted  = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
       const sampled = downsample(sorted, MAX_SAVED_POINTS)
-      let saved = 0
+      if (sampled.length === 0) return 0
+
+      // Tudo que o loop precisa é buscado UMA vez (evita N+1 por ponto):
+      //  - última posição salva → deduplicação em memória;
+      //  - destinos dos pedidos em rota → detecção de chegada em memória.
+      const [lastRes, arrivals] = await Promise.all([
+        db.query(
+          `SELECT lat, lng, recorded_at FROM location_history
+           WHERE deliverer_id = $1 ORDER BY recorded_at DESC LIMIT 1`,
+          [delivererId]
+        ),
+        this.pendingArrivals(delivererId),
+      ])
+
+      const lastRow = lastRes.rows[0]
+      let last = lastRow
+        ? { lat: Number(lastRow.lat), lng: Number(lastRow.lng), t: new Date(lastRow.recorded_at).getTime() }
+        : null
+
+      const pending = arrivals
+        .filter((r: Record<string, unknown>) => r.dlat != null && r.dlng != null)
+        .map((r: Record<string, unknown>) => ({
+          row: r, dlat: Number(r.dlat), dlng: Number(r.dlng), radius: Number(r.radius), done: false,
+        }))
+
+      const toInsert: Array<{ lat: number; lng: number; recordedAt: Date }> = []
+      const arrivalHits: Array<{ order: Record<string, unknown>; ts: Date }> = []
+
       for (const p of sampled) {
-        const ok = await this.recordLocation(delivererId, p.lat, p.lng, p.recordedAt)
-        if (ok) saved++
+        // Chegada: primeira vez (cronologicamente) que entra no raio de um pedido.
+        for (const a of pending) {
+          if (a.done) continue
+          if (haversineMeters(p.lat, p.lng, a.dlat, a.dlng) <= a.radius) {
+            a.done = true
+            arrivalHits.push({ order: a.row, ts: p.recordedAt })
+          }
+        }
+        // Deduplicação (mesma regra 50m/60s) contra o último ponto salvo, em memória.
+        if (last) {
+          const dist = haversineMeters(last.lat, last.lng, p.lat, p.lng)
+          const elapsed = (p.recordedAt.getTime() - last.t) / 1000
+          if (dist < MIN_DISTANCE_METERS && elapsed < MIN_TIME_SECONDS) continue
+        }
+        toInsert.push(p)
+        last = { lat: p.lat, lng: p.lng, t: p.recordedAt.getTime() }
       }
-      return saved
+
+      // Grava as chegadas detectadas (poucas), com o mesmo guard de concorrência.
+      for (const hit of arrivalHits) {
+        await this.markArrival(hit.order, hit.ts)
+      }
+
+      // Insere todos os pontos deduplicados numa ÚNICA query multi-linha.
+      if (toInsert.length > 0) {
+        const values: string[] = []
+        const params: unknown[] = []
+        toInsert.forEach((p, i) => {
+          const b = i * 4
+          values.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`)
+          params.push(delivererId, p.lat, p.lng, p.recordedAt)
+        })
+        await db.query(
+          `INSERT INTO location_history (deliverer_id, lat, lng, recorded_at) VALUES ${values.join(', ')}`,
+          params
+        )
+      }
+      return toInsert.length
     },
 
-    // Marca arrived_at dos pedidos em rota do entregador cujo destino está dentro
-    // do raio de chegada da loja (settings.arrival_radius_meters, padrão 20 m).
-    async detectArrival(delivererId: string, lat: number, lng: number, ts: Date) {
+    // Pedidos em rota do entregador ainda sem chegada registrada, com o destino
+    // e o raio de chegada da loja (settings.arrival_radius_meters, padrão 20 m).
+    async pendingArrivals(delivererId: string) {
       const { rows } = await db.query(
         `SELECT o.id, o.store_id, o.status,
                 COALESCE(o.delivery_lat, ca.lat) AS dlat,
@@ -112,25 +172,34 @@ export function createPgTrackingRepo(db: DB) {
            AND o.arrived_at IS NULL`,
         [delivererId]
       )
+      return rows
+    },
 
+    // Marca arrived_at de um pedido (guard contra concorrência) e, se for a parada
+    // ativa, enfileira a notificação de proximidade.
+    async markArrival(order: Record<string, unknown>, ts: Date) {
+      // RETURNING garante que só notificamos quando ESTE ping marcou a chegada
+      // (e não um ping concorrente), evitando notificação duplicada.
+      const { rows: updated } = await db.query(
+        `UPDATE orders SET arrived_at = $2 WHERE id = $1 AND arrived_at IS NULL RETURNING id`,
+        [order.id, ts]
+      )
+      if (updated.length > 0 && order.status === 'OUT_FOR_DELIVERY') {
+        notificationQueue.add('status_changed', {
+          type: 'whatsapp', storeId: order.store_id, orderId: order.id, statusEvent: 'ARRIVING',
+        }).catch(() => { /* non-fatal */ })
+      }
+    },
+
+    // Marca arrived_at dos pedidos em rota do entregador cujo destino está dentro
+    // do raio de chegada da loja. (Ping único; o batch faz isso em memória.)
+    async detectArrival(delivererId: string, lat: number, lng: number, ts: Date) {
+      const rows = await this.pendingArrivals(delivererId)
       for (const r of rows) {
         if (r.dlat == null || r.dlng == null) continue
         const dist = haversineMeters(lat, lng, Number(r.dlat), Number(r.dlng))
         if (dist > Number(r.radius)) continue
-
-        // RETURNING garante que só notificamos quando ESTE ping marcou a chegada
-        // (e não um ping concorrente), evitando notificação duplicada.
-        const { rows: updated } = await db.query(
-          `UPDATE orders SET arrived_at = $2 WHERE id = $1 AND arrived_at IS NULL RETURNING id`,
-          [r.id, ts]
-        )
-        // Notificação de proximidade: só faz sentido para a parada ativa
-        // (OUT_FOR_DELIVERY). O worker decide o envio conforme as settings da loja.
-        if (updated.length > 0 && r.status === 'OUT_FOR_DELIVERY') {
-          notificationQueue.add('status_changed', {
-            type: 'whatsapp', storeId: r.store_id, orderId: r.id, statusEvent: 'ARRIVING',
-          }).catch(() => { /* non-fatal */ })
-        }
+        await this.markArrival(r, ts)
       }
     },
 
