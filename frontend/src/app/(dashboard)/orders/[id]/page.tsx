@@ -89,7 +89,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const delay = getDelayInfo(order, thresholds, now)
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <Link
         href="/orders"
         className="mb-6 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -114,6 +114,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
       <div
         className={`rounded-2xl border p-6 shadow-sm ${
           delay.level === 'red' ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
@@ -414,116 +415,124 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {order.proofs?.length > 0 && (
-            <section className="border-t border-gray-100 pt-4">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Comprovante de Entrega
-                {order.proofs.length > 1 && (
-                  <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 normal-case tracking-normal">
-                    {order.proofs.length} fotos
-                  </span>
-                )}
-              </h2>
-              <div className={`grid gap-2 ${order.proofs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {order.proofs.map((p, i) => (
-                  <div key={i} className="overflow-hidden rounded-xl border border-gray-100">
-                    <img
-                      src={p.photoUrl}
-                      alt={`Comprovante ${i + 1}`}
-                      className="w-full object-contain"
-                      style={{ maxHeight: order.proofs.length > 1 ? 240 : 480 }}
-                    />
-                    {(p.lat != null && p.lng != null) && (
-                      <p className="px-2 pb-1.5 pt-1 text-xs text-gray-400">
-                        {p.lat.toFixed(5)}, {p.lng.toFixed(5)}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+        </div>
+      </div>
 
-          {order.summary && order.summary.segments.length > 0 && (
-            <section className="border-t border-gray-100 pt-4">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Tempos por etapa
-              </h2>
-              <div className="space-y-1.5">
-                {order.summary.segments.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">
-                      {STATUS_STEP_LABEL[s.from] ?? s.from} → {STATUS_STEP_LABEL[s.to] ?? s.to}
+      {(order.proofs?.length > 0 || (order.summary?.segments?.length ?? 0) > 0 || (order.log?.length ?? 0) > 0) && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {order.proofs?.length > 0 && (
+              <section>
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Comprovante de Entrega
+                  {order.proofs.length > 1 && (
+                    <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 normal-case tracking-normal">
+                      {order.proofs.length} fotos
                     </span>
-                    <span className="font-medium text-gray-900">{formatSeconds(s.seconds)}</span>
-                  </div>
-                ))}
-                <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
-                  <span className="font-semibold text-gray-700">Total</span>
-                  <span className="font-bold text-gray-900">{formatSeconds(order.summary.totalSeconds)}</span>
+                  )}
+                </h2>
+                <div className={`grid gap-2 ${order.proofs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {order.proofs.map((p, i) => (
+                    <div key={i} className="overflow-hidden rounded-xl border border-gray-100">
+                      <img
+                        src={p.photoUrl}
+                        alt={`Comprovante ${i + 1}`}
+                        className="w-full object-contain"
+                        style={{ maxHeight: order.proofs.length > 1 ? 240 : 480 }}
+                      />
+                      {(p.lat != null && p.lng != null) && (
+                        <p className="px-2 pb-1.5 pt-1 text-xs text-gray-400">
+                          {p.lat.toFixed(5)}, {p.lng.toFixed(5)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
 
-          {order.log && order.log.length > 0 && (() => {
-            const sortedLog = [...order.log].sort(
-              (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
-            )
-            return (
+            {order.summary && order.summary.segments.length > 0 && (
               <section className="border-t border-gray-100 pt-4">
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  Histórico / Auditoria
+                  Tempos por etapa
                 </h2>
-                <ol className="relative">
-                  <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
-                  {sortedLog.map((e, i) => {
-                    const deltaMin = i === 0
-                      ? null
-                      : Math.round(
-                          (new Date(e.at).getTime() - new Date(sortedLog[i - 1]!.at).getTime()) / 60000
-                        )
-                    return (
-                      <li key={i} className="relative pl-6 pb-4 last:pb-0">
-                        <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
-                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-                          <p className="text-sm font-medium text-gray-900">
-                            {LOG_ACTION_LABEL[e.action] ?? e.action}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            {deltaMin != null && (
-                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-                                +{deltaMin < 1 ? '<1' : deltaMin} min
-                              </span>
-                            )}
-                            <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
-                        {e.action === 'NOTE_CHANGED' && e.details && (
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            {(e.details.from as string) || '(vazio)'} → {(e.details.to as string) || '(vazio)'}
-                          </p>
-                        )}
-                        {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
-                          <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
-                        )}
-                        {e.action === 'CASH_AMOUNT_CHANGED' && e.details && (
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            {(e.details.from as number) != null ? formatBRL(e.details.from as number) : '(vazio)'} → {(e.details.to as number) != null ? formatBRL(e.details.to as number) : '(vazio)'}
-                          </p>
-                        )}
-                        {e.action === 'CANCELLED' && e.details?.reason != null && (
-                          <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ol>
+                <div className="space-y-1.5">
+                  {order.summary.segments.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">
+                        {STATUS_STEP_LABEL[s.from] ?? s.from} → {STATUS_STEP_LABEL[s.to] ?? s.to}
+                      </span>
+                      <span className="font-medium text-gray-900">{formatSeconds(s.seconds)}</span>
+                    </div>
+                  ))}
+                  <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
+                    <span className="font-semibold text-gray-700">Total</span>
+                    <span className="font-bold text-gray-900">{formatSeconds(order.summary.totalSeconds)}</span>
+                  </div>
+                </div>
               </section>
-            )
-          })()}
+            )}
+
+            {order.log && order.log.length > 0 && (() => {
+              const sortedLog = [...order.log].sort(
+                (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
+              )
+              return (
+                <section className="border-t border-gray-100 pt-4">
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                    Histórico / Auditoria
+                  </h2>
+                  <ol className="relative">
+                    <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
+                    {sortedLog.map((e, i) => {
+                      const deltaMin = i === 0
+                        ? null
+                        : Math.round(
+                            (new Date(e.at).getTime() - new Date(sortedLog[i - 1]!.at).getTime()) / 60000
+                          )
+                      return (
+                        <li key={i} className="relative pl-6 pb-4 last:pb-0">
+                          <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                            <p className="text-sm font-medium text-gray-900">
+                              {LOG_ACTION_LABEL[e.action] ?? e.action}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {deltaMin != null && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                                  +{deltaMin < 1 ? '<1' : deltaMin} min
+                                </span>
+                              )}
+                              <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
+                          {e.action === 'NOTE_CHANGED' && e.details && (
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {(e.details.from as string) || '(vazio)'} → {(e.details.to as string) || '(vazio)'}
+                            </p>
+                          )}
+                          {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
+                            <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
+                          )}
+                          {e.action === 'CASH_AMOUNT_CHANGED' && e.details && (
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {(e.details.from as number) != null ? formatBRL(e.details.from as number) : '(vazio)'} → {(e.details.to as number) != null ? formatBRL(e.details.to as number) : '(vazio)'}
+                            </p>
+                          )}
+                          {e.action === 'CANCELLED' && e.details?.reason != null && (
+                            <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </section>
+              )
+            })()}
+          </div>
         </div>
+      )}
       </div>
 
       {adjusting && (
