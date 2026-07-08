@@ -159,7 +159,11 @@ export default function AllOrdersPage() {
                           aria-label="Pedido prioritário"
                         />
                       )}
-                      #{order.id.slice(-8).toUpperCase()}
+                      <Link
+                      href={`/orders/${order.id}`}
+                      className="font-mono text-xs font-semibold text-gray-700">
+                        #{order.id.slice(-8).toUpperCase()}
+                        </Link>
                     </span>
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-900">{order.customer.name}</td>

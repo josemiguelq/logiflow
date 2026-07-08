@@ -486,8 +486,7 @@ export default function OrdersPage() {
                             <td className="px-4 py-2.5">
                             <Link
                                   href={`/orders/${order.id}`}
-                                  className="font-mono text-xs font-semibold text-gray-700"
-                                  style={{ color: 'var(--color-primary)' }}
+                                  className="font-mono text-xs font-semibold text-gray-700"                                  
                                 >#{order.id.slice(-8).toUpperCase()}
                                 </Link>
                             </td>
