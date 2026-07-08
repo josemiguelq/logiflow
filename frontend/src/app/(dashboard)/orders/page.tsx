@@ -483,8 +483,13 @@ export default function OrdersPage() {
                       <tbody className="divide-y divide-gray-100">
                         {completedOrders.map(order => (
                           <tr key={order.id} className="transition-colors hover:bg-gray-50">
-                            <td className="px-4 py-2.5 font-mono text-xs font-semibold text-gray-700">
-                              #{order.id.slice(-8).toUpperCase()}
+                            <td className="px-4 py-2.5">
+                            <Link
+                                  href={`/orders/${order.id}`}
+                                  className="font-mono text-xs font-semibold text-gray-700"
+                                  style={{ color: 'var(--color-primary)' }}
+                                >#{order.id.slice(-8).toUpperCase()}
+                                </Link>
                             </td>
                             <td className="px-4 py-2.5 text-gray-800">{order.customer.name}</td>
                             <td className="hidden sm:table-cell px-4 py-2.5 max-w-[200px]">
