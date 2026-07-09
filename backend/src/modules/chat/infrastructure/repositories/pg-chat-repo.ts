@@ -1,6 +1,18 @@
 import { DB } from '../../../../shared/db/client'
-import { OrderMessage, UnreadCount } from '../../domain/entities'
+import { OrderMessage, UnreadCount, MessageRead } from '../../domain/entities'
 import { IChatRepository, CreateMessageInput } from '../../application/ports'
+
+// Coluna JSONB store_reads → array de recibos { store_user_id, store_user_name, read_at }.
+function mapReads(raw: unknown): MessageRead[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((r): r is Record<string, unknown> => r != null)
+    .map(r => ({
+      storeUserId:   r.store_user_id as string,
+      storeUserName: r.store_user_name as string,
+      readAt:        new Date(r.read_at as string),
+    }))
+}
 
 function mapMessage(r: Record<string, unknown>): OrderMessage {
   return {
@@ -15,6 +27,7 @@ function mapMessage(r: Record<string, unknown>): OrderMessage {
     createdAt:         r.created_at as Date,
     readByStoreAt:     (r.read_by_store_at as Date) ?? null,
     readByDelivererAt: (r.read_by_deliverer_at as Date) ?? null,
+    reads:       mapReads(r.store_reads),
   }
 }
 
@@ -54,12 +67,28 @@ export function createPgChatRepo(db: DB): IChatRepository {
     return mapMessage(rows[0] as Record<string, unknown>)
   }
 
-  const markReadByStore = async (orderId: string, storeId: string): Promise<void> => {
+  const markReadByStore = async (
+    orderId: string, storeId: string, storeUserId: string, storeUserName: string
+  ): Promise<void> => {
+    // Badge por loja: carimba a primeira leitura da loja (comportamento atual).
     await db.query(
       `UPDATE order_messages SET read_by_store_at = now()
        WHERE order_id = $1 AND store_id = $2
          AND sender_type = 'deliverer' AND read_by_store_at IS NULL`,
       [orderId, storeId]
+    )
+    // Recibo por operador em store_reads: registra QUEM leu cada mensagem do
+    // entregador. Idempotente — só anexa se este operador ainda não consta,
+    // preservando o read_at da primeira leitura.
+    await db.query(
+      `UPDATE order_messages
+       SET store_reads = store_reads || jsonb_build_object(
+             'store_user_id', $3::text,
+             'store_user_name', $4::text,
+             'read_at', now())
+       WHERE order_id = $1 AND store_id = $2 AND sender_type = 'deliverer'
+         AND NOT (store_reads @> jsonb_build_array(jsonb_build_object('store_user_id', $3::text)))`,
+      [orderId, storeId, storeUserId, storeUserName]
     )
   }
 

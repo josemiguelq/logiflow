@@ -142,6 +142,13 @@ export interface OrderMessage {
 }
 
 // Mensagem do chat do pedido (operador ↔ entregador).
+// Recibo de leitura: qual operador leu a mensagem e quando.
+export interface MessageRead {
+  storeUserId: string
+  storeUserName: string
+  readAt: string
+}
+
 export interface ChatMessage {
   id: string
   orderId: string
@@ -150,6 +157,8 @@ export interface ChatMessage {
   senderName: string
   body: string
   createdAt: string
+  // Operadores da loja que leram esta mensagem (vazio p/ mensagens do próprio operador).
+  reads: MessageRead[]
 }
 
 // Não-lidas por pedido (badge nos cards).

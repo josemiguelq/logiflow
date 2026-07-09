@@ -18,7 +18,8 @@ export interface IChatRepository {
   create(input: CreateMessageInput): Promise<OrderMessage>
 
   // Marca como lidas as mensagens da OUTRA ponta.
-  markReadByStore(orderId: string, storeId: string): Promise<void>
+  // No painel, registra também o recibo por operador (quem leu).
+  markReadByStore(orderId: string, storeId: string, storeUserId: string, storeUserName: string): Promise<void>
   markReadByDeliverer(orderId: string): Promise<void>
 
   // Não-lidas do painel (mensagens do entregador), agrupadas por pedido.

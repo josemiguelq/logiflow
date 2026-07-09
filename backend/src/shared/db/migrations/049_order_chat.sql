@@ -13,7 +13,11 @@ CREATE TABLE IF NOT EXISTS order_messages (
   body                 TEXT        NOT NULL,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   read_by_store_at     TIMESTAMPTZ,
-  read_by_deliverer_at TIMESTAMPTZ
+  read_by_deliverer_at TIMESTAMPTZ,
+  -- Recibos por operador: quem leu cada mensagem e quando. read_by_store_at só
+  -- diz SE a loja leu (badge por loja); store_reads diz QUEM leu (auditoria).
+  -- Cada item: { store_user_id, store_user_name, read_at }.
+  store_reads          JSONB       NOT NULL DEFAULT '[]'::jsonb
 );
 
 -- Histórico da conversa de um pedido em ordem cronológica.

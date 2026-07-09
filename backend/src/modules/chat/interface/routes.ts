@@ -24,6 +24,12 @@ const serialize = (m: OrderMessage) => ({
   senderName: m.senderName,
   body:       m.body,
   createdAt:  m.createdAt,
+  // Quem leu esta mensagem (operadores da loja).
+  reads:      m.reads.map(r => ({
+    storeUserId:   r.storeUserId,
+    storeUserName: r.storeUserName,
+    readAt:        r.readAt,
+  })),
 })
 
 export async function chatRoutes(app: FastifyInstance) {
@@ -78,7 +84,7 @@ export async function chatRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
-      await chatRepo.markReadByStore(orderId, storeId)
+      await chatRepo.markReadByStore(orderId, storeId, req.actor.sub, req.actor.name)
       // Sincroniza o badge de não-lidas entre operadores da mesma loja.
       wsHub.broadcastToStore(storeId, 'order_message_read', { orderId })
       return reply.send({ ok: true })

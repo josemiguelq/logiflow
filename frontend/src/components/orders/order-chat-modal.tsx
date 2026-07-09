@@ -112,6 +112,14 @@ export function OrderChatModal({ order, onClose, onRead }: Props) {
                     <p className={`mt-1 text-right text-[10px] ${isStore ? 'text-blue-200' : 'text-gray-400'}`}>
                       {formatDate(m.createdAt)}
                     </p>
+                    {!isStore && m.reads.length > 0 && (
+                      <p
+                        className="mt-0.5 text-[10px] text-gray-400"
+                        title={m.reads.map((r) => `${r.storeUserName} — ${formatDate(r.readAt)}`).join('\n')}
+                      >
+                        ✓ Lido por {m.reads.map((r) => r.storeUserName).join(', ')}
+                      </p>
+                    )}
                   </div>
                 </div>
               )
