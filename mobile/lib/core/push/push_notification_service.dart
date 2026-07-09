@@ -1,9 +1,19 @@
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../api/api_client.dart';
 
 // ignore: avoid_print
 void _log(String msg) => print('[FCM] $msg');
+
+// Canal Android usado para exibir notificações locais (foreground).
+// O id precisa casar com o default channel do FCM para background ficar consistente.
+const _channel = AndroidNotificationChannel(
+  'logiflow_default',
+  'Notificações',
+  description: 'Mensagens e atualizações de pedidos',
+  importance: Importance.high,
+);
 
 // Background message handler — must be top-level, not a class method.
 @pragma('vm:entry-point')
@@ -16,10 +26,28 @@ class PushNotificationService {
 
   static final _messaging = FirebaseMessaging.instance;
   static final _api       = ApiClient();
+  static final _local     = FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
     _log('init() called');
     FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+
+    // Plugin de notificação local + canal Android (necessário p/ foreground no Android).
+    await _local.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        // iOS não usa notificação local (o FCM já exibe em foreground). Não pedir
+        // permissão aqui evita um segundo prompt além do FirebaseMessaging.
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
+      ),
+    );
+    await _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_channel);
 
     final settings = await _messaging.requestPermission(
       alert:        true,
@@ -41,9 +69,14 @@ class PushNotificationService {
       sound: true,
     );
 
-    // Foreground message listener
+    // Foreground message listener.
+    // Android: o FCM não exibe o notification sozinho em foreground → disparamos
+    //   uma notificação local manualmente.
+    // iOS: o setForegroundNotificationPresentationOptions acima já exibe;
+    //   disparar local aqui geraria notificação DUPLICADA.
     FirebaseMessaging.onMessage.listen((message) {
       _log('foreground message: ${message.messageId} | ${message.notification?.title} | ${message.notification?.body}');
+      if (Platform.isAndroid) _showLocal(message);
     });
 
     final token = await _messaging.getToken();
@@ -55,6 +88,33 @@ class PushNotificationService {
       _log('token refreshed: $t');
       _registerToken(t);
     });
+  }
+
+  // Exibe uma notificação local a partir de um push recebido em foreground.
+  static Future<void> _showLocal(RemoteMessage message) async {
+    final n = message.notification;
+    // Só notifica se o push traz título/corpo (data-only não vira notificação).
+    final title = n?.title;
+    final body  = n?.body;
+    if (title == null && body == null) return;
+
+    await _local.show(
+      // id estável por mensagem para não empilhar duplicatas do mesmo push.
+      message.messageId.hashCode,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channel.id,
+          _channel.name,
+          channelDescription: _channel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+    );
   }
 
   static Future<void> _registerToken(String token) async {

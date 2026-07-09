@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
+import '../chat/order_chat_screen.dart';
 
 final orderDetailProvider = FutureProvider.autoDispose.family<Order, String>((ref, id) async {
   final res = await ApiClient().dio.get('/deliverer/orders');
@@ -98,6 +99,23 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                 const SizedBox(width: 12),
                 Expanded(child: _CodeCard(label: 'Entrega', code: order.deliveryCode)),
               ]),
+              const SizedBox(height: 12),
+              // Chat com o operador — histórico e envio de mensagens.
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OrderChatScreen(
+                      orderId: order.id,
+                      title: '#${order.shortId}',
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                label: const Text('Abrir chat do pedido'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              ),
               const SizedBox(height: 24),
               if (order.status == 'ASSIGNED' || order.status == 'ON_ROUTE' || order.status == 'OUT_FOR_DELIVERY') ...[
                 TextField(

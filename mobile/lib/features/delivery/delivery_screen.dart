@@ -12,6 +12,7 @@ import '../../core/api/api_client.dart';
 import '../../core/models/order.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../chat/order_chat_screen.dart';
 
 final _activeDeliveryProvider =
     FutureProvider.autoDispose<List<Order>>((ref) async {
@@ -221,18 +222,43 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                       ],
                     ),
                   ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: Text(statusText,
-                        style: TextStyle(
-                            color: statusTextColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                        child: Text(statusText,
+                            style: TextStyle(
+                                color: statusTextColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500)),
+                      ),
+                      const SizedBox(height: 6),
+                      // Chat do pedido — só disponível para pedidos que ele já pegou
+                      // (os cards da rota já são do próprio entregador).
+                      InkWell(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => OrderChatScreen(
+                              orderId: order.id,
+                              title: '#${order.shortId}',
+                            ),
+                          ),
+                        ),
+                        borderRadius: BorderRadius.circular(100),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(Icons.chat_bubble_outline,
+                              size: 20, color: AppTheme.primary),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

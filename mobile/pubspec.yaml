@@ -49,6 +49,9 @@ dependencies:
   # Push notifications
   firebase_core: ^3.13.1
   firebase_messaging: ^15.2.5
+  # Exibe notificação local quando o push chega com o app em foreground
+  # (no Android o FCM não mostra notification em foreground por conta própria).
+  flutter_local_notifications: ^17.2.4
 
   # QR code generation
   qr_flutter: ^4.1.0
