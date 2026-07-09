@@ -51,9 +51,12 @@ export function OrderChatModal({ order, onClose, onRead }: Props) {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [messages])
 
+  // Sem entregador atribuído não há para quem enviar — bloqueia o envio.
+  const hasDeliverer = Boolean(order.deliverer)
+
   async function handleSend() {
     const body = text.trim()
-    if (!body || sending) return
+    if (!body || sending || !hasDeliverer) return
     setSending(true)
     try {
       await api.post<ChatMessage>(url, { body })
@@ -128,26 +131,32 @@ export function OrderChatModal({ order, onClose, onRead }: Props) {
         </div>
 
         {/* Composer */}
-        <div className="flex items-end gap-2 border-t border-gray-100 p-3">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
-            }}
-            rows={1}
-            maxLength={2000}
-            placeholder="Escreva uma mensagem…"
-            className="max-h-28 flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <button
-            onClick={handleSend}
-            disabled={sending || !text.trim()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
+        {hasDeliverer ? (
+          <div className="flex items-end gap-2 border-t border-gray-100 p-3">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+              }}
+              rows={1}
+              maxLength={2000}
+              placeholder="Escreva uma mensagem…"
+              className="max-h-28 flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleSend}
+              disabled={sending || !text.trim()}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <p className="border-t border-gray-100 px-4 py-3 text-center text-xs text-gray-500">
+            Atribua um entregador ao pedido para conversar.
+          </p>
+        )}
       </div>
     </div>
   )

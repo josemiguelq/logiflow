@@ -66,6 +66,8 @@ export async function chatRoutes(app: FastifyInstance) {
 
       const ctx = await chatRepo.findOrderContext(orderId, storeId)
       if (!ctx) return reply.code(404).send({ error: 'order_not_found' })
+      // Sem entregador atribuído não há destinatário — a mensagem não chegaria a ninguém.
+      if (!ctx.delivererId) return reply.code(409).send({ error: 'no_deliverer' })
 
       const msg = await chatRepo.create({
         orderId, storeId, delivererId: ctx.delivererId,
