@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   description,
   // Só a landing é canônica/indexável; o restante é bloqueado via robots.ts.
   alternates: { canonical: '/' },
+  verification: { google: '4Sx71ffmBoZnMfrVpw4z8u_7ZKN_2O8lX3gF13F4M84' },
   openGraph: {
     type:        'website',
     siteName:    'LogiFlow',
