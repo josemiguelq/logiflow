@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../api/api_client.dart';
 
@@ -71,14 +72,29 @@ class PushNotificationService {
     }
   }
 
-  static Future<void> unregister() async {
-    final token = await _messaging.getToken();
-    if (token == null) return;
-    _log('unregistering token');
+  /// Desregistra o token de push. [authToken] permite autenticar o DELETE mesmo
+  /// quando a sessão já foi limpa localmente (logout instantâneo) — sem ele, o
+  /// interceptor não teria JWT para enviar e o servidor responderia 401.
+  static Future<void> unregister({String? authToken}) async {
+    // Blindado: getToken()/deleteToken() do FCM podem lançar (sem Google Play,
+    // offline, etc.). Nada aqui pode escapar e quebrar o logout.
     try {
-      await _api.dio.delete('/deliverer/push-token', data: {'token': token});
-    } catch (_) {}
-    await _messaging.deleteToken();
-    _log('token deleted');
+      final token = await _messaging.getToken();
+      if (token == null) return;
+      _log('unregistering token');
+      try {
+        await _api.dio.delete(
+          '/deliverer/push-token',
+          data: {'token': token},
+          options: authToken != null
+              ? Options(headers: {'Authorization': 'Bearer $authToken'})
+              : null,
+        );
+      } catch (_) {}
+      await _messaging.deleteToken();
+      _log('token deleted');
+    } catch (e) {
+      _log('unregister failed (ignored): $e');
+    }
   }
 }
