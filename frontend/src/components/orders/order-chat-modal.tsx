@@ -17,7 +17,7 @@ interface Props {
 
 export function OrderChatModal({ order, onClose, onRead }: Props) {
   const { on } = useWs()
-  const url = `/orders/${order.id}/messages`
+  const url = `/orders/${order.id}/chat`
   const { data: messages = [], mutate } = useSWR<ChatMessage[]>(
     url,
     (u: string) => api.get<ChatMessage[]>(u),
@@ -27,7 +27,7 @@ export function OrderChatModal({ order, onClose, onRead }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
 
   const markRead = useCallback(() => {
-    api.post(`/orders/${order.id}/messages/read`, {})
+    api.post(`/orders/${order.id}/chat/read`, {})
       .then(() => onRead?.())
       .catch(() => { /* non-fatal */ })
   }, [order.id, onRead])

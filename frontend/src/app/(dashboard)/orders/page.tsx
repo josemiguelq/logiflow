@@ -102,7 +102,7 @@ export default function OrdersPage() {
   // Chat: contagem de não-lidas por pedido + pedido com o chat aberto.
   const [chatOrder, setChatOrder] = useState<Order | null>(null)
   const { data: unreadList = [], mutate: mutateUnread } = useSWR<OrderUnread[]>(
-    '/orders/messages/unread',
+    '/orders/chat/unread',
     (u: string) => api.get<OrderUnread[]>(u),
     { refreshInterval: 30_000 },
   )

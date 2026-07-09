@@ -37,13 +37,13 @@ export async function chatRoutes(app: FastifyInstance) {
 
   // ── Operador (painel) ──────────────────────────────────────────────────────
   app.get(
-    '/orders/messages/unread',
+    '/orders/chat/unread',
     { preHandler: [requireStoreUser, requireScope('orders:view')] },
     async (req) => chatRepo.unreadByStore(req.actor.storeId),
   )
 
   app.get(
-    '/orders/:orderId/messages',
+    '/orders/:orderId/chat',
     { preHandler: [requireStoreUser, requireScope('orders:view')] },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
@@ -56,7 +56,7 @@ export async function chatRoutes(app: FastifyInstance) {
   )
 
   app.post(
-    '/orders/:orderId/messages',
+    '/orders/:orderId/chat',
     { preHandler: [requireStoreUser, requireScope('orders:view')] },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
@@ -79,7 +79,7 @@ export async function chatRoutes(app: FastifyInstance) {
   )
 
   app.post(
-    '/orders/:orderId/messages/read',
+    '/orders/:orderId/chat/read',
     { preHandler: [requireStoreUser, requireScope('orders:view')] },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
@@ -94,7 +94,7 @@ export async function chatRoutes(app: FastifyInstance) {
   // ── Entregador (app) ───────────────────────────────────────────────────────
   // Só pode acessar o chat de pedidos que já pegou (deliverer_id === ele).
   app.get(
-    '/deliverer/orders/:orderId/messages',
+    '/deliverer/orders/:orderId/chat',
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
@@ -108,7 +108,7 @@ export async function chatRoutes(app: FastifyInstance) {
   )
 
   app.post(
-    '/deliverer/orders/:orderId/messages',
+    '/deliverer/orders/:orderId/chat',
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
@@ -132,7 +132,7 @@ export async function chatRoutes(app: FastifyInstance) {
   )
 
   app.post(
-    '/deliverer/orders/:orderId/messages/read',
+    '/deliverer/orders/:orderId/chat/read',
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }

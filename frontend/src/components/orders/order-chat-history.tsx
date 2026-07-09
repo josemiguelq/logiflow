@@ -12,7 +12,7 @@ interface Props {
 // Histórico read-only da conversa do pedido, exibido nos detalhes.
 export function OrderChatHistory({ orderId }: Props) {
   const { data: messages = [] } = useSWR<ChatMessage[]>(
-    `/orders/${orderId}/messages`,
+    `/orders/${orderId}/chat`,
     (u: string) => api.get<ChatMessage[]>(u),
   )
 
