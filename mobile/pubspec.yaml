@@ -1,7 +1,7 @@
 name: logiflow_mobile
 description: LogiFlow — App do Entregador
 publish_to: 'none'
-version: 1.1.2+2
+version: 1.1.2+3
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -60,11 +60,19 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_native_splash: ^2.4.1
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
+# Splash nativa (mostrada instantaneamente no cold start, antes do Flutter subir).
+# Regenerar após alterar: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#0284C7"
+  android_12:
+    color: "#0284C7"
 
 sentry:
   upload_debug_symbols: true

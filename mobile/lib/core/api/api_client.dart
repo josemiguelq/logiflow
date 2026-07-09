@@ -77,6 +77,11 @@ class ApiClient {
   /// can trigger logout without creating a circular dependency.
   static void Function()? onUnauthorized;
 
+  /// Set by the app (app.dart). Called when the backend responds 409 with the
+  /// `X-App-Deep-Link` header, so the app can navigate to the given screen
+  /// (ex.: forçar atualização). `storeUrl` vem do header `X-App-Store-Url`.
+  static void Function(String deepLink, String? storeUrl)? onDeepLink;
+
   final _storage = const FlutterSecureStorage();
 
   late final Dio dio = Dio(BaseOptions(
@@ -97,6 +102,15 @@ class ApiClient {
         onError: (err, handler) {
           if (err.response?.statusCode == 401) {
             onUnauthorized?.call();
+          }
+          // Deeplink dirigido pelo backend: 409 + X-App-Deep-Link → abre a tela
+          // indicada (ex.: forçar atualização). 409 de negócio não tem o header.
+          if (err.response?.statusCode == 409) {
+            final deepLink = err.response?.headers.value('x-app-deep-link');
+            if (deepLink != null && deepLink.isNotEmpty) {
+              final storeUrl = err.response?.headers.value('x-app-store-url');
+              onDeepLink?.call(deepLink, storeUrl);
+            }
           }
           // Erros de conexão (ex.: "Failed host lookup: '<host>'") vazam a URL da
           // API. Substituímos por um erro genérico/limpo — o tipo é preservado

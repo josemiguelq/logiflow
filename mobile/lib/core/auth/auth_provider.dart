@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/api_client.dart';
@@ -258,8 +259,19 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
   }
 
   Future<void> logout() async {
-    await PushNotificationService.unregister();
+    // Captura o JWT antes de limpar: assim a remoção do token de push no
+    // servidor continua autenticada mesmo com a sessão já apagada localmente.
+    final authToken = await _api.getToken();
+
+    // Limpa a sessão IMEDIATAMENTE → logout instantâneo (o router vai pro /login).
     await _clearAndLogout();
+
+    // Desregistra o push em segundo plano; nunca bloqueia o logout. No iOS o
+    // getToken() do FCM pode pendurar (simulador/APNs), por isso o timeout.
+    unawaited(
+      PushNotificationService.unregister(authToken: authToken)
+          .timeout(const Duration(seconds: 5), onTimeout: () {}),
+    );
   }
 
   bool get isLoggedIn => state != null;
