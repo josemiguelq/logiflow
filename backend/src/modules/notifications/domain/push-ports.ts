@@ -6,8 +6,15 @@ export interface PushPayload {
   data?: Record<string, string>
 }
 
+export interface PushResult {
+  successCount: number
+  failureCount: number
+  // Tokens rejeitados pelo FCM por não existirem mais (app desinstalado/rotacionado).
+  invalidTokens: string[]
+}
+
 export interface IPushNotificationProvider {
-  send(tokens: string[], payload: PushPayload): Promise<{ successCount: number; failureCount: number }>
+  send(tokens: string[], payload: PushPayload): Promise<PushResult>
 }
 
 export interface IDeviceTokenRepository {
@@ -16,4 +23,5 @@ export interface IDeviceTokenRepository {
   findByDeliverers(delivererIds: string[]): Promise<string[]>
   findByStore(storeId: string): Promise<string[]>
   delete(token: string): Promise<void>
+  deleteMany(tokens: string[]): Promise<void>
 }

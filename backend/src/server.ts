@@ -100,6 +100,18 @@ async function start() {
   const pushProvider   = createFcmProvider()
   const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
+  // Remove tokens que o FCM rejeitou por não existirem mais (app desinstalado/
+  // rotacionado). Evita que tokens mortos se acumulem e sejam reenviados sempre.
+  const pruneInvalidTokens = async (invalidTokens: string[]) => {
+    if (invalidTokens.length === 0) return
+    try {
+      await deviceTokenRepo.deleteMany(invalidTokens)
+      app.log.info({ count: invalidTokens.length }, '[push] pruned invalid tokens')
+    } catch (err) {
+      app.log.error({ err }, '[push] failed to prune invalid tokens')
+    }
+  }
+
   // ── Notification worker ──────────────────────────────────────────────────
   const notificationWorker = createNotificationWorker(async (job) => {
     // ── Pickup reminder push (fan-out para vários entregadores livres) ──
@@ -120,8 +132,9 @@ async function start() {
         data:  { event: 'PICKUP_REMINDER' },
       }
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ storeId, successCount, failureCount }, '[push] pickup_reminder FCM result')
+        await pruneInvalidTokens(invalidTokens)
       } catch (err) {
         app.log.error({ err, storeId }, '[push] pickup_reminder FCM send error')
       }
@@ -145,8 +158,9 @@ async function start() {
         data:  { event: 'ROUTE_DONE_WAITING' },
       }
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ storeId, delivererId, successCount, failureCount }, '[push] route_done_waiting FCM result')
+        await pruneInvalidTokens(invalidTokens)
       } catch (err) {
         app.log.error({ err, storeId, delivererId }, '[push] route_done_waiting FCM send error')
       }
@@ -181,11 +195,12 @@ async function start() {
       const payload = buildPushPayload(statusEvent, orderId, customerName)
       app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ orderId, storeId, successCount, failureCount }, '[push] FCM result')
         if (failureCount > 0) {
           app.log.warn({ orderId, storeId, failureCount }, '[push] some FCM tokens failed')
         }
+        await pruneInvalidTokens(invalidTokens)
       } catch (err) {
         app.log.error({ err, orderId, storeId }, '[push] FCM send error')
       }
