@@ -4,8 +4,8 @@ import { use, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Pencil, MapPin, Phone, History, Plus, Pencil as Edit2, Trash2 } from 'lucide-react'
-import { Customer, CustomerAuditEntry, fullAddress, OrderStatus } from '@/types'
+import { ArrowLeft, Pencil, MapPin, Phone, History, Plus, Pencil as Edit2, Trash2, ShieldCheck } from 'lucide-react'
+import { Customer, CustomerAuditEntry, WarrantyClientDetail, fullAddress, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
 import { formatDate, STATUS_LABELS } from '@/lib/utils'
@@ -78,6 +78,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const { data: history = [] } = useSWR<AuditEntry[]>(
     `/customers/${id}/address-history`, (u: string) => api.get<AuditEntry[]>(u)
   )
+  const canWarranty = can({ scope: 'warranties:view', feature: 'warranties' })
+  const { data: warranty } = useSWR<WarrantyClientDetail>(
+    canWarranty ? `/garantias/${id}` : null, (u: string) => api.get<WarrantyClientDetail>(u)
+  )
 
   if (isLoading || !can({ scope: 'customers:view' })) return null
   if (!customer) {
@@ -125,6 +129,63 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           )}
         </div>
       </div>
+
+      {/* Termos de garantia aceitos */}
+      {canWarranty && (
+        <div className="mb-8">
+          <div className="mb-3 flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-gray-400" />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Termos de garantia</h2>
+          </div>
+          {!warranty || warranty.acceptances.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+              Nenhum termo de garantia registrado para este cliente.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead className="border-b border-gray-100 bg-gray-50">
+                  <tr className="text-xs font-medium text-gray-500">
+                    <th className="px-4 py-3 text-left">Versão</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Confirmado em</th>
+                    <th className="px-4 py-3 text-left">Rubrica</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {warranty.acceptances.map((a) => (
+                    <tr key={a.id}>
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        v{a.termsVersion}
+                        {warranty.currentVersion === a.termsVersion && (
+                          <span className="ml-2 text-xs font-normal text-gray-400">(atual)</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          a.status === 'confirmed' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+                        }`}>
+                          {a.status === 'confirmed' ? 'Confirmado' : 'Pendente'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">
+                        {a.confirmedAt ? formatDate(a.confirmedAt) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {a.signaturePath ? (
+                          <img src={a.signaturePath} alt="Rubrica" className="max-h-10 rounded border border-gray-200 bg-white p-1" />
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Endereços atuais */}
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Endereços</h2>

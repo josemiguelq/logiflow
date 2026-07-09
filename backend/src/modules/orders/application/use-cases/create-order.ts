@@ -13,6 +13,8 @@ export async function createOrder(
     createdByUserId: string
     deliveryCode?: string
     notes?: string
+    isPriority?: boolean
+    maxDeliveryTime?: Date
     paymentMethod?: 'prepaid' | 'cash' | 'card'
     cashAmount?: number
     lat?: number
@@ -31,6 +33,8 @@ export async function createOrder(
     pickupCode:      generateCode(),
     deliveryCode:    input.deliveryCode ?? generateCode(),
     notes:           input.notes,
+    isPriority:      input.isPriority ?? false,
+    maxDeliveryTime: input.maxDeliveryTime,
     paymentMethod:   input.paymentMethod ?? 'prepaid',
     cashAmount:      input.cashAmount,
     cashCollected:   false,

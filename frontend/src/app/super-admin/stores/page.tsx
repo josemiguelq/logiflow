@@ -116,6 +116,7 @@ const FEATURE_META: Record<string, { label: string; icon: React.ReactNode }> = {
   custom_theme:     { label: 'Tema',       icon: <Palette className="h-3.5 w-3.5" /> },
   csv_export:       { label: 'CSV',        icon: <Download className="h-3.5 w-3.5" /> },
   customer_ratings: { label: 'Avaliações', icon: <Star className="h-3.5 w-3.5" /> },
+  warranties:       { label: 'Garantias',  icon: <ShieldCheck className="h-3.5 w-3.5" /> },
 }
 
 export default function SuperAdminStoresPage() {

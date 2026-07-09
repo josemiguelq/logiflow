@@ -14,7 +14,7 @@ function ensureInit() {
 export function createFcmProvider(): IPushNotificationProvider {
   return {
     async send(tokens: string[], payload: PushPayload) {
-      if (tokens.length === 0) return { successCount: 0, failureCount: 0 }
+      if (tokens.length === 0) return { successCount: 0, failureCount: 0, invalidTokens: [] }
       ensureInit()
       const result = await admin.messaging().sendEachForMulticast({
         tokens,

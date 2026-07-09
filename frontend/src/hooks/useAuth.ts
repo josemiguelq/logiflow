@@ -9,6 +9,7 @@ interface AuthStore {
   user:       StoreUser | null
   token:      string | null
   login:      (email: string, password: string) => Promise<void>
+  loginGoogle: (credential: string) => Promise<void>
   logout:     () => void
   init:       () => void
   hasScope:   (scope: string) => boolean
@@ -29,6 +30,15 @@ export const useAuth = create<AuthStore>((set, get) => ({
     const res = await api.post<{ token: string; user: StoreUser }>(
       '/auth/store/login',
       { email, password }
+    )
+    authStorage.setSession(res.token, res.user)
+    set({ token: res.token, user: res.user })
+  },
+
+  async loginGoogle(credential) {
+    const res = await api.post<{ token: string; user: StoreUser }>(
+      '/auth/store/login/google',
+      { credential }
     )
     authStorage.setSession(res.token, res.user)
     set({ token: res.token, user: res.user })

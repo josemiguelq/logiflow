@@ -25,6 +25,6 @@ export interface IMessageLogRepository {
     message: string
   }): Promise<string>
   markSent(id: string, waMessageId?: string | null): Promise<void>
-  markFailed(id: string): Promise<void>
+  markFailed(id: string, error?: string): Promise<void>
   findByOrder(storeId: string, orderId: string): Promise<MessageLogEntry[]>
 }

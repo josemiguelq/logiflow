@@ -8,8 +8,31 @@ import { Boom } from '@hapi/boom'
 import { IWhatsAppProvider } from '../../domain/ports'
 import { createDbSessionStore, useDbAuthState } from './session-store'
 import { DB } from '../../../../shared/db/client'
+import { recordCustomEvent } from '../../../../shared/infra/observability'
 
 type SocketInstance = ReturnType<typeof makeWASocket>
+
+// Logger estrutural (compatível com o app.log do Fastify/pino). Mantém o infra
+// desacoplado do Fastify; cai num fallback de console se nenhum for injetado.
+type Logger = {
+  info:  (obj: unknown, msg?: string) => void
+  warn:  (obj: unknown, msg?: string) => void
+  error: (obj: unknown, msg?: string) => void
+}
+
+const consoleLogger: Logger = {
+  info:  (obj, msg) => console.log(msg ?? '', obj),
+  warn:  (obj, msg) => console.warn(msg ?? '', obj),
+  error: (obj, msg) => console.error(msg ?? '', obj),
+}
+
+// Nome legível do motivo da desconexão a partir do statusCode do Baileys.
+// Ex.: 401 → 'loggedOut', 428 → 'connectionClosed'. Faz fallback no número.
+function disconnectReasonName(code: number | undefined): string {
+  if (code == null) return 'unknown'
+  const entry = Object.entries(DisconnectReason).find(([, v]) => v === code)
+  return entry ? entry[0] : String(code)
+}
 
 const sockets = new Map<string, SocketInstance>()
 const qrCodes = new Map<string, string>()
@@ -29,8 +52,9 @@ function cacheSentMessage(id: string, content: WAMessageContent) {
   }
 }
 
-export function createBaileysProvider(db: DB): IWhatsAppProvider {
+export function createBaileysProvider(db: DB, logger: Logger = consoleLogger): IWhatsAppProvider {
   const sessionStore = createDbSessionStore(db)
+  const log = logger
 
   async function createSocket(storeId: string): Promise<SocketInstance> {
     const { state, saveCreds } = await useDbAuthState(db, storeId)
@@ -85,14 +109,35 @@ export function createBaileysProvider(db: DB): IWhatsAppProvider {
       if (connection === 'open') {
         qrCodes.delete(storeId)
         await sessionStore.setStatus(storeId, 'CONNECTED')
+        log.info({ storeId }, '[whatsapp] connection open')
       }
 
       if (connection === 'close') {
-        const code = (lastDisconnect?.error as Boom)?.output?.statusCode
+        const boomErr  = lastDisconnect?.error as Boom | undefined
+        const code     = boomErr?.output?.statusCode
+        const reason   = disconnectReasonName(code)
+        const willRetry = code !== DisconnectReason.loggedOut
+        const message  = boomErr?.message ?? String(lastDisconnect?.error ?? 'unknown')
+
         sockets.delete(storeId)
         qrCodes.delete(storeId)
         await sessionStore.setStatus(storeId, 'DISCONNECTED')
-        if (code !== DisconnectReason.loggedOut) {
+
+        // Visibilidade: log no stdout + evento no New Relic para análise posterior.
+        // NRQL: SELECT * FROM WhatsAppDisconnect SINCE 1 day ago
+        log.warn(
+          { storeId, code: code ?? null, reason, willRetry, err: message },
+          '[whatsapp] connection closed',
+        )
+        recordCustomEvent('WhatsAppDisconnect', {
+          storeId,
+          statusCode: code ?? 0,
+          reason,
+          willRetry,
+          message,
+        })
+
+        if (willRetry) {
           // Transient error — auto-retry with existing credentials
           setTimeout(() => createSocket(storeId), 5_000)
         }

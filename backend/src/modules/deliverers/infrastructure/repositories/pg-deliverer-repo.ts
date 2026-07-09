@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { DB } from '../../../../shared/db/client'
 import { Deliverer, DelivererStatus } from '../../domain/entities'
+import { DELIVERER_TERMS } from '../../../legal/deliverer-terms'
 
 function mapRow(r: Record<string, unknown>): Deliverer {
   return {
@@ -20,13 +21,21 @@ function mapRow(r: Record<string, unknown>): Deliverer {
 
 export function createPgDelivererRepo(db: DB) {
   return {
-    async findByStore(storeId: string): Promise<Omit<Deliverer, 'passwordHash'>[]> {
+    async findByStore(storeId: string): Promise<Array<Omit<Deliverer, 'passwordHash'> & { termsAccepted: boolean; termsAcceptedAt: Date | null }>> {
       const { rows } = await db.query(
-        `SELECT id, store_id, name, email, username, profile_image_url, status, is_active, needs_onboarding, created_at
-         FROM deliverers WHERE store_id = $1 ORDER BY is_active DESC, name ASC`,
+        `SELECT id, store_id, name, email, username, profile_image_url, status, is_active, needs_onboarding, created_at,
+                terms_accepted_at, terms_accepted_version
+         FROM deliverers WHERE store_id = $1 AND deleted_at IS NULL ORDER BY is_active DESC, name ASC`,
         [storeId]
       )
-      return rows.map((r: Record<string, unknown>) => { const { passwordHash: _, ...rest } = mapRow(r); return rest })
+      return rows.map((r: Record<string, unknown>) => {
+        const { passwordHash: _, ...rest } = mapRow(r)
+        return {
+          ...rest,
+          termsAccepted:   r.terms_accepted_version === DELIVERER_TERMS.version,
+          termsAcceptedAt: (r.terms_accepted_at as Date | null) ?? null,
+        }
+      })
     },
 
     // IDs dos entregadores ativos SEM rota em andamento (nenhuma rota
@@ -34,7 +43,7 @@ export function createPgDelivererRepo(db: DB) {
     async findIdleIds(storeId: string): Promise<string[]> {
       const { rows } = await db.query<{ id: string }>(
         `SELECT d.id FROM deliverers d
-         WHERE d.store_id = $1 AND d.is_active = true
+         WHERE d.store_id = $1 AND d.is_active = true AND d.deleted_at IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM routes r
              WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
@@ -58,7 +67,7 @@ export function createPgDelivererRepo(db: DB) {
              SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
            )) AS idle
          FROM deliverers d
-         WHERE d.store_id = $1
+         WHERE d.store_id = $1 AND d.deleted_at IS NULL
          AND d.status = 'AVAILABLE'`,
         [storeId]
       )
@@ -73,7 +82,7 @@ export function createPgDelivererRepo(db: DB) {
 
     async findById(id: string, storeId: string): Promise<Deliverer | null> {
       const { rows } = await db.query(
-        'SELECT * FROM deliverers WHERE id = $1 AND store_id = $2',
+        'SELECT * FROM deliverers WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL',
         [id, storeId]
       )
       return rows[0] ? mapRow(rows[0]) : null
@@ -121,6 +130,18 @@ export function createPgDelivererRepo(db: DB) {
       if (!rows[0]) return null; const { passwordHash: _, ...rest } = mapRow(rows[0]); return rest
     },
 
+    // Soft delete: preserva os pedidos/rotas (FKs RESTRICT) e some das listagens.
+    // Distinto de is_active (pausa) — força OFFLINE e marca deleted_at/deleted_by.
+    async softDelete(id: string, storeId: string, deletedBy: string): Promise<boolean> {
+      const { rowCount } = await db.query(
+        `UPDATE deliverers
+         SET deleted_at = now(), deleted_by = $3, status = 'OFFLINE', is_active = false
+         WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
+        [id, storeId, deletedBy]
+      )
+      return (rowCount ?? 0) > 0
+    },
+
     async setActive(id: string, storeId: string, active: boolean): Promise<void> {
       await db.query(
         'UPDATE deliverers SET is_active = $1 WHERE id = $2 AND store_id = $3',
@@ -158,7 +179,7 @@ export function createPgDelivererRepo(db: DB) {
            ORDER BY r.created_at DESC
            LIMIT 1
          ) ar ON true
-         WHERE d.store_id = $1 AND d.status != 'OFFLINE' AND d.is_active = true
+         WHERE d.store_id = $1 AND d.status != 'OFFLINE' AND d.is_active = true AND d.deleted_at IS NULL
          GROUP BY d.id, ar.route_id, ar.pending_count
          ORDER BY active_orders ASC, d.name ASC`,
         [storeId]

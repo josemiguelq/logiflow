@@ -12,6 +12,8 @@ class DelivererSession {
   final String status;
   final String? profileImageUrl;
   final bool needsOnboarding;
+  final bool needsSwitchTour;
+  final bool termsAccepted;
 
   const DelivererSession({
     required this.id,
@@ -21,6 +23,8 @@ class DelivererSession {
     required this.status,
     this.profileImageUrl,
     required this.needsOnboarding,
+    required this.needsSwitchTour,
+    required this.termsAccepted,
   });
 
   factory DelivererSession.fromJson(Map<String, dynamic> json) => DelivererSession(
@@ -31,6 +35,8 @@ class DelivererSession {
         status:          json['status'] as String,
         profileImageUrl: json['profileImageUrl'] as String?,
         needsOnboarding: json['needsOnboarding'] as bool? ?? true,
+        needsSwitchTour: json['needsSwitchTour'] as bool? ?? false,
+        termsAccepted:   json['termsAccepted'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -41,9 +47,18 @@ class DelivererSession {
         'status':          status,
         'profileImageUrl': profileImageUrl,
         'needsOnboarding': needsOnboarding,
+        'needsSwitchTour': needsSwitchTour,
+        'termsAccepted':   termsAccepted,
       };
 
-  DelivererSession copyWith({String? name, bool? needsOnboarding, String? profileImageUrl, String? status}) =>
+  DelivererSession copyWith({
+    String? name,
+    bool? needsOnboarding,
+    bool? needsSwitchTour,
+    bool? termsAccepted,
+    String? profileImageUrl,
+    String? status,
+  }) =>
       DelivererSession(
         id:              id,
         name:            name ?? this.name,
@@ -52,6 +67,8 @@ class DelivererSession {
         status:          status ?? this.status,
         profileImageUrl: profileImageUrl ?? this.profileImageUrl,
         needsOnboarding: needsOnboarding ?? this.needsOnboarding,
+        needsSwitchTour: needsSwitchTour ?? this.needsSwitchTour,
+        termsAccepted:   termsAccepted ?? this.termsAccepted,
       );
 }
 
@@ -216,6 +233,28 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
       final msg = (e as dynamic).response?.data?['error'] as String?;
       return msg ?? 'Erro ao atualizar status';
     }
+  }
+
+  /// Registra o aceite dos termos no backend e atualiza a sessão local.
+  Future<void> acceptTerms() async {
+    await _api.dio.post('/deliverer/terms/accept');
+    final updated = state?.copyWith(termsAccepted: true);
+    if (updated != null) {
+      state = updated;
+      await _api.saveSession(updated.toJson());
+    }
+  }
+
+  /// Marca o guia (coach-mark) do switch como visto. Best-effort.
+  Future<void> markSwitchTourSeen() async {
+    final updated = state?.copyWith(needsSwitchTour: false);
+    if (updated != null) {
+      state = updated;
+      await _api.saveSession(updated.toJson());
+    }
+    try {
+      await _api.dio.post('/deliverer/onboarding/switch-tour/seen');
+    } catch (_) {/* non-fatal: a flag local já evita reaparecer */}
   }
 
   Future<void> logout() async {

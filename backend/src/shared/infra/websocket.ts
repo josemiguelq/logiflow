@@ -47,6 +47,12 @@ export const wsHub = {
     this.broadcastToStore(storeId, 'order_updated', order)
   },
 
+  // Nova mensagem no chat de um pedido (operador ou entregador) — o painel
+  // atualiza a conversa aberta e o badge de não-lidas em tempo real.
+  broadcastOrderMessage(storeId: string, message: unknown) {
+    this.broadcastToStore(storeId, 'order_message', message)
+  },
+
   broadcastDelivererLocation(
     storeId: string,
     delivererId: string,
@@ -68,6 +74,20 @@ export const wsHub = {
     }
   ) {
     this.broadcastToStore(storeId, 'order_delayed', payload)
+  },
+
+  // Pedido prioritário cujo horário máximo de entrega estourou — alerta no painel.
+  broadcastPriorityOverdue(
+    storeId: string,
+    payload: {
+      orderId: string
+      customerName: string
+      shortId: string
+      delivererName?: string
+      minutesLate: number
+    }
+  ) {
+    this.broadcastToStore(storeId, 'order_priority_overdue', payload)
   },
 
   // Entregador ficou livre (rota concluída) e há pedidos prontos esperando —

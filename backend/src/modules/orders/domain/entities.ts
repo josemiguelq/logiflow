@@ -18,6 +18,10 @@ export interface Order {
   pickupCode: string
   deliveryCode: string
   notes?: string
+  // Prioridade: pedido urgente destacado (coroa) e ordenado no topo. maxDeliveryTime é
+  // o horário máximo de entrega (opcional) que dispara alerta quando estourado.
+  isPriority: boolean
+  maxDeliveryTime?: Date
   paymentMethod: 'prepaid' | 'cash' | 'card'
   cashAmount?: number
   cashCollected: boolean
@@ -38,6 +42,14 @@ export interface Order {
   ratedAt?: Date
   log?: OrderLogEntry[]
   summary?: OrderSummary
+}
+
+// Pagamento recebido na entrega. Um pedido pode ter vários (ex.: Pix + dinheiro).
+export type PaymentMethod = 'cash' | 'pix' | 'card'
+export interface OrderPayment {
+  amount: number
+  method: PaymentMethod
+  createdAt: string  // ISO timestamp
 }
 
 // Entrada de auditoria: quem fez, quando e o quê.
@@ -82,6 +94,8 @@ export interface OrderWithDetails extends Order {
   }>
   // Entregue a mais de 100m do local esperado (comprovante x endereço/override).
   deliveredOffTarget?: boolean
+  // Pagamentos recebidos na entrega (vazio quando não houve coleta).
+  payments: OrderPayment[]
 }
 
 export const validTransitions: Record<OrderStatus, OrderStatus[]> = {

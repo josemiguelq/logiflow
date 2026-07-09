@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X, AlertTriangle, BellRing } from 'lucide-react'
-import { Order, OrderStatus, Deliverer } from '@/types'
+import { Order, OrderStatus, Deliverer, OrderUnread, ChatMessage } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
 import { useAccess } from '@/hooks/useAccess'
@@ -17,6 +17,7 @@ import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { NewOrderModal } from '@/components/orders/new-order-modal'
 import { AssignModal } from '@/components/orders/assign-modal'
 import { CancelOrderModal } from '@/components/orders/cancel-order-modal'
+import { OrderChatModal } from '@/components/orders/order-chat-modal'
 import { LiveMap, MapDestination } from '@/components/map'
 
 const STATUSES: (OrderStatus | '')[] = [
@@ -24,6 +25,13 @@ const STATUSES: (OrderStatus | '')[] = [
 ]
 
 const COMPLETED_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELLED']
+
+function paymentDiscrepancy(order: Order): { collected: number; expected: number } | null {
+  if (!order.cashAmount || order.cashAmount <= 0) return null
+  const collected = order.payments?.reduce((s, p) => s + p.amount, 0) ?? 0
+  if (collected >= order.cashAmount) return null
+  return { collected, expected: order.cashAmount }
+}
 
 export default function OrdersPage() {
     const { on, onReconnect } = useWs()
@@ -91,8 +99,41 @@ export default function OrdersPage() {
     }
   }
 
+  // Chat: contagem de não-lidas por pedido + pedido com o chat aberto.
+  const [chatOrder, setChatOrder] = useState<Order | null>(null)
+  const { data: unreadList = [], mutate: mutateUnread } = useSWR<OrderUnread[]>(
+    '/orders/chat/unread',
+    (u: string) => api.get<OrderUnread[]>(u),
+    { refreshInterval: 30_000 },
+  )
+  const unreadMap: Record<string, number> = Object.fromEntries(unreadList.map(u => [u.orderId, u.count]))
+
   useEffect(() => on('order_updated', () => mutate()), [on, mutate])
-  useEffect(() => onReconnect(() => mutate()), [onReconnect, mutate])
+  useEffect(() => onReconnect(() => { mutate(); mutateUnread() }), [onReconnect, mutate, mutateUnread])
+
+  // Nova mensagem no chat: atualiza o badge e notifica o operador (mensagens do
+  // entregador). Se o chat do pedido já estiver aberto, o próprio modal lida.
+  useEffect(
+    () => on('order_message', (data) => {
+      const msg = data as ChatMessage
+      if (msg.senderType !== 'deliverer') return
+      mutateUnread()
+      if (chatOrder?.id === msg.orderId) return
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification('Nova mensagem 💬', { body: msg.body })
+      }
+    }),
+    [on, mutateUnread, chatOrder],
+  )
+  // Outro operador marcou como lido → sincroniza o badge.
+  useEffect(() => on('order_message_read', () => mutateUnread()), [on, mutateUnread])
+
+  // Pede permissão de notificação do browser uma vez.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [])
 
   // Search by customer name (client-side)
   const query = search.trim().toLowerCase()
@@ -112,9 +153,17 @@ export default function OrdersPage() {
     const d = getDelayInfo(o, delayThresholds, now)
     return d.level === 'red' ? 2 : d.level === 'yellow' ? 1 : 0
   }
+  // Fila de "Preparando" no topo: prioritários primeiro, depois os normais;
+  // demais status (em rota, etc.) vêm em seguida.
+  const preparingRank = (o: Order) => {
+    if (o.status !== 'PREPARING') return 0
+    return o.isPriority ? 2 : 1
+  }
   const activeOrders = filteredOrders
     .filter(o => !COMPLETED_STATUSES.includes(o.status))
     .sort((a, b) => {
+      const pa = preparingRank(a), pb = preparingRank(b)
+      if (pa !== pb) return pb - pa
       const ra = delayRank(a), rb = delayRank(b)
       if (ra !== rb) return rb - ra
       if (ra === 0) return 0 // preserva ordem original entre não-atrasados (sort estável)
@@ -433,6 +482,8 @@ export default function OrdersPage() {
                             onCancel={!batchMode ? () => setCancelling(order) : undefined}
                             onSaveNote={!batchMode ? (note) => handleSaveNote(order.id, note) : undefined}
                             onDelete={!batchMode && can({ scope: 'orders:delete' }) ? () => handleDelete(order) : undefined}
+                            onOpenChat={!batchMode ? () => setChatOrder(order) : undefined}
+                            unreadCount={unreadMap[order.id] ?? 0}
                           />
                         </div>
                       </div>
@@ -468,8 +519,12 @@ export default function OrdersPage() {
                       <tbody className="divide-y divide-gray-100">
                         {completedOrders.map(order => (
                           <tr key={order.id} className="transition-colors hover:bg-gray-50">
-                            <td className="px-4 py-2.5 font-mono text-xs font-semibold text-gray-700">
-                              #{order.id.slice(-8).toUpperCase()}
+                            <td className="px-4 py-2.5">
+                            <Link
+                                  href={`/orders/${order.id}`}
+                                  className="font-mono text-xs font-semibold text-gray-700"                                  
+                                >#{order.id.slice(-8).toUpperCase()}
+                                </Link>
                             </td>
                             <td className="px-4 py-2.5 text-gray-800">{order.customer.name}</td>
                             <td className="hidden sm:table-cell px-4 py-2.5 max-w-[200px]">
@@ -502,6 +557,14 @@ export default function OrdersPage() {
                             </td>
                             <td className="px-4 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
+                                {paymentDiscrepancy(order) && (
+                                  <span
+                                    className="inline-flex"
+                                    title={`Valor recebido (${paymentDiscrepancy(order)!.collected.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) menor que o esperado (${paymentDiscrepancy(order)!.expected.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`}
+                                  >
+                                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                                  </span>
+                                )}
                                 <Link
                                   href={`/orders/${order.id}`}
                                   className="text-xs font-medium hover:underline"
@@ -588,6 +651,14 @@ export default function OrdersPage() {
           order={cancelling}
           onClose={() => setCancelling(null)}
           onCancelled={() => { setCancelling(null); mutate() }}
+        />
+      )}
+
+      {chatOrder && (
+        <OrderChatModal
+          order={chatOrder}
+          onClose={() => setChatOrder(null)}
+          onRead={() => mutateUnread()}
         />
       )}
 

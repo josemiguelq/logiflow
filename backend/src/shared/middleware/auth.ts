@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { db } from '../db/client'
 import { redis } from '../infra/redis'
+import { addActorContext } from '../infra/observability'
 
 export type JWTPayload =
   | { type: 'store_user'; sub: string; storeId: string; role: string; name: string; scopes: string[]; jti?: string }
@@ -27,6 +28,7 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
     await req.jwtVerify()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     req.actor = req.user as any
+    addActorContext(req.actor)
   } catch {
     reply.code(401).send({ error: 'Unauthorized' })
     return
@@ -67,10 +69,10 @@ export async function requireDeliverer(req: FastifyRequest, reply: FastifyReply)
     return reply.code(403).send({ error: 'Forbidden' })
   }
   const { rows: [d] } = await db.query(
-    'SELECT is_active FROM deliverers WHERE id = $1',
+    'SELECT is_active, deleted_at FROM deliverers WHERE id = $1',
     [req.actor.sub]
   )
-  if (!d?.is_active) {
+  if (!d || d.deleted_at || !d.is_active) {
     return reply.code(401).send({ error: 'ACCOUNT_DISABLED' })
   }
 }

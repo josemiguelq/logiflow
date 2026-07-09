@@ -1,7 +1,10 @@
 import 'dotenv/config'
-import { buildApp } from './app'
-import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
-import { scanDelayedOrders } from './modules/orders/application/use-cases/scan-delayed-orders'
+import { buildApp, buildTime } from './app'
+import { createNotificationWorker, createLocationWorker, notificationQueue } from './shared/infra/queue'
+import { createPgTrackingRepo } from './modules/tracking/infrastructure/repositories/pg-tracking-repo'
+import { scanDelayedOrders, scanPriorityOverdue } from './modules/orders/application/use-cases/scan-delayed-orders'
+import { scanAutoRoutes } from './modules/orders/application/use-cases/scan-auto-routes'
+import { createPgAutoRouteRepo } from './modules/auto-routes/infrastructure/repositories/pg-auto-route-repo'
 import { db } from './shared/db/client'
 import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
@@ -9,7 +12,7 @@ import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/
 import { createFcmProvider } from './modules/notifications/infrastructure/fcm/fcm-provider'
 import { createPgDeviceTokenRepo } from './modules/notifications/infrastructure/repositories/pg-device-token-repo'
 import { buildPushPayload } from './modules/notifications/application/use-cases/build-push-payload'
-import { startHeartbeat } from './shared/infra/websocket'
+import { startHeartbeat, wsHub } from './shared/infra/websocket'
 import { runAchievementsJob } from './modules/gamification/application/service'
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
@@ -36,8 +39,7 @@ function buildStatusMessage(
     case 'PREPARING':
       return (
         `Olá, ${customerName}! Seu pedido foi registrado e está sendo preparado. 🛒\n\n` +
-        `${addrLine}\n\n` +
-        `Acompanhe em tempo real:\n${trackingUrl}`
+        `${addrLine}\n\n`
       )
     case 'ASSIGNED':
       return (
@@ -90,14 +92,28 @@ function buildStatusMessage(
 
 async function start() {
   const app            = buildApp()
-  const whatsapp       = createBaileysProvider(db)
+  app.log.info({ buildTime }, '[boot] version')
+  const whatsapp       = createBaileysProvider(db, app.log)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
+  const autoRouteRepo  = createPgAutoRouteRepo(db)
   const pushProvider   = createFcmProvider()
   const deviceTokenRepo = createPgDeviceTokenRepo(db)
 
+  // Remove tokens que o FCM rejeitou por não existirem mais (app desinstalado/
+  // rotacionado). Evita que tokens mortos se acumulem e sejam reenviados sempre.
+  const pruneInvalidTokens = async (invalidTokens: string[]) => {
+    if (invalidTokens.length === 0) return
+    try {
+      await deviceTokenRepo.deleteMany(invalidTokens)
+      app.log.info({ count: invalidTokens.length }, '[push] pruned invalid tokens')
+    } catch (err) {
+      app.log.error({ err }, '[push] failed to prune invalid tokens')
+    }
+  }
+
   // ── Notification worker ──────────────────────────────────────────────────
-  createNotificationWorker(async (job) => {
+  const notificationWorker = createNotificationWorker(async (job) => {
     // ── Pickup reminder push (fan-out para vários entregadores livres) ──
     if (job.data.type === 'pickup_reminder') {
       const { storeId, delivererIds, count, minutes } = job.data
@@ -116,8 +132,9 @@ async function start() {
         data:  { event: 'PICKUP_REMINDER' },
       }
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ storeId, successCount, failureCount }, '[push] pickup_reminder FCM result')
+        await pruneInvalidTokens(invalidTokens)
       } catch (err) {
         app.log.error({ err, storeId }, '[push] pickup_reminder FCM send error')
       }
@@ -141,8 +158,9 @@ async function start() {
         data:  { event: 'ROUTE_DONE_WAITING' },
       }
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ storeId, delivererId, successCount, failureCount }, '[push] route_done_waiting FCM result')
+        await pruneInvalidTokens(invalidTokens)
       } catch (err) {
         app.log.error({ err, storeId, delivererId }, '[push] route_done_waiting FCM send error')
       }
@@ -163,20 +181,26 @@ async function start() {
         return
       }
 
-      const order = await orderRepo.findById(orderId, storeId)
-      if (!order) {
-        app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
-        return
+      // Eventos sem pedido (ex.: AUTO_ROUTE_NEXT) não carregam orderId.
+      let customerName = ''
+      if (orderId) {
+        const order = await orderRepo.findById(orderId, storeId)
+        if (!order) {
+          app.log.warn({ orderId, storeId }, '[push] order not found — skipping')
+          return
+        }
+        customerName = order.customer.name
       }
 
-      const payload = buildPushPayload(statusEvent, orderId, order.customer.name)
+      const payload = buildPushPayload(statusEvent, orderId, customerName)
       app.log.info({ orderId, storeId, title: payload.title }, '[push] sending to FCM')
       try {
-        const { successCount, failureCount } = await pushProvider.send(tokens, payload)
+        const { successCount, failureCount, invalidTokens } = await pushProvider.send(tokens, payload)
         app.log.info({ orderId, storeId, successCount, failureCount }, '[push] FCM result')
         if (failureCount > 0) {
           app.log.warn({ orderId, storeId, failureCount }, '[push] some FCM tokens failed')
         }
+        await pruneInvalidTokens(invalidTokens)
       } catch (err) {
         app.log.error({ err, orderId, storeId }, '[push] FCM send error')
       }
@@ -257,16 +281,35 @@ async function start() {
     }
   })
 
+  // ── Location worker ──────────────────────────────────────────────────────
+  // Grava/deduplica o ping de GPS e detecta chegada fora do caminho da
+  // requisição; roda no mesmo processo, então o broadcast ao mapa (wsHub, em
+  // memória) sai daqui, com o mesmo gating de antes (só quando o ponto é salvo).
+  const trackingRepo   = createPgTrackingRepo(db)
+  const locationWorker = createLocationWorker(async (job) => {
+    const { delivererId, storeId, lat, lng, recordedAt } = job.data
+    const saved = await trackingRepo.recordLocation(delivererId, lat, lng, new Date(recordedAt))
+    if (saved) wsHub.broadcastDelivererLocation(storeId, delivererId, lat, lng)
+  })
+  locationWorker.on('failed', (job, err) =>
+    app.log.error({ err, delivererId: job?.data.delivererId }, '[location] job failed'))
+
   // ── Reconnect previously active WhatsApp sessions ────────────────────────
   whatsapp.reconnectAll().catch((err) => app.log.warn({ err }, 'WhatsApp reconnect failed'))
 
   // ── WebSocket heartbeat ──────────────────────────────────────────────────
   startHeartbeat()
 
-  // ── Delay scanner: alerta pedidos em rota parados há muito tempo ─────────
-  const runDelayScan = () =>
+  // ── Delay scanner: alerta pedidos em rota parados há muito tempo, e pedidos
+  //    prioritários cujo horário máximo de entrega estourou ──────────────────
+  const runDelayScan = () => {
     scanDelayedOrders({ orderRepo, notificationQueue, log: app.log })
       .catch((err) => app.log.error({ err }, '[delay-scan] unexpected error'))
+    scanPriorityOverdue({ orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[priority-scan] unexpected error'))
+    scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQueue, log: app.log })
+      .catch((err) => app.log.error({ err }, '[auto-route] unexpected error'))
+  }
   runDelayScan()
   setInterval(runDelayScan, 60_000)
 
@@ -284,6 +327,27 @@ async function start() {
       .catch((err) => app.log.error({ err }, '[sessions] cleanup failed'))
   cleanupSessions()
   setInterval(cleanupSessions, 24 * 60 * 60_000)
+
+  // ── Shutdown gracioso ──────────────────────────────────────────────────────
+  // Deploy/restart: para de aceitar requests, deixa o job em voo terminar e para
+  // de puxar novos. Jobs ainda na fila sobrevivem no Redis e são reprocessados.
+  let shuttingDown = false
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    app.log.info({ signal }, '[shutdown] draining…')
+    try {
+      await app.close()                 // fecha o HTTP server (sem novos requests)
+      await notificationWorker.close()  // deixa o job atual terminar; para de pegar novos
+      await locationWorker.close()      // idem para os pings de localização
+    } catch (err) {
+      app.log.error({ err }, '[shutdown] error while draining')
+    } finally {
+      process.exit(0)
+    }
+  }
+  process.on('SIGTERM', () => void shutdown('SIGTERM'))
+  process.on('SIGINT',  () => void shutdown('SIGINT'))
 
   // ── HTTP server ──────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3001)

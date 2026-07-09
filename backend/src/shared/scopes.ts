@@ -11,6 +11,7 @@ export const SCOPES = [
   'routes:force_finish',
   'routes:export',
   'routes:delete',
+  'routes:auto_config',
 
   // Customers
   'customers:view',
@@ -23,11 +24,13 @@ export const SCOPES = [
   'deliverers:manage',
   'deliverers:force_offline',
   'deliverers:track',
+  'deliverers:delete',
 
   // Users
   'users:view',
   'users:create',
   'users:delete',
+  'users:reset_password',
 
   // WhatsApp
   'whatsapp:view',
@@ -46,6 +49,13 @@ export const SCOPES = [
 
   // Sessions
   'sessions:view_all',
+
+  // Announcements
+  'announcements:manage',
+
+  // Garantias
+  'warranties:view',
+  'warranties:manage',
 ] as const
 
 export type Scope = typeof SCOPES[number]
@@ -60,6 +70,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'routes:force_finish':  'Rotas — forçar finalização',
   'routes:export':        'Rotas — exportar CSV',
   'routes:delete':        'Rotas — excluir rota e todos os pedidos',
+  'routes:auto_config':   'Rotas — configurar criação automática (rodízio)',
   'customers:view':       'Clientes — visualizar',
   'customers:create':     'Clientes — criar',
   'customers:edit':       'Clientes — editar',
@@ -68,9 +79,11 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'deliverers:manage':        'Entregadores — gerenciar',
   'deliverers:force_offline': 'Entregadores — forçar offline',
   'deliverers:track':         'Entregadores — rastrear localização',
+  'deliverers:delete':        'Entregadores — excluir',
   'users:view':           'Usuários — visualizar',
   'users:create':         'Usuários — criar',
   'users:delete':         'Usuários — remover',
+  'users:reset_password': 'Usuários — redefinir senha',
   'whatsapp:view':        'WhatsApp — visualizar',
   'whatsapp:connect':     'WhatsApp — conectar/desconectar',
   'analytics:view':       'Analítico — visualizar',
@@ -79,26 +92,33 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'goals:view':           'Metas — visualizar',
   'goals:manage':         'Metas — criar e editar',
   'sessions:view_all':    'Sessões — ver os acessos de todos os usuários',
+  'announcements:manage': 'Comunicados — criar e enviar para entregadores',
+
+  'warranties:view':   'Garantias — visualizar',
+  'warranties:manage': 'Garantias — gerenciar',
 }
 
 export const SCOPE_GROUPS: { label: string; scopes: Scope[] }[] = [
   { label: 'Pedidos',        scopes: ['orders:view', 'orders:view_all', 'orders:create', 'orders:cancel', 'orders:delete'] },
-  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete'] },
+  { label: 'Rotas',          scopes: ['routes:view', 'routes:force_finish', 'routes:export', 'routes:delete', 'routes:auto_config'] },
   { label: 'Clientes',       scopes: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
-  { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track'] },
-  { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete'] },
+  { label: 'Entregadores',   scopes: ['deliverers:view', 'deliverers:manage', 'deliverers:force_offline', 'deliverers:track', 'deliverers:delete'] },
+  { label: 'Usuários',       scopes: ['users:view', 'users:create', 'users:delete', 'users:reset_password'] },
   { label: 'WhatsApp',       scopes: ['whatsapp:view', 'whatsapp:connect'] },
   { label: 'Analítico',      scopes: ['analytics:view'] },
   { label: 'Configurações',  scopes: ['settings:view', 'settings:edit'] },
   { label: 'Metas',          scopes: ['goals:view', 'goals:manage'] },
   { label: 'Sessões',        scopes: ['sessions:view_all'] },
+  { label: 'Comunicados',    scopes: ['announcements:manage'] },
+  { label: 'Garantias',      scopes: ['warranties:view', 'warranties:manage'] },
 ]
 
 export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
   OWNER: [...SCOPES],
   MANAGER: SCOPES.filter(s =>
-    !['users:view', 'users:create', 'users:delete', 'whatsapp:view', 'whatsapp:connect',
-      'routes:delete', 'orders:delete', 'customers:delete', 'sessions:view_all'].includes(s)
+    !['users:view', 'users:create', 'users:delete', 'users:reset_password',
+      'whatsapp:view', 'whatsapp:connect',
+      'routes:delete', 'orders:delete', 'customers:delete', 'deliverers:delete', 'sessions:view_all'].includes(s)
   ),
   ASSISTANT: [
     'orders:view', 'orders:view_all', 'orders:create',
@@ -107,5 +127,7 @@ export const DEFAULT_ROLE_SCOPES: Record<string, Scope[]> = {
     'deliverers:view',
     'settings:view',
     'goals:view',
+    'warranties:view',
+    'warranties:manage',
   ],
 }

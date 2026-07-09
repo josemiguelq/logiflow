@@ -13,6 +13,8 @@ export async function loginStoreUser(
 ) {
   const user = await storeUserRepo.findByEmail(email)
   if (!user || !user.active) throw new Error('Invalid credentials')
+  // Usuário só-Google (sem senha) não pode logar por senha.
+  if (!user.passwordHash) throw new Error('Invalid credentials')
 
   const valid = await bcrypt.compare(password, user.passwordHash)
   if (!valid) throw new Error('Invalid credentials')

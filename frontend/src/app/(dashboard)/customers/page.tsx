@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download, ArrowDown, ArrowUp } from 'lucide-react'
+import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download, ArrowDown, ArrowUp, ShieldCheck } from 'lucide-react'
 import { Customer, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
@@ -74,6 +74,7 @@ export default function CustomersPage() {
   const { can } = useAccess()
   const { user } = useAuth()
   const canDelete = can({ scope: 'customers:delete' })
+  const showWarranty = can({ feature: 'warranties' })
 
   // Privacy setting: when on, the customer list is hidden until the operator
   // searches for at least 4 characters, and the map view is disabled. The OWNER
@@ -317,6 +318,9 @@ export default function CustomersPage() {
                       : <ArrowUp className="h-3.5 w-3.5" />}
                   </button>
                 </th>
+                {showWarranty && (
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Termos</th>
+                )}
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -361,6 +365,18 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                       {new Date(c.createdAt).toLocaleDateString('pt-BR')}
                     </td>
+                    {showWarranty && (
+                      <td className="px-4 py-3">
+                        {c.warrantyAccepted ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700" title="Termos de garantia aceitos">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Aceito
+                          </span>
+                        ) : (
+                          <span className="text-gray-300" title="Termos não aceitos">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Link

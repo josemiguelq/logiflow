@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen } from 'lucide-react'
 import { Order } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
@@ -12,6 +12,10 @@ import { formatPhone } from '@/lib/phone'
 import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 import { DelayFlag } from '@/components/orders/delay-flag'
+import { PriorityBadge } from '@/components/orders/priority-badge'
+import { PriorityEditor } from '@/components/orders/priority-editor'
+import { OrderChatHistory } from '@/components/orders/order-chat-history'
+import { MessageCircle } from 'lucide-react'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 
@@ -25,9 +29,19 @@ const LOG_ACTION_LABEL: Record<string, string> = {
   DELIVERED:         'Entregue',
   CANCELLED:         'Cancelado',
   RETURNED_TO_QUEUE: 'Devolvido à fila',
-  NOTE_CHANGED:      'Observação alterada',
-  ADDRESS_CHANGED:   'Endereço alterado',
+  NOTE_CHANGED:        'Observação alterada',
+  ADDRESS_CHANGED:     'Endereço alterado',
+  CASH_AMOUNT_CHANGED: 'Valor a receber alterado',
 }
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  cash: 'Dinheiro',
+  pix:  'Pix',
+  card: 'Cartão',
+}
+
+const formatBRL = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 const STATUS_STEP_LABEL: Record<string, string> = {
   CREATED:          'Criação',
@@ -59,6 +73,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     (url: string) => api.get<Order>(url)
   )
   const [adjusting, setAdjusting] = useState(false)
+  const [editingCash, setEditingCash] = useState(false)
+  const [cashValue, setCashValue] = useState('')
   const now        = useNow()
   const thresholds = useDelayThresholds()
 
@@ -75,7 +91,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const delay = getDelayInfo(order, thresholds, now)
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <Link
         href="/orders"
         className="mb-6 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -105,15 +121,27 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           delay.level === 'red' ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-start justify-between">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
+        <div>
+          <div className="flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">
               Pedido #{order.id.slice(-8).toUpperCase()}
             </h1>
             <p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p>
+            {order.routeId && (
+                <Link
+                  href={`/routes/${order.routeId}`}
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Ver rota deste pedido
+                </Link>
+              )}
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
+            {order.isPriority && <PriorityBadge maxDeliveryTime={order.maxDeliveryTime} />}
             {delay.level !== 'none' && <DelayFlag delay={delay} />}
             {order.deliveredOffTarget && (
               <span
@@ -186,12 +214,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <Truck className="h-4 w-4 text-gray-400" />
                 {order.deliverer.name}
                 {order.routePosition !== undefined && (
-                  <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">
+                  <span className="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)' }}>
                     Posição #{order.routePosition}
                   </span>
                 )}
-              </div>
+              </div>              
             </section>
+          )}
+
+          {!COMPLETED_STATUSES.includes(order.status) && (
+            <PriorityEditor order={order} onChanged={() => mutate()} />
           )}
 
           <section className="border-t border-gray-100 pt-4">
@@ -278,110 +311,239 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {order.proofs?.length > 0 && (
+          <section className="border-t border-gray-100 pt-4">
+            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-gray-500">
+              <MessageCircle className="h-3.5 w-3.5" />
+              Mensagens
+            </h2>
+            <OrderChatHistory orderId={order.id} />
+          </section>
+
+          {(order.cashAmount != null || editingCash) && (
             <section className="border-t border-gray-100 pt-4">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Comprovante de Entrega
-                {order.proofs.length > 1 && (
-                  <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 normal-case tracking-normal">
-                    {order.proofs.length} fotos
-                  </span>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Valor a receber
+                </h2>
+                {!COMPLETED_STATUSES.includes(order.status) && !editingCash && (
+                  <button
+                    onClick={() => {
+                      setCashValue(order.cashAmount != null ? String(order.cashAmount) : '')
+                      setEditingCash(true)
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    <Pen className="h-3 w-3" />
+                    Editar
+                  </button>
                 )}
-              </h2>
-              <div className={`grid gap-2 ${order.proofs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {order.proofs.map((p, i) => (
-                  <div key={i} className="overflow-hidden rounded-xl border border-gray-100">
-                    <img
-                      src={p.photoUrl}
-                      alt={`Comprovante ${i + 1}`}
-                      className="w-full object-contain"
-                      style={{ maxHeight: order.proofs.length > 1 ? 240 : 480 }}
-                    />
-                    {(p.lat != null && p.lng != null) && (
-                      <p className="px-2 pb-1.5 pt-1 text-xs text-gray-400">
-                        {p.lat.toFixed(5)}, {p.lng.toFixed(5)}
-                      </p>
-                    )}
-                  </div>
-                ))}
               </div>
+              {editingCash ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cashValue}
+                      onChange={e => setCashValue(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm font-medium text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const val = parseFloat(cashValue)
+                      const normalized = !isNaN(val) && val >= 0 ? val : null
+                      try {
+                        await api.patch(`/orders/${id}/cash-amount`, { cashAmount: normalized })
+                        await mutate()
+                      } catch { /* silent */ }
+                      setEditingCash(false)
+                    }}
+                    className="rounded-lg px-3 py-2.5 text-xs font-bold text-white transition-colors"
+                    style={{ background: 'var(--color-primary)' }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    onClick={() => setEditingCash(false)}
+                    className="rounded-lg border border-gray-300 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-gray-900">
+                  {formatBRL(order.cashAmount!)}
+                </p>
+              )}
             </section>
           )}
 
-          {order.summary && order.summary.segments.length > 0 && (
+          {order.payments && order.payments.length > 0 && (
             <section className="border-t border-gray-100 pt-4">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Tempos por etapa
+                Pagamentos recebidos
               </h2>
               <div className="space-y-1.5">
-                {order.summary.segments.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">
-                      {STATUS_STEP_LABEL[s.from] ?? s.from} → {STATUS_STEP_LABEL[s.to] ?? s.to}
-                    </span>
-                    <span className="font-medium text-gray-900">{formatSeconds(s.seconds)}</span>
-                  </div>
-                ))}
-                <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
-                  <span className="font-semibold text-gray-700">Total</span>
-                  <span className="font-bold text-gray-900">{formatSeconds(order.summary.totalSeconds)}</span>
-                </div>
+                {(() => {
+                  const total = order.payments!.reduce((s, p) => s + p.amount, 0)
+                  const discrepancy = order.cashAmount && order.cashAmount > 0 && total < order.cashAmount
+                  return (
+                    <>
+                      {discrepancy && (
+                        <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800 mb-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                          <span>
+                            Valor recebido ({formatBRL(total)}) menor que o esperado ({formatBRL(order.cashAmount!)}).
+                            {order.deliveryNote && ` Motivo: ${order.deliveryNote}`}
+                          </span>
+                        </div>
+                      )}
+                      {order.payments!.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm">
+                          <span className="flex items-center gap-2 text-green-800">
+                            <Wallet className="h-4 w-4 text-green-500" />
+                            {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
+                          </span>
+                          <span className="font-semibold text-green-900">{formatBRL(p.amount)}</span>
+                        </div>
+                      ))}
+                      {order.payments!.length > 1 && (
+                        <div className="flex items-center justify-between px-3 pt-1 text-sm font-bold text-gray-900">
+                          <span>Total</span>
+                          <span>{formatBRL(total)}</span>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </section>
           )}
 
-          {order.log && order.log.length > 0 && (() => {
-            const sortedLog = [...order.log].sort(
-              (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
-            )
-            return (
+        </div>
+        </div>
+
+      {(order.proofs?.length > 0 || (order.summary?.segments?.length ?? 0) > 0 || (order.log?.length ?? 0) > 0) && (
+        <div>
+          <div className="space-y-4">
+            {order.proofs?.length > 0 && (
+              <section>
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Comprovante de Entrega
+                  {order.proofs.length > 1 && (
+                    <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 normal-case tracking-normal">
+                      {order.proofs.length} fotos
+                    </span>
+                  )}
+                </h2>
+                <div className={`grid gap-2 ${order.proofs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {order.proofs.map((p, i) => (
+                    <div key={i} className="overflow-hidden rounded-xl border border-gray-100">
+                      <img
+                        src={p.photoUrl}
+                        alt={`Comprovante ${i + 1}`}
+                        className="w-full object-contain"
+                        style={{ maxHeight: order.proofs.length > 1 ? 240 : 480 }}
+                      />
+                      {(p.lat != null && p.lng != null) && (
+                        <p className="px-2 pb-1.5 pt-1 text-xs text-gray-400">
+                          {p.lat.toFixed(5)}, {p.lng.toFixed(5)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {order.summary && order.summary.segments.length > 0 && (
               <section className="border-t border-gray-100 pt-4">
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  Histórico / Auditoria
+                  Tempos por etapa
                 </h2>
-                <ol className="relative">
-                  <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
-                  {sortedLog.map((e, i) => {
-                    const deltaMin = i === 0
-                      ? null
-                      : Math.round(
-                          (new Date(e.at).getTime() - new Date(sortedLog[i - 1]!.at).getTime()) / 60000
-                        )
-                    return (
-                      <li key={i} className="relative pl-6 pb-4 last:pb-0">
-                        <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
-                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-                          <p className="text-sm font-medium text-gray-900">
-                            {LOG_ACTION_LABEL[e.action] ?? e.action}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            {deltaMin != null && (
-                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-                                +{deltaMin < 1 ? '<1' : deltaMin} min
-                              </span>
-                            )}
-                            <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
-                        {e.action === 'NOTE_CHANGED' && e.details && (
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            {(e.details.from as string) || '(vazio)'} → {(e.details.to as string) || '(vazio)'}
-                          </p>
-                        )}
-                        {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
-                          <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
-                        )}
-                        {e.action === 'CANCELLED' && e.details?.reason != null && (
-                          <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ol>
+                <div className="space-y-1.5">
+                  {order.summary.segments.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">
+                        {STATUS_STEP_LABEL[s.from] ?? s.from} → {STATUS_STEP_LABEL[s.to] ?? s.to}
+                      </span>
+                      <span className="font-medium text-gray-900">{formatSeconds(s.seconds)}</span>
+                    </div>
+                  ))}
+                  <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
+                    <span className="font-semibold text-gray-700">Total</span>
+                    <span className="font-bold text-gray-900">{formatSeconds(order.summary.totalSeconds)}</span>
+                  </div>
+                </div>
               </section>
-            )
-          })()}
+            )}
+
+            {order.log && order.log.length > 0 && (() => {
+              const sortedLog = [...order.log].sort(
+                (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()
+              )
+              return (
+                <section className="border-t border-gray-100 pt-4">
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                    Histórico / Auditoria
+                  </h2>
+                  <ol className="relative">
+                    <span aria-hidden className="absolute left-[6px] top-2 bottom-2 w-px bg-gray-200" />
+                    {sortedLog.map((e, i) => {
+                      const deltaMin = i === 0
+                        ? null
+                        : Math.round(
+                            (new Date(e.at).getTime() - new Date(sortedLog[i - 1]!.at).getTime()) / 60000
+                          )
+                      return (
+                        <li key={i} className="relative pl-6 pb-4 last:pb-0">
+                          <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 ring-1 ring-gray-200" />
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                            <p className="text-sm font-medium text-gray-900">
+                              {LOG_ACTION_LABEL[e.action] ?? e.action}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {deltaMin != null && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                                  +{deltaMin < 1 ? '<1' : deltaMin} min
+                                </span>
+                              )}
+                              <p className="text-xs text-gray-400">{formatDate(e.at)}</p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500">{actorLabel(e.by)}</p>
+                          {e.action === 'NOTE_CHANGED' && e.details && (
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {(e.details.from as string) || '(vazio)'} → {(e.details.to as string) || '(vazio)'}
+                            </p>
+                          )}
+                          {e.action === 'ADDRESS_CHANGED' && e.details?.to != null && (
+                            <p className="mt-0.5 text-xs text-gray-500">Novo: {e.details.to as string}</p>
+                          )}
+                          {e.action === 'CASH_AMOUNT_CHANGED' && e.details && (
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {(e.details.from as number) != null ? formatBRL(e.details.from as number) : '(vazio)'} → {(e.details.to as number) != null ? formatBRL(e.details.to as number) : '(vazio)'}
+                            </p>
+                          )}
+                          {e.action === 'CANCELLED' && e.details?.reason != null && (
+                            <p className="mt-0.5 text-xs text-gray-500">Motivo: {e.details.reason as string}</p>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </section>
+              )
+            })()}
+          </div>
+        </div>
+      )}
         </div>
       </div>
 

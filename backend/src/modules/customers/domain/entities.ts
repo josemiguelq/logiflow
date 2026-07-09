@@ -28,8 +28,12 @@ export interface Customer {
   storeId: string
   name: string
   phone: string
+  assistanceId: string | null
+  assistanceName: string | null
   addresses: CustomerAddress[]
   createdAt: Date
   updatedAt: Date
   audit: CustomerAuditEntry[]
+  // Cliente já assinou a versão ATUAL dos termos de garantia da loja.
+  warrantyAccepted: boolean
 }

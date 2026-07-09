@@ -22,6 +22,21 @@ export async function routeRoutes(app: FastifyInstance) {
   const routeRepo = createPgRouteRepo(db)
   const orderRepo = createPgOrderRepo(db)
 
+  // Auditoria da rota: anexa uma entrada ao log com o autor (req.actor).
+  // Best-effort — nunca derruba a request principal.
+  const logRouteEvent = (
+    routeId: string,
+    actor: { type: string; sub: string; name: string },
+    action: string,
+    details?: Record<string, unknown>,
+  ) =>
+    routeRepo.appendLog(routeId, {
+      at:     new Date().toISOString(),
+      by:     { type: actor.type as 'store_user' | 'deliverer' | 'system', id: actor.sub, name: actor.name },
+      action,
+      ...(details ? { details } : {}),
+    }).catch(() => { /* non-fatal */ })
+
   // ── Store routes ──────────────────────────────────────────────────────────
   app.get('/routes', { preHandler: requireStoreUser }, async (req) => {
     const { page, delivererId, from, to } = req.query as {
@@ -156,6 +171,7 @@ export async function routeRoutes(app: FastifyInstance) {
       }).parse(req.body)
       const route = await routeRepo.updateStatus(id, req.actor.storeId, status)
       if (!route) return reply.code(404).send({ error: 'Not found' })
+      logRouteEvent(id, req.actor, status, { trigger: 'forced' })
       return route
     }
   )
@@ -256,6 +272,7 @@ export async function routeRoutes(app: FastifyInstance) {
           action: 'ASSIGNED',
           details: { delivererId, routeId: id },
         }).catch(() => { /* non-fatal */ })
+        logRouteEvent(id, req.actor, 'ORDER_ADDED', { orderId: oid })
       }
 
       // Notify the deliverer (push) that the route changed
@@ -382,6 +399,7 @@ export async function routeRoutes(app: FastifyInstance) {
       }
 
       await routeRepo.updateStatus(id, route.store_id as string, 'STARTED')
+      logRouteEvent(id, req.actor, 'STARTED', { pickedUp: pickedRows.length })
 
       const orders = await orderRepo.findByRoute(id)
 

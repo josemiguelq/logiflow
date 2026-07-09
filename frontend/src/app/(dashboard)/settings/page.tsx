@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
-import { Save, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck, MapPin, Search, Loader2, MessageCircle } from 'lucide-react'
+import { Save, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck, MapPin, Search, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
@@ -39,16 +39,6 @@ interface StoreSettings {
   enforceDeliveryOrder:     boolean
   whatsappNotifyStatuses:   string[]
 }
-
-const WHATSAPP_STATUS_OPTIONS: { value: string; label: string; desc: string }[] = [
-  { value: 'PREPARING',        label: 'Pedido criado',      desc: 'Quando o pedido é registrado' },
-  { value: 'ON_ROUTE',         label: 'Em rota',            desc: 'Quando o entregador retira os pedidos da rota' },
-  { value: 'OUT_FOR_DELIVERY', label: 'Saiu para entrega',  desc: 'Quando o pedido é a próxima parada' },
-  { value: 'ARRIVING',         label: 'Chegando ao endereço', desc: 'Quando o entregador entra no raio de chegada — avisa o cliente para se preparar para receber' },
-  { value: 'DELIVERED',        label: 'Entregue',           desc: 'Quando a entrega é concluída' },
-  { value: 'CANCELLED',        label: 'Cancelado',          desc: 'Quando o pedido é cancelado' },
-  { value: 'ADDRESS_CHANGED',  label: 'Endereço alterado',  desc: 'Quando o endereço de entrega muda' },
-]
 
 interface ThemeData {
   theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null }
@@ -96,7 +86,6 @@ export default function SettingsPage() {
           {/* Coluna principal — operações (conteúdo mais extenso) */}
           <div className="space-y-6">
             <OperationsSection onSaved={() => showToast('Configurações salvas')} />
-            <WhatsappNotifySection onSaved={() => showToast('Notificações atualizadas')} />
           </div>
 
           {/* Coluna lateral — visão geral, endereço, privacidade e aparência */}
@@ -383,7 +372,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
             { label: 'Exigir foto na entrega',    desc: 'O entregador deve fotografar a entrega no app',                value: requirePhoto,          set: setRequirePhoto },
             { label: 'Exigir código de coleta',  desc: 'Entregador confirma retirada com o código da rota',            value: requirePickupCode,     set: setRequirePickupCode },
             { label: 'Exigir código de entrega', desc: 'Entregador confirma entrega com os 4 últimos dígitos do tel.', value: requireDeliveryCode,   set: setRequireDeliveryCode },
-            { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago, dinheiro, cartão)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
+            { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago ou pagar na entrega)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
             { label: 'Permitir entrega apenas quando estiver perto', desc: 'Bloqueia concluir a entrega se o entregador estiver além da distância máxima. Desativado, apenas avisa.', value: requireProximity, set: setRequireProximity },
             { label: 'Forçar ordem das entregas', desc: 'Obriga o entregador a seguir a ordem da rota, sem pular paradas.', value: enforceOrder, set: setEnforceOrder },
             ...(features.customerRatingsEnabled
@@ -507,89 +496,6 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         <Button onClick={handleSave} disabled={loading} className="w-full sm:w-auto">
           <Save className="h-4 w-4" />
           {loading ? 'Salvando...' : 'Salvar configurações'}
-        </Button>
-      </div>
-    </SectionCard>
-  )
-}
-
-function WhatsappNotifySection({ onSaved }: { onSaved: () => void }) {
-  const { data, mutate } = useSWR<StoreSettings>(
-    '/store/settings',
-    (u: string) => api.get<StoreSettings>(u)
-  )
-  const features = useStoreFeatures()
-
-  const [statuses, setStatuses] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState('')
-
-  useEffect(() => {
-    if (data) setStatuses(data.whatsappNotifyStatuses ?? [])
-  }, [data])
-
-  function toggle(value: string) {
-    setStatuses((prev) =>
-      prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]
-    )
-  }
-
-  async function handleSave() {
-    setLoading(true)
-    setError('')
-    try {
-      await api.patch('/store/settings', { whatsappNotifyStatuses: statuses })
-      mutate()
-      onSaved()
-    } catch (err: unknown) {
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <SectionCard icon={MessageCircle} title="Notificações por WhatsApp">
-      <div className="space-y-5">
-        <p className="text-sm text-gray-500">
-          Escolha quais mudanças de status enviam uma mensagem automática ao cliente.
-        </p>
-
-        {!features.whatsappEnabled && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            O WhatsApp não está habilitado para sua loja. Estas opções só terão efeito após a ativação.
-          </p>
-        )}
-
-        {WHATSAPP_STATUS_OPTIONS.map(({ value, label, desc }) => {
-          const on = statuses.includes(value)
-          return (
-            <div key={value} className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900">{label}</p>
-                <p className="text-xs text-gray-500">{desc}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => toggle(value)}
-                className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                style={{ background: on ? 'var(--color-primary)' : '#E5E7EB' }}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                    on ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          )
-        })}
-
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-
-        <Button onClick={handleSave} disabled={loading} className="w-full sm:w-auto">
-          <Save className="h-4 w-4" />
-          {loading ? 'Salvando...' : 'Salvar notificações'}
         </Button>
       </div>
     </SectionCard>

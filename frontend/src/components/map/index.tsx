@@ -1,7 +1,7 @@
 import dynamic from 'next/dynamic'
-import type { MapDestination, TrailPoint, ProofMarker, MapBounds } from './LiveMap'
+import type { MapDestination, TrailPoint, ProofMarker, MapBounds, FleetMember } from './LiveMap'
 
-export type { MapDestination, TrailPoint, ProofMarker, MapBounds }
+export type { MapDestination, TrailPoint, ProofMarker, MapBounds, FleetMember }
 
 export const LiveMap = dynamic(
   () => import('./LiveMap').then((m) => m.LiveMap),

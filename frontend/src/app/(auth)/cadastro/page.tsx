@@ -11,6 +11,10 @@ import { StoreUser } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { maskDocument, stripDocument, isValidDocument } from '@/lib/document'
+import { maskPhone, stripPhone } from '@/lib/phone'
+import { GoogleLogin } from '@react-oauth/google'
+
+const GOOGLE_ENABLED = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
 const MapPicker = dynamic(() => import('./_map_picker'), {
   ssr: false,
@@ -60,6 +64,7 @@ export default function CadastroPage() {
   const [storeName, setStoreName] = useState('')
   const [doc, setDoc]             = useState('')
   const [email, setEmail]         = useState('')
+  const [phone, setPhone]         = useState('')
   const [prospectId, setProspectId] = useState('')
 
   // Etapa 2
@@ -85,10 +90,12 @@ export default function CadastroPage() {
     if (storeName.trim().length < 2) return setError('Informe o nome da loja')
     if (!isValidDocument(doc)) return setError('CPF/CNPJ inválido')
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setError('E-mail inválido')
+    if (stripPhone(phone).length < 10) return setError('Telefone inválido')
     setLoading(true); setError('')
     try {
       const res = await api.post<{ id: string }>('/auth/prospect', {
         storeName: storeName.trim(), cpfCnpj: stripDocument(doc), email: email.trim(),
+        phone: stripPhone(phone),
       })
       setProspectId(res.id)
       setStep(1)
@@ -142,6 +149,22 @@ export default function CadastroPage() {
     } finally { setLoading(false) }
   }
 
+  // Conclui o cadastro com Google: o e-mail/nome da conta Google viram o acesso do owner.
+  async function submitStep3Google(credential?: string) {
+    if (!credential) return
+    setLoading(true); setError('')
+    try {
+      const res = await api.post<{ token: string; user: StoreUser }>(
+        `/auth/prospect/${prospectId}/convert`,
+        { ownerName: ownerName.trim() || undefined, googleCredential: credential, planId: planId || null }
+      )
+      setSession(res.token, res.user)
+      router.push('/orders')
+    } catch (err: unknown) {
+      setError((err as Error).message ?? 'Erro ao concluir')
+    } finally { setLoading(false) }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
       <div className="w-full max-w-md">
@@ -187,6 +210,9 @@ export default function CadastroPage() {
               </Field>
               <Field label="E-mail">
                 <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="seu@email.com" />
+              </Field>
+              <Field label="Telefone de contato">
+                <Input value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} inputMode="tel" placeholder="(11) 99999-9999" />
               </Field>
             </div>
           )}
@@ -273,6 +299,28 @@ export default function CadastroPage() {
               <Field label="Confirmar senha">
                 <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" placeholder="Repita a senha" />
               </Field>
+
+              {GOOGLE_ENABLED && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-gray-200" />
+                    <span className="text-xs text-gray-400">ou cadastre-se com</span>
+                    <div className="h-px flex-1 bg-gray-200" />
+                  </div>
+                  <div className="flex justify-center">
+                    <GoogleLogin
+                      onSuccess={(cred) => submitStep3Google(cred.credential)}
+                      onError={() => setError('Erro ao cadastrar com Google')}
+                      text="signup_with"
+                      shape="rectangular"
+                      width="320"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-gray-400">
+                    Com o Google você não precisa definir senha.
+                  </p>
+                </>
+              )}
             </div>
           )}
 

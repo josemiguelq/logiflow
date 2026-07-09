@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -475,24 +476,50 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     }
 
     ref.invalidate(storeSettingsProvider);
-    final settings = await ref.read(storeSettingsProvider.future);
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _DeliveryConfirmSheet(
-        order: widget.order,
-        requireDeliveryCode: settings.requireDeliveryCode,
-        requireDeliveryPhoto: settings.requireDeliveryPhoto,
-        maxProofPhotos: settings.maxProofPhotos,
-        requireProximity: settings.deliveryRequireProximity,
-        proximityMeters: settings.delayProximityMeters,
-        onDelivered: widget.onDelivered,
-      ),
-    );
+    try {
+      final settings = await ref.read(storeSettingsProvider.future);
+      if (!mounted) return;
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => _DeliveryConfirmSheet(
+          order: widget.order,
+          requireDeliveryCode: settings.requireDeliveryCode,
+          requireDeliveryPhoto: settings.requireDeliveryPhoto,
+          maxProofPhotos: settings.maxProofPhotos,
+          requireProximity: settings.deliveryRequireProximity,
+          proximityMeters: settings.delayProximityMeters,
+          onDelivered: widget.onDelivered,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final noInternet = isNoInternetError(e);
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(
+            noInternet ? Icons.wifi_off_rounded : Icons.error_outline,
+            size: 48,
+            color: noInternet ? const Color(0xFFEA580C) : Colors.red.shade400,
+          ),
+          title: Text(noInternet ? 'Sem conexão' : 'Erro'),
+          content: Text(
+            noInternet ? kNoInternetMessage : 'Não foi possível carregar as configurações. Tente novamente.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 
@@ -613,19 +640,62 @@ class _DeliveryConfirmSheet extends StatefulWidget {
   State<_DeliveryConfirmSheet> createState() => _DeliveryConfirmSheetState();
 }
 
+class _PaymentLine {
+  final TextEditingController amountCtrl = TextEditingController();
+  String method = 'cash';
+}
+
 class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   final _codeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
+  // Lista dinâmica de pagamentos recebidos (ex.: Pix + dinheiro na mesma entrega).
+  final List<_PaymentLine> _payments = [];
   final List<XFile> _photos = [];
   bool _loading = false;
+  bool _collectPayment = false;
   String? _error;
 
   @override
   void dispose() {
     _codeCtrl.dispose();
     _noteCtrl.dispose();
+    for (final p in _payments) {
+      p.amountCtrl.dispose();
+    }
     super.dispose();
   }
+
+  void _togglePayment() {
+    setState(() {
+      _collectPayment = !_collectPayment;
+      if (_collectPayment && _payments.isEmpty) {
+        _payments.add(_PaymentLine());
+      }
+    });
+  }
+
+  void _addPaymentLine() => setState(() {
+        final line = _PaymentLine();
+        // Dinheiro só pode haver um; se já existe, o novo começa em Pix.
+        if (_payments.any((p) => p.method == 'cash')) line.method = 'pix';
+        _payments.add(line);
+      });
+
+  void _removePaymentLine(int index) {
+    setState(() {
+      _payments[index].amountCtrl.dispose();
+      _payments.removeAt(index);
+      if (_payments.isEmpty) _collectPayment = false;
+    });
+  }
+
+  double get _paymentsTotal => _payments.fold(
+        0,
+        (sum, p) =>
+            sum +
+            (double.tryParse(p.amountCtrl.text.trim().replaceAll(',', '.')) ??
+                0),
+      );
 
   Future<void> _takePhoto() async {
     if (_photos.length >= widget.maxProofPhotos) return;
@@ -667,6 +737,66 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     );
   }
 
+  // Aviso quando o valor recebido é menor que o esperado.
+  // Retorna o motivo preenchido se confirmou, ou null se cancelou.
+  Future<String?> _confirmShortPayment(double collected, double expected) {
+    final noteCtrl = TextEditingController();
+    String? noteError;
+    return showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded,
+              size: 36, color: Color(0xFFEA580C)),
+          title: const Text('Valor recebido menor que o esperado'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Você informou R\$${collected.toStringAsFixed(2)}, mas o '
+                'valor esperado era R\$${expected.toStringAsFixed(2)}. '
+                'O operador será notificado dessa divergência.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: noteCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Motivo (obrigatório)',
+                  errorText: noteError,
+                  border: const OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (noteCtrl.text.trim().isEmpty) {
+                  setDialogState(() => noteError = 'Informe o motivo');
+                  return;
+                }
+                Navigator.pop(ctx, noteCtrl.text.trim());
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEA580C)),
+              child: const Text('Estou ciente'),
+            ),
+          ],
+        ),
+      ),
+    ).then((r) {
+      noteCtrl.dispose();
+      return r;
+    });
+  }
+
   Future<void> _confirm() async {
     final code = _codeCtrl.text.trim().toUpperCase();
     if (widget.requireDeliveryCode && code.length != 4) {
@@ -676,6 +806,17 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
     if (widget.requireDeliveryPhoto && _photos.isEmpty) {
       setState(() => _error = 'Foto de comprovante é obrigatória');
       return;
+    }
+    if (_collectPayment) {
+      final hasValid = _payments.any((p) {
+        final amount =
+            double.tryParse(p.amountCtrl.text.trim().replaceAll(',', '.'));
+        return amount != null && amount > 0;
+      });
+      if (!hasValid) {
+        setState(() => _error = 'Informe o valor recebido');
+        return;
+      }
     }
     // Proximidade: valida a distância até o endereço antes de concluir.
     Position? pos;
@@ -728,7 +869,33 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         photoUrls.add('data:image/jpeg;base64,${base64Encode(bytes)}');
       }
 
-      final note = _noteCtrl.text.trim();
+      // Monta a lista de pagamentos válidos (valor > 0).
+      final payments = _collectPayment
+          ? _payments
+              .map((p) => {
+                    'amount': double.tryParse(
+                        p.amountCtrl.text.trim().replaceAll(',', '.')),
+                    'method': p.method,
+                  })
+              .where((p) => (p['amount'] as double?) != null &&
+                  (p['amount'] as double) > 0)
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      String note = _noteCtrl.text.trim();
+
+      // Alerta quando o valor recebido é menor que o esperado.
+      if (payments.isNotEmpty) {
+        final totalCollected =
+            payments.fold<double>(0, (sum, p) => sum + (p['amount'] as double));
+        final expected = widget.order.cashAmount;
+        if (expected != null && expected > 0 && totalCollected < expected) {
+          final shortNote = await _confirmShortPayment(totalCollected, expected);
+          if (shortNote == null || !mounted) return;
+          note = shortNote;
+        }
+      }
+
       await ApiClient().dio.post(
         '/deliverer/orders/${widget.order.id}/deliver',
         data: {
@@ -737,8 +904,16 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
           if (note.isNotEmpty) 'note': note,
-          if (widget.order.isCash) 'cashCollected': true,
+          if (widget.order.isCash || widget.order.cashAmount != null)
+            'cashCollected': true,
+          if (payments.isNotEmpty) 'payments': payments,
         },
+        options: Options(
+          // Uploads de fotos em base64 podem demorar; evita timeout que levaria
+          // o entregador a reenviar e (antes) duplicar registros.
+          sendTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 60),
+        ),
       );
 
       widget.onDelivered();
@@ -752,6 +927,174 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         _loading = false;
       });
     }
+  }
+
+  Widget _buildPaymentCollection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: _togglePayment,
+          child: Row(
+            children: [
+              Icon(
+                _collectPayment
+                    ? Icons.check_box
+                    : Icons.check_box_outline_blank,
+                size: 22,
+                color: _collectPayment
+                    ? const Color(0xFF16A34A)
+                    : Colors.grey.shade400,
+              ),
+              const SizedBox(width: 8),
+              Text('Recebi pagamento',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        if (_collectPayment) ...[
+          const SizedBox(height: 12),
+          for (int i = 0; i < _payments.length; i++) ...[
+            _buildPaymentLine(i),
+            const SizedBox(height: 12),
+          ],
+          // Botão para registrar mais um pagamento (ex.: parte Pix, parte dinheiro).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _addPaymentLine,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Adicionar pagamento'),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF16A34A),
+                  padding: EdgeInsets.zero),
+            ),
+          ),
+          if (_payments.length > 1) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Total',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(
+                  'R\$ ${_paymentsTotal.toStringAsFixed(2).replaceAll('.', ',')}',
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF16A34A)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPaymentLine(int index) {
+    final line = _payments[index];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: line.amountCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}), // atualiza o total
+                decoration: InputDecoration(
+                  labelText: 'Valor recebido',
+                  hintText: '0,00',
+                  prefixText: 'R\$ ',
+                  prefixStyle: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF111827)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 14),
+                ),
+                style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+            if (_payments.length > 1)
+              IconButton(
+                onPressed: () => _removePaymentLine(index),
+                icon: const Icon(Icons.delete_outline),
+                color: Colors.red.shade400,
+                tooltip: 'Remover',
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _methodChip(index, 'cash', 'Dinheiro'),
+            const SizedBox(width: 10),
+            _methodChip(index, 'pix', 'Pix'),
+            const SizedBox(width: 10),
+            _methodChip(index, 'card', 'Cartão'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // Dinheiro só pode ser recebido em um único pagamento (não dá para receber
+  // "troco" em dois caixas). Pix e cartão podem se repetir à vontade.
+  bool _cashTakenBy(int exceptIndex) => _payments
+      .asMap()
+      .entries
+      .any((e) => e.key != exceptIndex && e.value.method == 'cash');
+
+  Widget _methodChip(int index, String value, String label) {
+    final selected = _payments[index].method == value;
+    final blocked = value == 'cash' && !selected && _cashTakenBy(index);
+    return GestureDetector(
+      onTap: blocked
+          ? null
+          : () => setState(() => _payments[index].method = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primary
+              : blocked
+                  ? Colors.grey.shade100
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: selected
+                ? AppTheme.primary
+                : blocked
+                    ? const Color(0xFFE5E7EB)
+                    : const Color(0xFFD1D5DB),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: selected
+                ? Colors.white
+                : blocked
+                    ? Colors.grey.shade400
+                    : Colors.grey.shade700,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -783,50 +1126,36 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 16),
 
-          // Payment info
+          // Payment info — cobrança pelo entregador
           if (widget.order.paymentMethod != 'prepaid') ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: widget.order.isCash
-                    ? const Color(0xFFFFFBEB)
-                    : const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: widget.order.isCash
-                      ? const Color(0xFFF59E0B)
-                      : const Color(0xFF93C5FD),
+            if (widget.order.cashAmount != null && widget.order.cashAmount! > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFF59E0B)),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    widget.order.isCash
-                        ? Icons.payments_outlined
-                        : Icons.credit_card_outlined,
-                    size: 20,
-                    color: widget.order.isCash
-                        ? const Color(0xFFD97706)
-                        : const Color(0xFF3B82F6),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      widget.order.isCash
-                          ? 'Cobrar R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')} em dinheiro'
-                          : 'Pagamento no cartão',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: widget.order.isCash
-                            ? const Color(0xFF92400E)
-                            : const Color(0xFF1E40AF),
+                child: Row(
+                  children: [
+                    const Icon(Icons.payments_outlined,
+                        size: 20, color: Color(0xFFD97706)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Cobrar R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Color(0xFF92400E),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            const SizedBox(height: 12),
+            _buildPaymentCollection(),
             const SizedBox(height: 16),
           ],
 

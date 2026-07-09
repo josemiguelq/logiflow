@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from 'react'
 import useSWR from 'swr'
-import { X, MapPin, Check } from 'lucide-react'
+import { X, MapPin, Check, Crown } from 'lucide-react'
 import { Customer, CustomerAddress, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,12 @@ interface Props {
   onCreated: () => void
 }
 
+// Converte um Date para o formato aceito pelo <input type="datetime-local"> (hora local).
+function toLocalInput(d: Date): string {
+  const off = d.getTimezoneOffset()
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16)
+}
+
 export function NewOrderModal({ onClose, onCreated }: Props) {
   const [search,          setSearch]          = useState('')
   const [selected,        setSelected]        = useState<Customer | null>(null)
@@ -20,6 +26,8 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
   const [notes,           setNotes]           = useState('')
   const [paymentMethod,   setPaymentMethod]   = useState<'prepaid' | 'cash' | 'card'>('prepaid')
   const [cashAmount,      setCashAmount]      = useState('')
+  const [isPriority,      setIsPriority]      = useState(false)
+  const [maxDeliveryTime, setMaxDeliveryTime] = useState('')  // valor do input datetime-local
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
 
@@ -52,6 +60,8 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
         notes:         notes || undefined,
         paymentMethod,
         cashAmount:    paymentMethod === 'cash' && cashAmount ? parseFloat(cashAmount) : undefined,
+        isPriority,
+        maxDeliveryTime: isPriority && maxDeliveryTime ? new Date(maxDeliveryTime).toISOString() : undefined,
       }
       // Pass delivery address only when it's not the default (or when there's a single address)
       if (selectedAddress) {
@@ -176,11 +186,10 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
                 Forma de pagamento
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {([
                   { value: 'prepaid', label: 'Pré-pago' },
-                  { value: 'cash',   label: 'Dinheiro' },
-                  { value: 'card',   label: 'Cartão' },
+                  { value: 'cash',   label: 'Pagar na entrega' },
                 ] as const).map(({ value, label }) => (
                   <button
                     key={value}
@@ -209,6 +218,62 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
               )}
             </div>
           )}
+
+          {/* Prioridade */}
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isPriority
+                setIsPriority(next)
+                // Ao ativar, sugere o horário máximo como agora + 30min (default hoje).
+                if (next && !maxDeliveryTime) setMaxDeliveryTime(toLocalInput(new Date(Date.now() + 30 * 60000)))
+              }}
+              className="flex w-full items-center justify-between rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors"
+              style={isPriority
+                ? { borderColor: '#F59E0B', color: '#B45309', background: '#FFFBEB' }
+                : { borderColor: '#E5E7EB', color: '#6B7280' }}
+            >
+              <span className="flex items-center gap-2">
+                <Crown className="h-4 w-4" fill={isPriority ? 'currentColor' : 'none'} />
+                Pedido prioritário
+              </span>
+              <span
+                className="flex h-5 w-9 items-center rounded-full px-0.5 transition-colors"
+                style={{ background: isPriority ? '#F59E0B' : '#D1D5DB' }}
+              >
+                <span
+                  className="h-4 w-4 rounded-full bg-white transition-transform"
+                  style={{ transform: isPriority ? 'translateX(16px)' : 'translateX(0)' }}
+                />
+              </span>
+            </button>
+
+            {isPriority && (
+              <div className="mt-2 space-y-2">
+                <label className="block text-xs font-medium text-gray-600">
+                  Horário máximo de entrega (opcional)
+                </label>
+                <Input
+                  type="datetime-local"
+                  value={maxDeliveryTime}
+                  onChange={(e) => setMaxDeliveryTime(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  {([['+20 min', 20], ['+30 min', 30]] as const).map(([label, min]) => (
+                    <button
+                      key={min}
+                      type="button"
+                      onClick={() => setMaxDeliveryTime(toLocalInput(new Date(Date.now() + min * 60000)))}
+                      className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Notes */}
           <div>

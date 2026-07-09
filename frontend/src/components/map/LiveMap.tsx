@@ -67,6 +67,20 @@ export interface TrailPoint {
   recorded_at?: string
 }
 
+// Um entregador na visão de frota: posição atual + rastro (tracejado) próprio.
+export interface FleetMember {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  status?: string
+  trail?: TrailPoint[]
+  color?: string
+}
+
+// Paleta para diferenciar entregadores quando nenhuma cor é informada.
+const FLEET_COLORS = ['#2563EB', '#DC2626', '#059669', '#D97706', '#7C3AED', '#DB2777', '#0891B2', '#CA8A04']
+
 export interface MapBounds {
   north: number
   south: number
@@ -81,6 +95,7 @@ interface Props {
   destinations?: MapDestination[]
   proofMarkers?: ProofMarker[]
   trail?: TrailPoint[]
+  fleet?: FleetMember[]
   height?: string
   autoFitBounds?: boolean
   onDestinationClick?: (id: string) => void
@@ -96,6 +111,7 @@ export function LiveMap({
   destinations = [],
   proofMarkers = [],
   trail = [],
+  fleet = [],
   height = '100%',
   autoFitBounds = false,
   onDestinationClick,
@@ -107,6 +123,8 @@ export function LiveMap({
   const destMarkersRef      = useRef<L.Marker[]>([])
   const proofMarkersRef     = useRef<L.Marker[]>([])
   const trailLayersRef      = useRef<L.Layer[]>([])
+  const fleetLayersRef      = useRef<L.Layer[]>([])
+  const fleetFittedRef      = useRef(false)
   const boundsCbRef         = useRef(onBoundsChange)
   useEffect(() => { boundsCbRef.current = onBoundsChange })
 
@@ -148,6 +166,8 @@ export function LiveMap({
       proofMarkersRef.current = []
       trailLayersRef.current.forEach((l) => l.remove())
       trailLayersRef.current = []
+      fleetLayersRef.current.forEach((l) => l.remove())
+      fleetLayersRef.current = []
 
       map.remove()
       mapRef.current = null
@@ -309,6 +329,55 @@ export function LiveMap({
 
     map.fitBounds(polyline.getBounds(), { padding: [40, 40] })
   }, [trail])
+
+  // Modo "frota": vários entregadores, cada um com marcador + tracejado próprio.
+  // Rebuild a cada atualização (poucos entregadores por loja). O fitBounds roda só
+  // uma vez (primeira vez que há posições) para não dar "pulos" a cada ping do WS.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    fleetLayersRef.current.forEach((l) => l.remove())
+    fleetLayersRef.current = []
+    if (fleet.length === 0) return
+
+    const layers: L.Layer[] = []
+    const allPts: L.LatLngTuple[] = []
+
+    fleet.forEach((m, i) => {
+      const color = m.color ?? FLEET_COLORS[i % FLEET_COLORS.length]
+
+      if (m.trail && m.trail.length >= 2) {
+        const latlngs = m.trail.map((p) => [p.lat, p.lng] as L.LatLngTuple)
+        const pl = L.polyline(latlngs, { color, weight: 3, opacity: 0.7, lineJoin: 'round' }).addTo(map)
+        layers.push(pl)
+        allPts.push(...latlngs)
+      }
+
+      if (m.lat != null && m.lng != null) {
+        const pos: L.LatLngTuple = [m.lat, m.lng]
+        const icon = new L.DivIcon({
+          className: '',
+          html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`,
+          iconSize:    [18, 18],
+          iconAnchor:  [9, 9],
+          popupAnchor: [0, -10],
+        })
+        const marker = L.marker(pos, { icon })
+          .bindPopup(`<strong>${m.name}</strong>${m.status ? `<br>${m.status}` : ''}`)
+          .addTo(map)
+        layers.push(marker)
+        allPts.push(pos)
+      }
+    })
+
+    fleetLayersRef.current = layers
+
+    if (!fleetFittedRef.current && allPts.length > 0) {
+      map.fitBounds(L.latLngBounds(allPts), { padding: [48, 48] })
+      fleetFittedRef.current = true
+    }
+  }, [fleet])
 
   return (
     <div

@@ -10,6 +10,7 @@ import '../../core/models/order.dart';
 import '../../core/models/route.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/priority_badge.dart';
 
 const _newColor =
     Color(0xFF059669); // emerald — marks orders added this session
@@ -670,6 +671,10 @@ class _RouteOrderTile extends StatelessWidget {
                   ),
                 ],
               ),
+              if (order.isPriority) ...[
+                const SizedBox(height: 4),
+                PriorityBadge(order: order),
+              ],
               if (delay?.minutes != null) ...[
                 const SizedBox(height: 4),
                 _WaitChip(minutes: delay!.minutes!, level: level),

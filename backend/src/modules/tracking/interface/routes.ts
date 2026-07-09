@@ -4,6 +4,7 @@ import { db } from '../../../shared/db/client'
 import { requireDeliverer, requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgTrackingRepo } from '../infrastructure/repositories/pg-tracking-repo'
+import { locationQueue } from '../../../shared/infra/queue'
 import { wsHub } from '../../../shared/infra/websocket'
 
 const locationSchema = z.object({
@@ -16,23 +17,28 @@ const batchSchema = z.object({
     lat:        z.number(),
     lng:        z.number(),
     recordedAt: z.string().datetime(),
-  })).min(1).max(200),
+  })).min(1).max(5000),
 })
 
 export async function trackingRoutes(app: FastifyInstance) {
   const repo = createPgTrackingRepo(db)
 
-  // Deliverer sends location
+  // Deliverer sends location — enfileira e responde na hora. A persistência
+  // (dedup + gravação + detecção de chegada) e o broadcast ao mapa rodam no
+  // worker de localização, fora do caminho da requisição. Se o enqueue falhar
+  // (Redis fora), o erro sobe e o app reenvia pelo /tracking/location/batch.
   app.post(
     '/tracking/location',
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { lat, lng } = locationSchema.parse(req.body)
-      const saved = await repo.recordLocation(req.actor.sub, lat, lng)
-      if (saved) {
-        wsHub.broadcastDelivererLocation(req.actor.storeId, req.actor.sub, lat, lng)
-      }
-      return reply.send({ saved })
+      await locationQueue.add('point', {
+        delivererId: req.actor.sub,
+        storeId:     req.actor.storeId,
+        lat, lng,
+        recordedAt:  new Date().toISOString(),
+      })
+      return reply.send({ saved: true })
     }
   )
 
@@ -61,6 +67,38 @@ export async function trackingRoutes(app: FastifyInstance) {
     )
     return rows.length > 0
   }
+
+  // Seed do mapa da frota: para cada entregador ativo da loja, os ÚLTIMOS 25
+  // pontos (em ordem cronológica) já formando o tracejado. Entregadores sem
+  // nenhum registro são omitidos (JOIN LATERAL + ON points IS NOT NULL).
+  // Uma única query (sem N+1); coberta por idx_location_deliverer_time.
+  app.get(
+    '/tracking/deliverers/latest',
+    { preHandler: [requireStoreUser, requireScope('deliverers:track')] },
+    async (req) => {
+      const { rows } = await db.query(
+        `SELECT d.id AS deliverer_id, d.name, d.status, lh.points
+         FROM deliverers d
+         JOIN LATERAL (
+           SELECT json_agg(
+                    json_build_object('lat', last25.lat, 'lng', last25.lng, 'recorded_at', last25.recorded_at)
+                    ORDER BY last25.recorded_at ASC
+                  ) AS points
+           FROM (
+             SELECT lat, lng, recorded_at
+             FROM location_history
+             WHERE deliverer_id = d.id
+             ORDER BY recorded_at DESC
+             LIMIT 25
+           ) last25
+         ) lh ON lh.points IS NOT NULL
+         WHERE d.store_id = $1 AND d.is_active = true AND d.deleted_at IS NULL
+         ORDER BY d.name ASC`,
+        [req.actor.storeId]
+      )
+      return rows
+    }
+  )
 
   // Store user gets latest position of a deliverer
   app.get(

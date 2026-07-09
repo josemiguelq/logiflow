@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/api/api_client.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -8,12 +9,14 @@ import '../../widgets/app_drawer.dart';
 class Analytics {
   final int todayDeliveries;
   final int monthDeliveries;
+  final int monthPriorityDeliveries;
   final int monthCancelled;
   final int monthRoutes;
 
   const Analytics({
     required this.todayDeliveries,
     required this.monthDeliveries,
+    required this.monthPriorityDeliveries,
     required this.monthCancelled,
     required this.monthRoutes,
   });
@@ -25,6 +28,7 @@ class Analytics {
     return Analytics(
       todayDeliveries: n(today['deliveries']),
       monthDeliveries: n(month['deliveries']),
+      monthPriorityDeliveries: n(month['priorityDeliveries']),
       monthCancelled: n(month['cancelled']),
       monthRoutes: n(month['routes']),
     );
@@ -155,33 +159,55 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(child: Text('Erro ao carregar: $e')),
               ),
-              data: (a) => Row(
+              data: (a) => Column(
                 children: [
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Entregas',
-                      value: a.monthDeliveries,
-                      icon: Icons.check_circle_outline,
-                      color: const Color(0xFF16A34A),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatCard(
+                          label: 'Entregas',
+                          value: a.monthDeliveries,
+                          icon: Icons.check_circle_outline,
+                          color: const Color(0xFF16A34A),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _StatCard(
+                          label: 'Canceladas',
+                          value: a.monthCancelled,
+                          icon: Icons.cancel_outlined,
+                          color: const Color(0xFFDC2626),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _StatCard(
+                          label: 'Viagens',
+                          value: a.monthRoutes,
+                          icon: Icons.route_outlined,
+                          color: const Color(0xFF2563EB),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Canceladas',
-                      value: a.monthCancelled,
-                      icon: Icons.cancel_outlined,
-                      color: const Color(0xFFDC2626),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Viagens',
-                      value: a.monthRoutes,
-                      icon: Icons.route_outlined,
-                      color: const Color(0xFF2563EB),
-                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatCard(
+                          label: 'Prioritárias concluídas',
+                          value: a.monthPriorityDeliveries,
+                          icon: LucideIcons.crown,
+                          color: const Color(0xFFF59E0B),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Espaçador para manter a largura do card alinhada à linha de cima.
+                      const Expanded(child: SizedBox()),
+                      const SizedBox(width: 12),
+                      const Expanded(child: SizedBox()),
+                    ],
                   ),
                 ],
               ),

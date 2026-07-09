@@ -43,5 +43,10 @@ export function createPgDeviceTokenRepo(db: DB): IDeviceTokenRepository {
     async delete(token) {
       await db.query('DELETE FROM device_tokens WHERE token = $1', [token])
     },
+
+    async deleteMany(tokens) {
+      if (tokens.length === 0) return
+      await db.query('DELETE FROM device_tokens WHERE token = ANY($1)', [tokens])
+    },
   }
 }

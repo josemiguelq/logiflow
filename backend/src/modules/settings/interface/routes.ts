@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
+import { invalidateStoreSettings } from '../store-settings-cache'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
@@ -55,6 +56,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       customThemeEnabled:     names.includes('custom_theme'),
       csvExportEnabled:       names.includes('csv_export'),
       customerRatingsEnabled: names.includes('customer_ratings'),
+      warrantiesEnabled:      names.includes('warranties'),
     }
   })
 
@@ -321,6 +323,9 @@ export async function settingsRoutes(app: FastifyInstance) {
       }
     }
 
+    // Invalida o cache de settings da loja (usado no fluxo de entrega etc.).
+    await invalidateStoreSettings(storeId)
+
     return { ok: true }
   })
 
@@ -372,7 +377,8 @@ export async function settingsRoutes(app: FastifyInstance) {
     name:     z.string().min(2),
     email:    z.string().email(),
     username: z.string().min(3).regex(/^[a-z0-9_.]+$/),
-    password: z.string().min(6),
+    // Opcional: usuários que vão logar só com Google podem ser criados sem senha.
+    password: z.string().min(6).optional(),
     role:     z.enum(['MANAGER', 'ASSISTANT']),
   })
 
@@ -386,7 +392,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     )
     if (dup) return reply.code(409).send({ error: 'Email ou username já em uso nesta loja' })
 
-    const hash = await bcrypt.hash(body.password, 10)
+    const hash = body.password ? await bcrypt.hash(body.password, 10) : null
     const { rows: [user] } = await db.query(
       `INSERT INTO store_users (store_id, name, email, username, password_hash, role)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, email, username, role, created_at`,
@@ -468,6 +474,62 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
 
     await db.query('DELETE FROM store_users WHERE id = $1 AND store_id = $2', [id, actor.storeId])
+    return { ok: true }
+  })
+
+  // PATCH /store/users/:id/password — redefine a senha de OUTRO operador.
+  // Espelha a hierarquia do DELETE: MANAGER só reseta ASSISTANT; OWNER reseta
+  // qualquer um. Ninguém reseta a própria senha por aqui (usa /store/me/password).
+  const resetPasswordSchema = z.object({ newPassword: z.string().min(6) })
+  const WEEK_SEC = 7 * 24 * 60 * 60
+
+  app.patch('/store/users/:id/password', { preHandler: [requireStoreUser, requireScope('users:reset_password')] }, async (req, reply) => {
+    const actor = req.actor as { role: string; storeId: string; sub: string; name: string }
+    const { id } = req.params as { id: string }
+    const body = resetPasswordSchema.parse(req.body)
+
+    if (id === actor.sub) {
+      return reply.code(400).send({ error: 'Use a opção de alterar a própria senha' })
+    }
+
+    const { rows: [target] } = await db.query(
+      'SELECT role FROM store_users WHERE id = $1 AND store_id = $2',
+      [id, actor.storeId]
+    )
+    if (!target) return reply.code(404).send({ error: 'Usuário não encontrado' })
+    if (actor.role === 'MANAGER' && (target.role as string) !== 'ASSISTANT') {
+      return reply.code(403).send({ error: 'Gerentes só podem redefinir a senha de assistentes' })
+    }
+
+    const hash = await bcrypt.hash(body.newPassword, 10)
+    await db.query(
+      'UPDATE store_users SET password_hash = $1 WHERE id = $2 AND store_id = $3',
+      [hash, id, actor.storeId]
+    )
+
+    // Auditoria (best-effort): registra o evento sem armazenar a senha/hash.
+    db.query(
+      `INSERT INTO store_user_password_audit (store_id, target_user_id, changed_by, changed_by_name)
+       VALUES ($1, $2, $3, $4)`,
+      [actor.storeId, id, actor.sub, actor.name]
+    ).catch((err) => req.log.error({ err }, 'store user password audit failed'))
+
+    // Revoga as sessões ativas do alvo para forçar novo login com a nova senha.
+    // Entra na denylist do Redis (efeito imediato no requireAuth) + marca revoked_at.
+    try {
+      const { rows: sessions } = await db.query(
+        `UPDATE store_user_sessions SET revoked_at = now()
+         WHERE store_user_id = $1 AND revoked_at IS NULL
+         RETURNING id`,
+        [id]
+      )
+      for (const s of sessions as { id: string }[]) {
+        await redis.set(`revoked:${s.id}`, '1', 'EX', WEEK_SEC).catch(() => { /* non-fatal */ })
+      }
+    } catch (err) {
+      req.log.error({ err }, 'failed to revoke target sessions after password reset')
+    }
+
     return { ok: true }
   })
 }

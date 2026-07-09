@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { IDelivererAuthRepository } from '../ports'
+import { DELIVERER_TERMS } from '../../../legal/deliverer-terms'
 
 interface Deps {
   delivererRepo: IDelivererAuthRepository
@@ -33,6 +34,8 @@ export async function loginDeliverer(
       status:          deliverer.status,
       profileImageUrl: deliverer.profileImageUrl,
       needsOnboarding: deliverer.needsOnboarding,
+      needsSwitchTour: deliverer.needsSwitchTour,
+      termsAccepted:   deliverer.termsAcceptedVersion === DELIVERER_TERMS.version,
     },
   }
 }
