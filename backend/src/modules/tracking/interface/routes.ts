@@ -4,6 +4,7 @@ import { db } from '../../../shared/db/client'
 import { requireDeliverer, requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgTrackingRepo } from '../infrastructure/repositories/pg-tracking-repo'
+import { locationQueue } from '../../../shared/infra/queue'
 import { wsHub } from '../../../shared/infra/websocket'
 
 const locationSchema = z.object({
@@ -22,17 +23,22 @@ const batchSchema = z.object({
 export async function trackingRoutes(app: FastifyInstance) {
   const repo = createPgTrackingRepo(db)
 
-  // Deliverer sends location
+  // Deliverer sends location — enfileira e responde na hora. A persistência
+  // (dedup + gravação + detecção de chegada) e o broadcast ao mapa rodam no
+  // worker de localização, fora do caminho da requisição. Se o enqueue falhar
+  // (Redis fora), o erro sobe e o app reenvia pelo /tracking/location/batch.
   app.post(
     '/tracking/location',
     { preHandler: requireDeliverer },
     async (req, reply) => {
       const { lat, lng } = locationSchema.parse(req.body)
-      const saved = await repo.recordLocation(req.actor.sub, lat, lng)
-      if (saved) {
-        wsHub.broadcastDelivererLocation(req.actor.storeId, req.actor.sub, lat, lng)
-      }
-      return reply.send({ saved })
+      await locationQueue.add('point', {
+        delivererId: req.actor.sub,
+        storeId:     req.actor.storeId,
+        lat, lng,
+        recordedAt:  new Date().toISOString(),
+      })
+      return reply.send({ saved: true })
     }
   )
 

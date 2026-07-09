@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X, AlertTriangle, BellRing } from 'lucide-react'
-import { Order, OrderStatus, Deliverer } from '@/types'
+import { Order, OrderStatus, Deliverer, OrderUnread, ChatMessage } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
 import { useAccess } from '@/hooks/useAccess'
@@ -17,6 +17,7 @@ import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { NewOrderModal } from '@/components/orders/new-order-modal'
 import { AssignModal } from '@/components/orders/assign-modal'
 import { CancelOrderModal } from '@/components/orders/cancel-order-modal'
+import { OrderChatModal } from '@/components/orders/order-chat-modal'
 import { LiveMap, MapDestination } from '@/components/map'
 
 const STATUSES: (OrderStatus | '')[] = [
@@ -98,8 +99,41 @@ export default function OrdersPage() {
     }
   }
 
+  // Chat: contagem de não-lidas por pedido + pedido com o chat aberto.
+  const [chatOrder, setChatOrder] = useState<Order | null>(null)
+  const { data: unreadList = [], mutate: mutateUnread } = useSWR<OrderUnread[]>(
+    '/orders/messages/unread',
+    (u: string) => api.get<OrderUnread[]>(u),
+    { refreshInterval: 30_000 },
+  )
+  const unreadMap: Record<string, number> = Object.fromEntries(unreadList.map(u => [u.orderId, u.count]))
+
   useEffect(() => on('order_updated', () => mutate()), [on, mutate])
-  useEffect(() => onReconnect(() => mutate()), [onReconnect, mutate])
+  useEffect(() => onReconnect(() => { mutate(); mutateUnread() }), [onReconnect, mutate, mutateUnread])
+
+  // Nova mensagem no chat: atualiza o badge e notifica o operador (mensagens do
+  // entregador). Se o chat do pedido já estiver aberto, o próprio modal lida.
+  useEffect(
+    () => on('order_message', (data) => {
+      const msg = data as ChatMessage
+      if (msg.senderType !== 'deliverer') return
+      mutateUnread()
+      if (chatOrder?.id === msg.orderId) return
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification('Nova mensagem 💬', { body: msg.body })
+      }
+    }),
+    [on, mutateUnread, chatOrder],
+  )
+  // Outro operador marcou como lido → sincroniza o badge.
+  useEffect(() => on('order_message_read', () => mutateUnread()), [on, mutateUnread])
+
+  // Pede permissão de notificação do browser uma vez.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [])
 
   // Search by customer name (client-side)
   const query = search.trim().toLowerCase()
@@ -448,6 +482,8 @@ export default function OrdersPage() {
                             onCancel={!batchMode ? () => setCancelling(order) : undefined}
                             onSaveNote={!batchMode ? (note) => handleSaveNote(order.id, note) : undefined}
                             onDelete={!batchMode && can({ scope: 'orders:delete' }) ? () => handleDelete(order) : undefined}
+                            onOpenChat={!batchMode ? () => setChatOrder(order) : undefined}
+                            unreadCount={unreadMap[order.id] ?? 0}
                           />
                         </div>
                       </div>
@@ -615,6 +651,14 @@ export default function OrdersPage() {
           order={cancelling}
           onClose={() => setCancelling(null)}
           onCancelled={() => { setCancelling(null); mutate() }}
+        />
+      )}
+
+      {chatOrder && (
+        <OrderChatModal
+          order={chatOrder}
+          onClose={() => setChatOrder(null)}
+          onRead={() => mutateUnread()}
         />
       )}
 

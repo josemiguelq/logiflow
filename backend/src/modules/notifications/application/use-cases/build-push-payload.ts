@@ -20,6 +20,14 @@ export function buildPushPayload(
         body:  'Fique preparado — a próxima rota automática será atribuída a você.',
         data,
       }
+    case 'NEW_MESSAGE':
+      return {
+        title: 'Nova mensagem 💬',
+        body:  customerName
+          ? `Nova mensagem sobre o pedido de ${customerName}`
+          : 'Você recebeu uma nova mensagem',
+        data,
+      }
     case 'PREPARING':
       return {
         title: 'Novo pedido disponível 🛒',

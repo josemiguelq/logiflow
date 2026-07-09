@@ -36,30 +36,44 @@ export function createPgTrackingRepo(db: DB) {
       lng: number,
       recordedAt?: Date,
     ) {
-      const { rows: statusRows } = await db.query(
-        `SELECT status FROM deliverers WHERE id = $1`,
-        [delivererId]
-      )
-      if (statusRows[0]?.status === 'OFFLINE') return false
-
       const ts = recordedAt ?? new Date()
+
+      // Duas leituras independentes em PARALELO (1 ida-e-volta em vez de 3
+      // sequenciais ao Postgres remoto):
+      //  - status do entregador + último ponto salvo, numa CTE só;
+      //  - destinos dos pedidos em rota, para detectar chegada em memória.
+      const [headRes, arrivals] = await Promise.all([
+        db.query(
+          `SELECT
+             (SELECT status FROM deliverers WHERE id = $1) AS status,
+             lh.lat, lh.lng, lh.recorded_at
+           FROM (SELECT 1) _
+           LEFT JOIN LATERAL (
+             SELECT lat, lng, recorded_at FROM location_history
+             WHERE deliverer_id = $1 ORDER BY recorded_at DESC LIMIT 1
+           ) lh ON true`,
+          [delivererId]
+        ),
+        this.pendingArrivals(delivererId),
+      ])
+
+      const head = headRes.rows[0]
+      if (!head || head.status === 'OFFLINE') return false
 
       // Chegada ao endereço: na primeira vez que o entregador entra no raio de
       // chegada de um pedido em rota, registra arrived_at (mesmo que o ping seja
       // depois descartado pela deduplicação). Permite medir chegada → entrega.
-      await this.detectArrival(delivererId, lat, lng, ts)
+      for (const r of arrivals) {
+        if (r.dlat == null || r.dlng == null) continue
+        if (haversineMeters(lat, lng, Number(r.dlat), Number(r.dlng)) <= Number(r.radius)) {
+          await this.markArrival(r, ts)
+        }
+      }
 
-      const { rows: last } = await db.query(
-        `SELECT lat, lng, recorded_at
-         FROM location_history
-         WHERE deliverer_id = $1
-         ORDER BY recorded_at DESC LIMIT 1`,
-        [delivererId]
-      )
-
-      if (last[0]) {
-        const dist = haversineMeters(last[0].lat, last[0].lng, lat, lng)
-        const elapsed = (ts.getTime() - new Date(last[0].recorded_at).getTime()) / 1000
+      // Deduplicação: ignora pings a menos de 50 m e 60 s do último ponto salvo.
+      if (head.lat != null) {
+        const dist = haversineMeters(Number(head.lat), Number(head.lng), lat, lng)
+        const elapsed = (ts.getTime() - new Date(head.recorded_at).getTime()) / 1000
         if (dist < MIN_DISTANCE_METERS && elapsed < MIN_TIME_SECONDS) return false
       }
 
@@ -188,18 +202,6 @@ export function createPgTrackingRepo(db: DB) {
         notificationQueue.add('status_changed', {
           type: 'whatsapp', storeId: order.store_id, orderId: order.id, statusEvent: 'ARRIVING',
         }).catch(() => { /* non-fatal */ })
-      }
-    },
-
-    // Marca arrived_at dos pedidos em rota do entregador cujo destino está dentro
-    // do raio de chegada da loja. (Ping único; o batch faz isso em memória.)
-    async detectArrival(delivererId: string, lat: number, lng: number, ts: Date) {
-      const rows = await this.pendingArrivals(delivererId)
-      for (const r of rows) {
-        if (r.dlat == null || r.dlng == null) continue
-        const dist = haversineMeters(lat, lng, Number(r.dlat), Number(r.dlng))
-        if (dist > Number(r.radius)) continue
-        await this.markArrival(r, ts)
       }
     },
 

@@ -47,6 +47,12 @@ export const wsHub = {
     this.broadcastToStore(storeId, 'order_updated', order)
   },
 
+  // Nova mensagem no chat de um pedido (operador ou entregador) — o painel
+  // atualiza a conversa aberta e o badge de não-lidas em tempo real.
+  broadcastOrderMessage(storeId: string, message: unknown) {
+    this.broadcastToStore(storeId, 'order_message', message)
+  },
+
   broadcastDelivererLocation(
     storeId: string,
     delivererId: string,

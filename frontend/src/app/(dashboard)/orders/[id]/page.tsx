@@ -14,6 +14,8 @@ import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 import { DelayFlag } from '@/components/orders/delay-flag'
 import { PriorityBadge } from '@/components/orders/priority-badge'
 import { PriorityEditor } from '@/components/orders/priority-editor'
+import { OrderChatHistory } from '@/components/orders/order-chat-history'
+import { MessageCircle } from 'lucide-react'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 
@@ -308,6 +310,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </p>
             </section>
           )}
+
+          <section className="border-t border-gray-100 pt-4">
+            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-gray-500">
+              <MessageCircle className="h-3.5 w-3.5" />
+              Mensagens
+            </h2>
+            <OrderChatHistory orderId={order.id} />
+          </section>
 
           {(order.cashAmount != null || editingCash) && (
             <section className="border-t border-gray-100 pt-4">

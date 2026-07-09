@@ -9,7 +9,7 @@ import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { DelayFlag } from '@/components/orders/delay-flag'
 import { PriorityBadge } from '@/components/orders/priority-badge'
-import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X, Trash2 } from 'lucide-react'
+import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X, Trash2, MessageCircle } from 'lucide-react'
 
 interface Props {
   order: Order
@@ -17,9 +17,11 @@ interface Props {
   onCancel?: () => void
   onSaveNote?: (note: string) => Promise<void>
   onDelete?: () => void
+  onOpenChat?: () => void
+  unreadCount?: number
 }
 
-export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: Props) {
+export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete, onOpenChat, unreadCount = 0 }: Props) {
   const canTrack = ['ON_ROUTE', 'OUT_FOR_DELIVERY', 'ASSIGNED'].includes(order.status)
   const now        = useNow()
   const thresholds = useDelayThresholds()
@@ -180,14 +182,28 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete }: P
 
       {/* Actions */}
       <div className="mt-auto border-t border-gray-100 p-3 flex gap-2">
+        {onOpenChat && (
+          <button
+            onClick={onOpenChat}
+            className="relative flex flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            title="Chat do pedido"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {canTrack && (
           <Link
             href={`/rastreio/${order.id}`}
             target="_blank"
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
           >
-            <Navigation className="h-3.5 w-3.5" />
-            Rastrear
+            <Navigation className="h-3.5 w-3.5" />            
           </Link>
         )}
 

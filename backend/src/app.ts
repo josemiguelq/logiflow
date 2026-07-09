@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import websocket from '@fastify/websocket'
-import { createPgTrackingRepo } from './modules/tracking/infrastructure/repositories/pg-tracking-repo'
+import { locationQueue } from './shared/infra/queue'
 import { db } from './shared/db/client'
 import { authRoutes } from './modules/auth/interface/routes'
 import { orderRoutes } from './modules/orders/interface/routes'
@@ -23,6 +23,7 @@ import { gamificationRoutes } from './modules/gamification/interface/routes'
 import { sessionRoutes } from './modules/sessions/interface/routes'
 import { announcementRoutes } from './modules/announcements/interface/routes'
 import { garantiaRoutes } from './modules/garantias/interface/routes'
+import { chatRoutes } from './modules/chat/interface/routes'
 import { wsHub } from './shared/infra/websocket'
 import { notificationQueue } from './shared/infra/queue'
 import { addCorrelationId, noticeError, recordCustomEvent } from './shared/infra/observability'
@@ -198,17 +199,20 @@ export function buildApp() {
           } : undefined,
         })
 
-        // Deliverer app sends location via WebSocket every ~15s
+        // Deliverer app sends location via WebSocket every ~15s. Só enfileira;
+        // o worker de localização grava/deduplica e faz o broadcast ao mapa.
         if (payload.type === 'deliverer') {
-          const trackingRepo = createPgTrackingRepo(db)
           socket.on('message', async (raw: Buffer) => {
             try {
               const msg = JSON.parse(raw.toString()) as { event: string; data: Record<string, unknown> }
               if (msg.event === 'location') {
-                const lat = msg.data.lat as number
-                const lng = msg.data.lng as number
-                const saved = await trackingRepo.recordLocation(payload.sub, lat, lng)
-                if (saved) wsHub.broadcastDelivererLocation(payload.storeId, payload.sub, lat, lng)
+                await locationQueue.add('point', {
+                  delivererId: payload.sub,
+                  storeId:     payload.storeId,
+                  lat:         msg.data.lat as number,
+                  lng:         msg.data.lng as number,
+                  recordedAt:  new Date().toISOString(),
+                })
               }
             } catch (_) {}
           })
@@ -237,6 +241,7 @@ export function buildApp() {
   app.register(sessionRoutes)
   app.register(announcementRoutes)
   app.register(garantiaRoutes)
+  app.register(chatRoutes)
 
   // As checagens do /health são caras (3 round-trips ao Postgres remoto + fila).
   // Throttle rígido: computa no máximo 1× a cada janela e serve o snapshot em cache

@@ -141,6 +141,23 @@ export interface OrderMessage {
   createdAt: string
 }
 
+// Mensagem do chat do pedido (operador ↔ entregador).
+export interface ChatMessage {
+  id: string
+  orderId: string
+  senderType: 'store_user' | 'deliverer'
+  senderId: string
+  senderName: string
+  body: string
+  createdAt: string
+}
+
+// Não-lidas por pedido (badge nos cards).
+export interface OrderUnread {
+  orderId: string
+  count: number
+}
+
 export type RouteStatus = 'CREATED' | 'STARTED' | 'FINISHED'
 
 export interface RouteOrderItem {

@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { buildApp, buildTime } from './app'
-import { createNotificationWorker, notificationQueue } from './shared/infra/queue'
+import { createNotificationWorker, createLocationWorker, notificationQueue } from './shared/infra/queue'
+import { createPgTrackingRepo } from './modules/tracking/infrastructure/repositories/pg-tracking-repo'
 import { scanDelayedOrders, scanPriorityOverdue } from './modules/orders/application/use-cases/scan-delayed-orders'
 import { scanAutoRoutes } from './modules/orders/application/use-cases/scan-auto-routes'
 import { createPgAutoRouteRepo } from './modules/auto-routes/infrastructure/repositories/pg-auto-route-repo'
@@ -11,7 +12,7 @@ import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/
 import { createFcmProvider } from './modules/notifications/infrastructure/fcm/fcm-provider'
 import { createPgDeviceTokenRepo } from './modules/notifications/infrastructure/repositories/pg-device-token-repo'
 import { buildPushPayload } from './modules/notifications/application/use-cases/build-push-payload'
-import { startHeartbeat } from './shared/infra/websocket'
+import { startHeartbeat, wsHub } from './shared/infra/websocket'
 import { runAchievementsJob } from './modules/gamification/application/service'
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
@@ -265,6 +266,19 @@ async function start() {
     }
   })
 
+  // ── Location worker ──────────────────────────────────────────────────────
+  // Grava/deduplica o ping de GPS e detecta chegada fora do caminho da
+  // requisição; roda no mesmo processo, então o broadcast ao mapa (wsHub, em
+  // memória) sai daqui, com o mesmo gating de antes (só quando o ponto é salvo).
+  const trackingRepo   = createPgTrackingRepo(db)
+  const locationWorker = createLocationWorker(async (job) => {
+    const { delivererId, storeId, lat, lng, recordedAt } = job.data
+    const saved = await trackingRepo.recordLocation(delivererId, lat, lng, new Date(recordedAt))
+    if (saved) wsHub.broadcastDelivererLocation(storeId, delivererId, lat, lng)
+  })
+  locationWorker.on('failed', (job, err) =>
+    app.log.error({ err, delivererId: job?.data.delivererId }, '[location] job failed'))
+
   // ── Reconnect previously active WhatsApp sessions ────────────────────────
   whatsapp.reconnectAll().catch((err) => app.log.warn({ err }, 'WhatsApp reconnect failed'))
 
@@ -310,6 +324,7 @@ async function start() {
     try {
       await app.close()                 // fecha o HTTP server (sem novos requests)
       await notificationWorker.close()  // deixa o job atual terminar; para de pegar novos
+      await locationWorker.close()      // idem para os pings de localização
     } catch (err) {
       app.log.error({ err }, '[shutdown] error while draining')
     } finally {
