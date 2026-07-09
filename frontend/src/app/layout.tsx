@@ -2,15 +2,38 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { GoogleAnalytics } from '@next/third-parties/google'
 import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register'
+import { SITE_URL } from '@/lib/site'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
 const gaId = process.env.NEXT_PUBLIC_GA_ID
 
+const title = 'LogiFlow — Gestão de Entregas'
+const description =
+  'Plataforma de gestão de entregas urbanas: pedidos, rotas, rastreamento GPS ao vivo e confirmação de entrega para a sua loja.'
+
 export const metadata: Metadata = {
-  title:       'LogiFlow — Gestão de Entregas',
-  description: 'Plataforma de gestão de entregas urbanas',
+  metadataBase: new URL(SITE_URL),
+  title,
+  description,
+  // Só a landing é canônica/indexável; o restante é bloqueado via robots.ts.
+  alternates: { canonical: '/' },
+  openGraph: {
+    type:        'website',
+    siteName:    'LogiFlow',
+    title,
+    description,
+    url:         SITE_URL,
+    locale:      'pt_BR',
+    images:      [{ url: '/icons/icon-512.png', width: 512, height: 512, alt: 'LogiFlow' }],
+  },
+  twitter: {
+    card:        'summary',
+    title,
+    description,
+    images:      ['/icons/icon-512.png'],
+  },
   // Manifest default (nome "LogiFlow"), usado na tela de login. Após o login, o
   // dynamic-manifest reescreve o <link rel="manifest"> com o nome da loja.
   manifest:    '/pwa-manifest',
