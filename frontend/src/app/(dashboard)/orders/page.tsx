@@ -29,10 +29,11 @@ const STATUSES: (OrderStatus | '')[] = [
 const COMPLETED_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELLED']
 
 function paymentDiscrepancy(order: Order): { collected: number; expected: number } | null {
-  if (!order.cashAmount || order.cashAmount <= 0) return null
-  const collected = order.payments?.reduce((s, p) => s + p.amount, 0) ?? 0
-  if (collected >= order.cashAmount) return null
-  return { collected, expected: order.cashAmount }
+  // A divergência (SHORT_PAYMENT) já é calculada na entrega e persistida no
+  // summary — a listagem não carrega mais os pagamentos individuais.
+  const sp = order.summary?.inconsistencies?.find(i => i.type === 'SHORT_PAYMENT')
+  if (!sp) return null
+  return { collected: Number(sp.details.collected), expected: Number(sp.details.expected) }
 }
 
 export default function OrdersPage() {

@@ -7,15 +7,45 @@ function getToken(): string | null {
   return localStorage.getItem('logiflow_token')
 }
 
+function getBrowser(): string {
+  if (typeof navigator === 'undefined') return 'unknown'
+  const ua = navigator.userAgent
+  if (ua.includes('Firefox'))  return 'firefox'
+  if (ua.includes('Edg'))      return 'edge'
+  if (ua.includes('OPR'))      return 'opera'
+  if (ua.includes('Chrome'))   return 'chrome'
+  if (ua.includes('Safari'))   return 'safari'
+  return 'unknown'
+}
+
+function getDevice(): string {
+  if (typeof navigator === 'undefined') return 'unknown'
+  const ua = navigator.userAgent
+  if (ua.includes('iPhone'))   return 'iphone'
+  if (ua.includes('iPad'))     return 'ipad'
+  if (ua.includes('Android'))  return 'android'
+  if (ua.includes('Mac'))      return 'mac'
+  if (ua.includes('Win'))      return 'windows'
+  if (ua.includes('Linux'))    return 'linux'
+  return 'unknown'
+}
+
+function buildCorrelationId(path: string): string {
+  const slug = path.replace(/^\//, '').replace(/\//g, '-') || 'root'
+  return `webapp-${getBrowser()}-${getDevice()}-${slug}`
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken()
+  const correlationId = buildCorrelationId(path)
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      'correlation-id': correlationId,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },

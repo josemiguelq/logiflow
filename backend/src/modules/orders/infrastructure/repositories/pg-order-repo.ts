@@ -134,11 +134,12 @@ const WITH_JOINS = `
   LEFT JOIN deliverers d ON d.id = o.deliverer_id
 `
 
-// Variante para LISTAGEM (GET /orders): a listagem não usa `proofs` nem
-// `deliveredOffTarget` (só `payments`), então não vale rodar a subquery correlata
-// de proof_of_delivery para cada linha — era um scan por pedido (seq scan caro
-// quando a tabela cresce/tem base64 legado). `proofs` vem vazio; o detalhe
-// (findById) continua com WITH_JOINS completo.
+// Variante para LISTAGEM (GET /orders): a listagem não usa `proofs`,
+// `deliveredOffTarget` nem os `payments` individuais, então não vale rodar
+// subquery correlata por linha — cada uma era um scan por pedido (caro quando
+// a tabela cresce). A divergência de valor (SHORT_PAYMENT) já vem pronta em
+// `o.summary` (calculada na entrega), então `proofs`/`payments` vêm vazios; o
+// detalhe (findById) continua com WITH_JOINS completo.
 const WITH_JOINS_LIST = `
   SELECT
     o.*,
@@ -151,12 +152,7 @@ const WITH_JOINS_LIST = `
     d.name       AS deliverer_name,
     d.status     AS deliverer_status,
     '[]'::json   AS proofs,
-    (SELECT COALESCE(
-       json_agg(
-         json_build_object('amount', pay.amount, 'method', pay.method, 'createdAt', pay.created_at)
-         ORDER BY pay.created_at ASC
-       ), '[]'::json)
-     FROM order_payments pay WHERE pay.order_id = o.id) AS payments
+    '[]'::json   AS payments
   FROM orders o
   JOIN customers c   ON c.id = o.customer_id
   LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
