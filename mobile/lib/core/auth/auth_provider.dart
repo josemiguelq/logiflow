@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/api_client.dart';
+import '../device/device_info_service.dart';
 import '../push/push_notification_service.dart';
 import 'known_stores_store.dart';
 
@@ -117,6 +118,7 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
         final session = DelivererSession.fromJson(res.data as Map<String, dynamic>);
         await _api.saveSession(session.toJson());
         state = session;
+        DeviceInfoService.report().ignore();
       } on DioException catch (e) {
         final status = e.response?.statusCode;
         if (status == 401 || status == 403) {
@@ -152,6 +154,7 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
     await _api.saveSession(session.toJson());
     state = session;
     PushNotificationService.init().ignore();
+    DeviceInfoService.report().ignore();
   }
 
   /// Login v2: escolhe a loja pelo código de convite + username + senha.
@@ -179,6 +182,7 @@ class AuthNotifier extends StateNotifier<DelivererSession?> {
     await _api.saveSession(session.toJson());
     state = session;
     PushNotificationService.init().ignore();
+    DeviceInfoService.report().ignore();
   }
 
   void completeOnboarding(String? profileImageUrl) {

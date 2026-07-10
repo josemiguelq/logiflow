@@ -43,6 +43,13 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- FCM: em background/fechado, quem exibe a notificação é o próprio FCM.
+             Sem isto ele usa um canal default de importância baixa (sem heads-up/som).
+             Aponta para o canal 'logiflow_default' (Importance.high) criado no app. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="logiflow_default" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
