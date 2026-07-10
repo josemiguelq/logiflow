@@ -18,6 +18,22 @@ const INTERVAL_MS = Number(process.env.LOCATION_RETENTION_INTERVAL_MS) || 24 * 6
 const RUN_ONCE    = process.env.RUN_ONCE === 'true'
 const RETENTION_DAYS = Number(process.env.LOCATION_RETENTION_DAYS) || LOCATION_RETENTION_DAYS
 
+// New Relic (logs): com o Dockerfile subindo `-r newrelic` e licença configurada,
+// o agente instrumenta o pino e encaminha os logs para o New Relic. Guardamos o
+// handle só para dar `shutdown` (flush) antes de sair — senão os últimos logs do
+// modo one-shot podem não ser enviados. Em dev (tsx, sem licença) fica no-op.
+interface NewRelicLike {
+  shutdown(opts: { collectPendingData?: boolean; timeout?: number }, cb: () => void): void
+}
+let newrelic: NewRelicLike | null = null
+if (process.env.NEW_RELIC_LICENSE_KEY) {
+  try {
+    newrelic = require('newrelic') as NewRelicLike
+  } catch {
+    newrelic = null
+  }
+}
+
 async function runOnce(): Promise<void> {
   const start = Date.now()
   const total = await cleanupLocationHistory(db, log, RETENTION_DAYS)
@@ -27,15 +43,23 @@ async function runOnce(): Promise<void> {
   )
 }
 
+// Descarrega o agente do New Relic (flush dos logs pendentes) antes de encerrar,
+// para não perder o último ciclo no modo one-shot / no SIGTERM.
+function exit(code: number): void {
+  if (!newrelic) process.exit(code)
+  else newrelic.shutdown({ collectPendingData: true, timeout: 5_000 }, () => process.exit(code))
+}
+
 async function main(): Promise<void> {
   if (RUN_ONCE) {
     try {
       await runOnce()
-      process.exit(0)
+      exit(0)
     } catch (err) {
       log.error({ err }, '[location-retention] falhou')
-      process.exit(1)
+      exit(1)
     }
+    return
   }
 
   // Serviço contínuo: primeiro ciclo já no boot, depois no intervalo. Um erro num
@@ -48,7 +72,7 @@ async function main(): Promise<void> {
   const shutdown = (sig: string) => {
     log.info({ sig }, '[location-retention] encerrando')
     clearInterval(timer)
-    process.exit(0)
+    exit(0)
   }
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT',  () => shutdown('SIGINT'))
