@@ -8,6 +8,8 @@ import { Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { TableSkeleton, type TableSkeletonColumn } from '@/components/ui/table-skeleton'
 import { useAccess } from '@/hooks/useAccess'
 import { useWs } from '@/hooks/WsContext'
 import { LiveMap, type FleetMember } from '@/components/map'
@@ -18,6 +20,17 @@ const STATUS_MAP = {
   OFFLINE:   { label: 'Offline',    dot: 'bg-gray-300' },
 }
 
+// Colunas do shimmer — mesma ordem dos headers (Nome, Username, Primeiro acesso,
+// Termos, Status, Ações).
+const SKELETON_COLS: TableSkeletonColumn[] = [
+  { bar: 'w-32' },
+  { bar: 'w-24' },
+  { bar: 'w-20' },
+  { bar: 'w-20' },
+  { bar: 'w-20' },
+  { cell: 'text-right', bar: 'w-16' },
+]
+
 export default function DeliverersPage() {
   const [showCreate, setShowCreate]           = useState(false)
   const [editing, setEditing]                 = useState<Deliverer | null>(null)
@@ -25,7 +38,7 @@ export default function DeliverersPage() {
   const [deleting, setDeleting]               = useState<Deliverer | null>(null)
   const [deleteLoading, setDeleteLoading]     = useState(false)
   const [view, setView]                       = useState<'list' | 'map'>('list')
-  const { data: deliverers = [], mutate } = useSWR<Deliverer[]>(
+  const { data: deliverers = [], mutate, isLoading } = useSWR<Deliverer[]>(
     '/deliverers',
     (url: string) => api.get<Deliverer[]>(url)
   )
@@ -102,13 +115,6 @@ export default function DeliverersPage() {
         <FleetMapView />
       ) : (
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        {deliverers.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-gray-400">
-            <Truck className="mb-3 h-10 w-10" />
-            <p className="font-medium">Nenhum entregador cadastrado</p>
-            <p className="mt-1 text-sm">Adicione o primeiro entregador para começar</p>
-          </div>
-        ) : (
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -121,7 +127,20 @@ export default function DeliverersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {deliverers.map((d) => {
+              {isLoading ? (
+                <TableSkeleton columns={SKELETON_COLS} cellClassName="px-5 py-3.5" />
+              ) : deliverers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-16">
+                    <div className="flex flex-col items-center text-gray-400">
+                      <Truck className="mb-3 h-10 w-10" />
+                      <p className="font-medium">Nenhum entregador cadastrado</p>
+                      <p className="mt-1 text-sm">Adicione o primeiro entregador para começar</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                deliverers.map((d) => {
                 const st       = STATUS_MAP[d.status] ?? STATUS_MAP.OFFLINE
                 const inactive = !d.isActive
 
@@ -247,10 +266,9 @@ export default function DeliverersPage() {
                     </td>
                   </tr>
                 )
-              })}
+              }))}
             </tbody>
           </table>
-        )}
       </div>
       )}
 
@@ -416,17 +434,20 @@ function FleetMapView() {
 // Código de convite da loja: o entregador digita no app (login v2) para
 // selecionar a loja antes de entrar com username e senha.
 function InviteCodeCard() {
-  const { data } = useSWR<{ code: string | null }>(
+  const { data, isLoading } = useSWR<{ code: string | null }>(
     '/deliverers/invite-code',
     (url: string) => api.get<{ code: string | null }>(url)
   )
   const [copied, setCopied] = useState(false)
   const code = data?.code
 
-  if (!code) return null
+  // Carregou e não há código → não mostra o card. Enquanto carrega, mostra o
+  // card com shimmer no lugar do código.
+  if (!isLoading && !code) return null
 
   async function copy() {
-    await navigator.clipboard.writeText(code!)
+    if (!code) return
+    await navigator.clipboard.writeText(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -439,19 +460,23 @@ function InviteCodeCard() {
           O entregador digita este código no app para selecionar sua loja ao fazer login.
         </p>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="rounded-lg bg-gray-100 px-3 py-1.5 font-mono text-lg font-bold tracking-widest text-gray-900">
-          {code}
-        </span>
-        <button
-          onClick={copy}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-          title="Copiar código"
-        >
-          {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copiado' : 'Copiar'}
-        </button>
-      </div>
+      {isLoading ? (
+        <Skeleton className="h-9 w-40 rounded-lg" />
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="rounded-lg bg-gray-100 px-3 py-1.5 font-mono text-lg font-bold tracking-widest text-gray-900">
+            {code}
+          </span>
+          <button
+            onClick={copy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            title="Copiar código"
+          >
+            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            {copied ? 'Copiado' : 'Copiar'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

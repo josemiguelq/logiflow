@@ -10,6 +10,7 @@ import { formatPhone } from '@/lib/phone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
+import { TableSkeleton, type TableSkeletonColumn } from '@/components/ui/table-skeleton'
 import { useAccess } from '@/hooks/useAccess'
 import { useAuth } from '@/hooks/useAuth'
 import { LiveMap, type MapDestination, type MapBounds } from '@/components/map'
@@ -148,11 +149,27 @@ export default function CustomersPage() {
   if (search) params.set('search', search)
   // In privacy mode, don't fetch the list until the search is at least 4 chars.
   const shouldFetch = !privacyMode || searchActive
-  const { data, mutate } = useSWR(shouldFetch ? `/customers?${params}` : null, fetcher)
+  const { data, mutate, isLoading } = useSWR(
+    shouldFetch ? `/customers?${params}` : null,
+    fetcher,
+    { keepPreviousData: true },
+  )
 
   const customers = data?.items ?? []
   const total     = data?.total ?? 0
   const pages     = data?.pages ?? 1
+
+  // Colunas do shimmer — mesma ordem/visibilidade dos headers (checkbox e Termos
+  // são condicionais).
+  const skeletonCols: TableSkeletonColumn[] = [
+    ...(canDelete ? [{ cell: 'w-10', bar: 'w-4' }] : []),
+    { bar: 'w-28' },  // Nome
+    { bar: 'w-24' },  // Telefone
+    { bar: 'w-40' },  // Endereços
+    { bar: 'w-20' },  // Cadastro
+    ...(showWarranty ? [{ bar: 'w-16' }] : []),
+    { cell: 'text-right', bar: 'w-8' },  // Ações
+  ]
 
   const allSelected  = customers.length > 0 && customers.every(c => selected.has(c.id))
   const someSelected = selected.size > 0
@@ -285,10 +302,6 @@ export default function CustomersPage() {
             <Search className="h-6 w-6" />
             <p className="font-medium">Digite ao menos 4 letras para buscar um cliente</p>
           </div>
-        ) : customers.length === 0 ? (
-          <div className="flex flex-col items-center py-12 text-gray-400">
-            <p className="font-medium">Nenhum cliente encontrado</p>
-          </div>
         ) : (
           <table className="w-full min-w-[520px] select-none text-sm">
             <thead className="border-b border-gray-100 bg-gray-50">
@@ -325,7 +338,18 @@ export default function CustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {customers.map((c) => {
+              {isLoading ? (
+                <TableSkeleton columns={skeletonCols} />
+              ) : customers.length === 0 ? (
+                <tr>
+                  <td colSpan={skeletonCols.length} className="py-12">
+                    <div className="flex flex-col items-center text-gray-400">
+                      <p className="font-medium">Nenhum cliente encontrado</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                customers.map((c) => {
                 const primary   = c.addresses.find(a => a.isDefault) ?? c.addresses[0]
                 const isSelected = selected.has(c.id)
                 return (
@@ -399,7 +423,7 @@ export default function CustomersPage() {
                     </td>
                   </tr>
                 )
-              })}
+              }))}
             </tbody>
           </table>
         )}
