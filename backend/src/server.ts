@@ -341,6 +341,7 @@ async function start() {
     const BATCH = 10_000
     const MAX_BATCHES = 200 // teto de ~2M linhas/execução; o resto sai no próximo ciclo
     let total = 0
+    app.log.info('[location-retention] starting cleanup')
     try {
       for (let i = 0; i < MAX_BATCHES; i++) {
         const { rowCount } = await db.query(

@@ -1,0 +1,46 @@
+# Dockerfile do SERVICE de jobs/cron (poda de location_history) — mesmo codebase
+# do backend, muda só o comando final. Aponte o "Dockerfile Path" desse service
+# no EasyPanel para `Dockerfile.worker`.
+#
+# ---- build stage ----
+FROM node:22-slim AS build
+WORKDIR /app
+
+# instala dependências (com dev) para compilar o TypeScript
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# copia o código e gera dist/
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+RUN npm run build
+
+# ---- runtime stage ----
+FROM node:22-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+# tsx/typescript estão em "dependencies", então --omit=dev mantém o necessário
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# artefatos compilados + scripts (migrations, se precisar rodar no mesmo service)
+COPY --from=build /app/dist ./dist
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+
+# Sem EXPOSE/porta: worker não serve HTTP.
+#
+# `-r newrelic`: carrega o agente para encaminhar os LOGS (instrumentação do pino)
+# ao New Relic — igual ao web. Configure por env (como no web, sem newrelic.js):
+#   NEW_RELIC_LICENSE_KEY, NEW_RELIC_NO_CONFIG_FILE=true,
+#   NEW_RELIC_APP_NAME="LogiFlow Worker"  (nome próprio p/ não misturar com o web),
+#   NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED=true  (padrão true no agente).
+# O worker dá newrelic.shutdown() antes de sair, então o flush dos logs acontece
+# mesmo no modo RUN_ONCE.
+#
+# Serviço contínuo (padrão): roda no boot e a cada 24h (LOCATION_RETENTION_INTERVAL_MS).
+# Cron/one-shot: rode com RUN_ONCE=true (roda uma vez e sai) e agende no EasyPanel.
+CMD ["node", "-r", "newrelic", "--dns-result-order=ipv4first", "dist/jobs/location-retention-worker.js"]
