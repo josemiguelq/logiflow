@@ -15,6 +15,7 @@ import { DelayFlag } from '@/components/orders/delay-flag'
 import { PriorityBadge } from '@/components/orders/priority-badge'
 import { PriorityEditor } from '@/components/orders/priority-editor'
 import { OrderChatHistory } from '@/components/orders/order-chat-history'
+import { describeInconsistency } from '@/components/orders/inconsistency-modal'
 import { MessageCircle } from 'lucide-react'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
@@ -429,7 +430,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
         </div>
 
-      {(order.proofs?.length > 0 || (order.summary?.segments?.length ?? 0) > 0 || (order.log?.length ?? 0) > 0) && (
+      {(order.proofs?.length > 0 || (order.summary?.segments?.length ?? 0) > 0 || (order.summary?.inconsistencies?.length ?? 0) > 0 || (order.log?.length ?? 0) > 0) && (
         <div>
           <div className="space-y-4">
             {order.proofs?.length > 0 && (
@@ -459,6 +460,44 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     </div>
                   ))}
                 </div>
+              </section>
+            )}
+
+            {order.summary?.inconsistencies && order.summary.inconsistencies.length > 0 && (
+              <section className="border-t border-gray-100 pt-4">
+                <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-amber-600">
+                  <AlertTriangle className="h-4 w-4" />
+                  Inconsistências
+                </h2>
+                <ul className="space-y-2">
+                  {order.summary.inconsistencies.map((inc, i) => (
+                    <li
+                      key={i}
+                      className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                    >
+                      {describeInconsistency(inc)}
+                    </li>
+                  ))}
+                </ul>
+                {order.summary.inconsistenciesAck ? (
+                  <p className="mt-3 text-xs text-gray-500">
+                    Reconhecido por{' '}
+                    <span className="font-medium text-gray-700">
+                      {order.summary.inconsistenciesAck.by.name ?? 'operador'}
+                    </span>{' '}
+                    em {formatDate(order.summary.inconsistenciesAck.at)}
+                  </p>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      await api.post(`/orders/${order.id}/inconsistencies/ack`, {})
+                      await mutate()
+                    }}
+                    className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                  >
+                    Entendi
+                  </button>
+                )}
               </section>
             )}
 

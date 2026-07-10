@@ -12,6 +12,8 @@ import { formatDelayDuration } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { OperatorAlerts } from '@/components/alerts/operator-alerts'
 import { DynamicManifest } from '@/components/pwa/dynamic-manifest'
+import { InconsistencyModal } from '@/components/orders/inconsistency-modal'
+import type { Order } from '@/types'
 
 interface DeliveryNotif {
   id:            string
@@ -36,6 +38,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user, init } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifs, setNotifs]           = useState<DeliveryNotif[]>([])
+  // Pedido entregue com inconsistências ainda não reconhecidas → popup bloqueante.
+  const [incOrder, setIncOrder]       = useState<Order | null>(null)
   const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
   const { on } = useWs()
 
@@ -78,7 +82,19 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         status: string
         customer?: { name: string; address?: string }
         deliverer?: { name: string }
+        summary?: Order['summary']
       }
+
+      // Inconsistências na entrega: abre o popup bloqueante quando houver
+      // inconsistências ainda não reconhecidas; fecha quando outro operador
+      // reconhecer (chega um order_updated já com inconsistenciesAck).
+      const inc = order.summary?.inconsistencies
+      if (inc?.length && !order.summary?.inconsistenciesAck) {
+        setIncOrder(prev => (prev?.id === order.id ? prev : (data as Order)))
+      } else {
+        setIncOrder(prev => (prev?.id === order.id ? null : prev))
+      }
+
       if (order.status !== 'DELIVERED' && order.status !== 'OUT_FOR_DELIVERY') return
       const shortId = '#' + order.id.slice(-8).toUpperCase()
       const notif: DeliveryNotif = {
@@ -207,6 +223,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <OperatorAlerts />
+
+      {incOrder && (
+        <InconsistencyModal order={incOrder} onAck={() => setIncOrder(null)} />
+      )}
 
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
         {children}

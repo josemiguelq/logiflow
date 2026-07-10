@@ -1,7 +1,7 @@
 import { IOrderRepository } from '../ports'
 import { PaymentMethod, OrderLogEntry, OrderWithDetails } from '../../domain/entities'
 import { haversineMeters } from '../../../../shared/utils/geo'
-import { computeSummary } from '../order-summary'
+import { computeSummary, detectInconsistencies } from '../order-summary'
 
 interface Deps {
   orderRepo: IOrderRepository
@@ -107,7 +107,11 @@ export async function confirmDelivery(
   // reler o pedido (findById pesado) só para computar os segmentos de tempo.
   const deliveredEntry: OrderLogEntry = { at: deliveredAt.toISOString(), by, action: 'DELIVERED' }
   const fullLog = [...(order.log ?? []), deliveredEntry]
-  const summary = computeSummary(fullLog)
+  const inconsistencies = detectInconsistencies(order, { lat, lng, payments })
+  const summary = {
+    ...computeSummary(fullLog),
+    ...(inconsistencies.length ? { inconsistencies } : {}),
+  }
 
   await orderRepo.finalizeDelivered(orderId, {
     deliveredAt,

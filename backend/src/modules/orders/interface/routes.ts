@@ -701,6 +701,39 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Operador reconhece as inconsistências da entrega ("Entendi" no popup). Um
+  // reconhecimento vale para todos: grava quem leu no summary + no log de auditoria
+  // e faz broadcast para fechar o popup dos demais operadores. Idempotente.
+  app.post(
+    '/orders/:id/inconsistencies/ack',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+
+      const summary = order.summary
+      const inconsistencies = summary?.inconsistencies
+      // Sem inconsistências ou já reconhecido: nada a fazer.
+      if (!summary || !inconsistencies?.length || summary.inconsistenciesAck) {
+        return reply.code(204).send()
+      }
+
+      await orderRepo.setSummary(id, {
+        ...summary,
+        inconsistenciesAck: {
+          at: new Date().toISOString(),
+          by: { type: req.actor.type as 'store_user' | 'deliverer' | 'system', id: req.actor.sub, name: req.actor.name },
+        },
+      })
+      logEvent(id, req.actor, 'INCONSISTENCY_ACKNOWLEDGED', { types: inconsistencies.map(i => i.type) })
+
+      const updated = await orderRepo.findById(id, req.actor.storeId)
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      return reply.code(204).send()
+    }
+  )
+
   // Store user marca/desmarca a prioridade e ajusta o horário máximo de entrega.
   app.patch(
     '/orders/:id/priority',

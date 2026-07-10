@@ -12,4 +12,9 @@ export interface Deliverer {
   isActive: boolean
   needsOnboarding: boolean
   createdAt: Date
+  // Metadados do aparelho, enviados pelo app após o login.
+  deviceModel?: string
+  deviceOs?: string
+  appVersion?: string
+  deviceUpdatedAt?: Date
 }

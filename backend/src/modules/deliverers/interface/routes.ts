@@ -433,4 +433,22 @@ export async function delivererRoutes(app: FastifyInstance) {
       return reply.code(204).send()
     }
   )
+
+  // ── Device metadata (modelo, SO, versão do app) ───────────────────────────
+
+  const deviceInfoSchema = z.object({
+    model:      z.string().min(1).max(200),
+    os:         z.string().min(1).max(100),
+    appVersion: z.string().min(1).max(50),
+  })
+
+  app.post(
+    '/deliverer/device-info',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { model, os, appVersion } = deviceInfoSchema.parse(req.body)
+      await repo.updateDeviceInfo(req.actor.sub, { model, os, appVersion })
+      return reply.code(204).send()
+    }
+  )
 }

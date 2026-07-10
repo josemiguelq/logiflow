@@ -16,6 +16,10 @@ function mapRow(r: Record<string, unknown>): Deliverer {
     isActive:        r.is_active as boolean,
     needsOnboarding: r.needs_onboarding as boolean,
     createdAt:       r.created_at as Date,
+    deviceModel:     (r.device_model as string | null) ?? undefined,
+    deviceOs:        (r.device_os as string | null) ?? undefined,
+    appVersion:      (r.app_version as string | null) ?? undefined,
+    deviceUpdatedAt: (r.device_updated_at as Date | null) ?? undefined,
   }
 }
 
@@ -153,6 +157,16 @@ export function createPgDelivererRepo(db: DB) {
       await db.query(
         'UPDATE deliverers SET status = $1 WHERE id = $2 AND store_id = $3',
         [status, id, storeId]
+      )
+    },
+
+    // Metadados do aparelho enviados pelo app (modelo, SO, versão do app).
+    async updateDeviceInfo(id: string, data: { model?: string; os?: string; appVersion?: string }): Promise<void> {
+      await db.query(
+        `UPDATE deliverers
+         SET device_model = $2, device_os = $3, app_version = $4, device_updated_at = now()
+         WHERE id = $1`,
+        [id, data.model ?? null, data.os ?? null, data.appVersion ?? null]
       )
     },
 

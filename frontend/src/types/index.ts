@@ -74,9 +74,18 @@ export interface OrderLogEntry {
   details?: Record<string, unknown>
 }
 
+export type InconsistencyType = 'DELIVERED_OFF_TARGET' | 'SHORT_PAYMENT'
+
+export interface OrderInconsistency {
+  type: InconsistencyType
+  details: Record<string, unknown>
+}
+
 export interface OrderSummary {
   totalSeconds: number
   segments: { from: string; to: string; seconds: number }[]
+  inconsistencies?: OrderInconsistency[]
+  inconsistenciesAck?: { at: string; by: { type: string; id?: string; name?: string } }
 }
 
 export interface Order {

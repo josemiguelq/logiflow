@@ -56,14 +56,28 @@ export interface OrderPayment {
 export interface OrderLogEntry {
   at:       string   // ISO timestamp
   by:       { type: 'store_user' | 'deliverer' | 'system'; id?: string; name?: string }
-  action:   string   // CREATED | ASSIGNED | PICKED_UP | OUT_FOR_DELIVERY | DELIVERED | CANCELLED | RETURNED_TO_QUEUE | NOTE_CHANGED | ADDRESS_CHANGED
+  action:   string   // CREATED | ASSIGNED | PICKED_UP | OUT_FOR_DELIVERY | DELIVERED | CANCELLED | RETURNED_TO_QUEUE | NOTE_CHANGED | ADDRESS_CHANGED | INCONSISTENCY_ACKNOWLEDGED
   details?: Record<string, unknown>
+}
+
+// Inconsistência detectada na entrega: entregue longe do local esperado ou valor
+// coletado menor que o esperado. Fica registrada no summary do pedido.
+export type InconsistencyType = 'DELIVERED_OFF_TARGET' | 'SHORT_PAYMENT'
+
+export interface OrderInconsistency {
+  type:    InconsistencyType
+  details: Record<string, unknown>   // OFF_TARGET: {distanceMeters, thresholdMeters}
+                                      // SHORT_PAYMENT: {expected, collected, shortfall}
 }
 
 // Tempos entre cada mudança de status, calculado no momento da entrega.
 export interface OrderSummary {
   totalSeconds: number
   segments: { from: string; to: string; seconds: number }[]
+  // Inconsistências detectadas na entrega (ausente/vazio quando não houve).
+  inconsistencies?: OrderInconsistency[]
+  // Reconhecimento único pelo operador: quem leu e clicou "Entendi".
+  inconsistenciesAck?: { at: string; by: OrderLogEntry['by'] }
 }
 
 export interface OrderWithDetails extends Order {

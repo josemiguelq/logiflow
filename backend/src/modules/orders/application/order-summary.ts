@@ -1,4 +1,5 @@
-import { OrderLogEntry, OrderSummary } from '../domain/entities'
+import { OrderLogEntry, OrderSummary, OrderInconsistency, OrderWithDetails, PaymentMethod } from '../domain/entities'
+import { haversineMeters, OFF_TARGET_THRESHOLD_M } from '../../../shared/utils/geo'
 
 // Marcos de status na ordem cronológica esperada do ciclo de vida do pedido.
 const STATUS_MILESTONES = [
@@ -37,4 +38,45 @@ export function computeSummary(log: OrderLogEntry[]): OrderSummary {
     : 0
 
   return { totalSeconds, segments }
+}
+
+/**
+ * Detecta inconsistências no momento da entrega:
+ *  - DELIVERED_OFF_TARGET: entrega registrada a mais de OFF_TARGET_THRESHOLD_M do
+ *    endereço esperado do cliente (só avalia com as quatro coordenadas presentes).
+ *  - SHORT_PAYMENT: soma dos pagamentos coletados menor que o valor esperado do
+ *    pedido (cashAmount).
+ * Função pura para facilitar testes.
+ */
+export function detectInconsistencies(
+  order: Pick<OrderWithDetails, 'cashAmount' | 'customer'>,
+  delivery: { lat?: number; lng?: number; payments?: { amount: number; method: PaymentMethod }[] },
+): OrderInconsistency[] {
+  const inconsistencies: OrderInconsistency[] = []
+
+  const { lat, lng } = delivery
+  const destLat = order.customer?.lat
+  const destLng = order.customer?.lng
+  if (lat != null && lng != null && destLat != null && destLng != null) {
+    const distanceMeters = haversineMeters(lat, lng, destLat, destLng)
+    if (distanceMeters > OFF_TARGET_THRESHOLD_M) {
+      inconsistencies.push({
+        type: 'DELIVERED_OFF_TARGET',
+        details: { distanceMeters: Math.round(distanceMeters), thresholdMeters: OFF_TARGET_THRESHOLD_M },
+      })
+    }
+  }
+
+  const expected = order.cashAmount
+  if (expected != null) {
+    const collected = (delivery.payments ?? []).reduce((sum, p) => sum + p.amount, 0)
+    if (collected < expected) {
+      inconsistencies.push({
+        type: 'SHORT_PAYMENT',
+        details: { expected, collected, shortfall: expected - collected },
+      })
+    }
+  }
+
+  return inconsistencies
 }
