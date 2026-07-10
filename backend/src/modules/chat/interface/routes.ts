@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
-import { requireScope } from '../../../shared/middleware/rbac'
+import { requireScope, requireFeature } from '../../../shared/middleware/rbac'
 import { createPgChatRepo } from '../infrastructure/repositories/pg-chat-repo'
 import { OrderMessage } from '../domain/entities'
 import { wsHub } from '../../../shared/infra/websocket'
@@ -35,16 +35,28 @@ const serialize = (m: OrderMessage) => ({
 export async function chatRoutes(app: FastifyInstance) {
   const chatRepo = createPgChatRepo(db)
 
+  // Chat é uma feature controlada pelo superadmin. Para o entregador (que não é
+  // store_user, então requireFeature não se aplica) checamos direto pela loja.
+  const isChatEnabled = async (storeId: string): Promise<boolean> => {
+    const { rows } = await db.query(
+      `SELECT 1 FROM store_features_enabled sfe
+       JOIN features f ON f.id = sfe.feature_id
+       WHERE sfe.store_id = $1 AND f.name = 'chat' LIMIT 1`,
+      [storeId],
+    )
+    return rows.length > 0
+  }
+
   // ── Operador (painel) ──────────────────────────────────────────────────────
   app.get(
     '/orders/chat/unread',
-    { preHandler: [requireStoreUser, requireScope('orders:view')] },
+    { preHandler: [requireStoreUser, requireFeature('chat'), requireScope('orders:view')] },
     async (req) => chatRepo.unreadByStore(req.actor.storeId),
   )
 
   app.get(
     '/orders/:orderId/chat',
-    { preHandler: [requireStoreUser, requireScope('orders:view')] },
+    { preHandler: [requireStoreUser, requireFeature('chat'), requireScope('orders:view')] },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
@@ -57,7 +69,7 @@ export async function chatRoutes(app: FastifyInstance) {
 
   app.post(
     '/orders/:orderId/chat',
-    { preHandler: [requireStoreUser, requireScope('orders:view')] },
+    { preHandler: [requireStoreUser, requireFeature('chat'), requireScope('orders:view')] },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
@@ -82,7 +94,7 @@ export async function chatRoutes(app: FastifyInstance) {
 
   app.post(
     '/orders/:orderId/chat/read',
-    { preHandler: [requireStoreUser, requireScope('orders:view')] },
+    { preHandler: [requireStoreUser, requireFeature('chat'), requireScope('orders:view')] },
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
@@ -101,6 +113,7 @@ export async function chatRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
+      if (!(await isChatEnabled(storeId))) return reply.code(403).send({ error: 'feature_disabled' })
       const ctx = await chatRepo.findOrderContext(orderId, storeId)
       if (!ctx) return reply.code(404).send({ error: 'order_not_found' })
       if (ctx.delivererId !== req.actor.sub) return reply.code(403).send({ error: 'not_your_order' })
@@ -115,6 +128,7 @@ export async function chatRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
+      if (!(await isChatEnabled(storeId))) return reply.code(403).send({ error: 'feature_disabled' })
       const parsed = bodySchema.safeParse(req.body)
       if (!parsed.success) return reply.code(400).send({ error: 'invalid_body' })
 
@@ -139,6 +153,7 @@ export async function chatRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { orderId } = req.params as { orderId: string }
       const storeId = req.actor.storeId
+      if (!(await isChatEnabled(storeId))) return reply.code(403).send({ error: 'feature_disabled' })
       const ctx = await chatRepo.findOrderContext(orderId, storeId)
       if (!ctx) return reply.code(404).send({ error: 'order_not_found' })
       if (ctx.delivererId !== req.actor.sub) return reply.code(403).send({ error: 'not_your_order' })

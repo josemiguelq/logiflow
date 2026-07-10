@@ -57,6 +57,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       csvExportEnabled:       names.includes('csv_export'),
       customerRatingsEnabled: names.includes('customer_ratings'),
       warrantiesEnabled:      names.includes('warranties'),
+      chatEnabled:            names.includes('chat'),
     }
   })
 
@@ -214,6 +215,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       arrivalRadiusMeters:      parseInt(s.arrival_radius_meters ?? '20'),
       deliveryRequireProximity: s.delivery_require_proximity === 'true',
       enforceDeliveryOrder:     s.enforce_delivery_order     === 'true',
+      inconsistencyNotifyEnabled: s.inconsistency_notify_enabled !== 'false',
       notifyOperatorDelayedThreshold: parseInt(s.notify_operator_delayed_threshold ?? '3'),
       whatsappNotifyStatuses:   parseStatusList(s.whatsapp_notify_statuses),
     }
@@ -238,6 +240,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     arrivalRadiusMeters:      z.number().int().min(5).max(500).optional(),
     deliveryRequireProximity: z.boolean().optional(),
     enforceDeliveryOrder:     z.boolean().optional(),
+    inconsistencyNotifyEnabled: z.boolean().optional(),
     notifyOperatorDelayedThreshold: z.number().int().min(1).max(100).optional(),
     whatsappNotifyStatuses: z.array(z.enum(WHATSAPP_NOTIFY_STATUSES)).optional(),
     storeAddress:          z.string().max(300).optional().nullable(),
@@ -276,6 +279,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['arrivalRadiusMeters',      'arrival_radius_meters'],
       ['deliveryRequireProximity', 'delivery_require_proximity'],
       ['enforceDeliveryOrder',     'enforce_delivery_order'],
+      ['inconsistencyNotifyEnabled', 'inconsistency_notify_enabled'],
       ['notifyOperatorDelayedThreshold', 'notify_operator_delayed_threshold'],
     ]
     for (const [key, dbName] of simpleMap) {

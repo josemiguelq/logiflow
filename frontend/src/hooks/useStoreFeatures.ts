@@ -8,11 +8,13 @@ interface StoreFeatures {
   whatsappEnabled:        boolean
   csvExportEnabled:       boolean
   customerRatingsEnabled: boolean
+  chatEnabled:            boolean
 }
 
 const DEFAULTS: StoreFeatures = {
   customThemeEnabled: false, whatsappEnabled: false,
   csvExportEnabled: false, customerRatingsEnabled: false,
+  chatEnabled: false,
 }
 
 export function useStoreFeatures(): StoreFeatures {

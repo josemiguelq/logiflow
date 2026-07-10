@@ -37,6 +37,7 @@ interface StoreSettings {
   notifyOperatorDelayedThreshold: number
   deliveryRequireProximity: boolean
   enforceDeliveryOrder:     boolean
+  inconsistencyNotifyEnabled: boolean
   whatsappNotifyStatuses:   string[]
 }
 
@@ -254,6 +255,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [arrivalRadius,      setArrivalRadius]      = useState(20)
   const [requireProximity,   setRequireProximity]   = useState(false)
   const [enforceOrder,       setEnforceOrder]       = useState(false)
+  const [inconsistencyNotify, setInconsistencyNotify] = useState(true)
   const [delayedThreshold,   setDelayedThreshold]   = useState(3)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -276,6 +278,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setArrivalRadius(data.arrivalRadiusMeters ?? 20)
       setRequireProximity(data.deliveryRequireProximity ?? false)
       setEnforceOrder(data.enforceDeliveryOrder ?? false)
+      setInconsistencyNotify(data.inconsistencyNotifyEnabled ?? true)
       setDelayedThreshold(data.notifyOperatorDelayedThreshold ?? 3)
     }
   }, [data])
@@ -300,6 +303,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         arrivalRadiusMeters:      arrivalRadius,
         deliveryRequireProximity: requireProximity,
         enforceDeliveryOrder:     enforceOrder,
+        inconsistencyNotifyEnabled: inconsistencyNotify,
         notifyOperatorDelayedThreshold: delayedThreshold,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
@@ -375,6 +379,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
             { label: 'Controle de recebimentos', desc: 'Exibe seleção de forma de pagamento ao criar pedidos (pré-pago ou pagar na entrega)', value: paymentMethodsEnabled, set: setPaymentMethodsEnabled },
             { label: 'Permitir entrega apenas quando estiver perto', desc: 'Bloqueia concluir a entrega se o entregador estiver além da distância máxima. Desativado, apenas avisa.', value: requireProximity, set: setRequireProximity },
             { label: 'Forçar ordem das entregas', desc: 'Obriga o entregador a seguir a ordem da rota, sem pular paradas.', value: enforceOrder, set: setEnforceOrder },
+            { label: 'Avisar inconsistências na entrega', desc: 'Mostra um popup ao operador quando a entrega for registrada longe do endereço ou o valor recebido for menor que o esperado.', value: inconsistencyNotify, set: setInconsistencyNotify },
             ...(features.customerRatingsEnabled
               ? [{ label: 'Avaliação do cliente', desc: 'Clientes podem avaliar a entrega com até 5 estrelas na página de rastreamento', value: allowCustomerRatings, set: setAllowCustomerRatings }]
               : []),

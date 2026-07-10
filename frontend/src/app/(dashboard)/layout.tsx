@@ -41,6 +41,13 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   // Pedido entregue com inconsistências ainda não reconhecidas → popup bloqueante.
   const [incOrder, setIncOrder]       = useState<Order | null>(null)
   const { data: themeData } = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
+  // Notificação de inconsistência é um ajuste da loja (ligado por padrão).
+  const { data: storeSettings } = useSWR<{ inconsistencyNotifyEnabled?: boolean }>(
+    '/store/settings',
+    (u: string) => api.get<{ inconsistencyNotifyEnabled?: boolean }>(u),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const inconsistencyNotifyEnabled = storeSettings?.inconsistencyNotifyEnabled !== false
   const { on } = useWs()
 
   // How long each notification stays on screen before auto-dismissing
@@ -224,7 +231,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
       <OperatorAlerts />
 
-      {incOrder && (
+      {incOrder && inconsistencyNotifyEnabled && (
         <InconsistencyModal order={incOrder} onAck={() => setIncOrder(null)} />
       )}
 

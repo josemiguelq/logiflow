@@ -9,6 +9,7 @@ import { Order, OrderStatus, Deliverer, OrderUnread, ChatMessage } from '@/types
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
 import { useAccess } from '@/hooks/useAccess'
+import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { OrderCard } from '@/components/orders/order-card'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/badge'
@@ -99,10 +100,11 @@ export default function OrdersPage() {
     }
   }
 
-  // Chat: contagem de não-lidas por pedido + pedido com o chat aberto.
+  // Chat: feature controlada pelo superadmin. Só busca/exibe quando habilitada.
+  const { chatEnabled } = useStoreFeatures()
   const [chatOrder, setChatOrder] = useState<Order | null>(null)
   const { data: unreadList = [], mutate: mutateUnread } = useSWR<OrderUnread[]>(
-    '/orders/chat/unread',
+    chatEnabled ? '/orders/chat/unread' : null,
     (u: string) => api.get<OrderUnread[]>(u),
     { refreshInterval: 30_000 },
   )
@@ -482,7 +484,7 @@ export default function OrdersPage() {
                             onCancel={!batchMode ? () => setCancelling(order) : undefined}
                             onSaveNote={!batchMode ? (note) => handleSaveNote(order.id, note) : undefined}
                             onDelete={!batchMode && can({ scope: 'orders:delete' }) ? () => handleDelete(order) : undefined}
-                            onOpenChat={!batchMode ? () => setChatOrder(order) : undefined}
+                            onOpenChat={chatEnabled && !batchMode ? () => setChatOrder(order) : undefined}
                             unreadCount={unreadMap[order.id] ?? 0}
                           />
                         </div>
@@ -654,7 +656,7 @@ export default function OrdersPage() {
         />
       )}
 
-      {chatOrder && (
+      {chatEnabled && chatOrder && (
         <OrderChatModal
           order={chatOrder}
           onClose={() => setChatOrder(null)}

@@ -19,6 +19,7 @@ import { describeInconsistency } from '@/components/orders/inconsistency-modal'
 import { MessageCircle } from 'lucide-react'
 import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
+import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 
 const COMPLETED_STATUSES = ['DELIVERED', 'CANCELLED']
 
@@ -69,6 +70,7 @@ function actorLabel(by: { type: string; name?: string }): string {
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const { chatEnabled } = useStoreFeatures()
   const { data: order, isLoading, mutate } = useSWR<Order>(
     `/orders/${id}`,
     (url: string) => api.get<Order>(url)
@@ -312,13 +314,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          <section className="border-t border-gray-100 pt-4">
-            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-gray-500">
-              <MessageCircle className="h-3.5 w-3.5" />
-              Mensagens
-            </h2>
-            <OrderChatHistory orderId={order.id} />
-          </section>
+          {chatEnabled && (
+            <section className="border-t border-gray-100 pt-4">
+              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Mensagens
+              </h2>
+              <OrderChatHistory orderId={order.id} />
+            </section>
+          )}
 
           {(order.cashAmount != null || editingCash) && (
             <section className="border-t border-gray-100 pt-4">
