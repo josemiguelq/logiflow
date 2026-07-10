@@ -328,6 +328,43 @@ async function start() {
   cleanupSessions()
   setInterval(cleanupSessions, 24 * 60 * 60_000)
 
+  // ── Retenção: poda location_history além de 14 dias ────────────────────────
+  // Tabela de maior volume de escrita (~ping GPS a cada 15s por entregador) e
+  // sem TTL — cresce indefinidamente, deixa o tracking lento e infla o backup.
+  // Deleta em lotes (ctid) p/ não abrir uma transação gigante nem travar o
+  // Postgres remoto (Render). Não precisa de índice em recorded_at: a tabela é
+  // append-only (BIGSERIAL), então as linhas antigas ficam no início do heap e
+  // o filtro por tempo acha o lote na hora — evita sobrecarregar o insert quente
+  // com mais um índice para manter.
+  const LOCATION_RETENTION_DAYS = 14
+  const cleanupLocationHistory = async () => {
+    const BATCH = 10_000
+    const MAX_BATCHES = 200 // teto de ~2M linhas/execução; o resto sai no próximo ciclo
+    let total = 0
+    try {
+      for (let i = 0; i < MAX_BATCHES; i++) {
+        const { rowCount } = await db.query(
+          `DELETE FROM location_history
+             WHERE ctid IN (
+               SELECT ctid FROM location_history
+               WHERE recorded_at < now() - make_interval(days => $1)
+               LIMIT ${BATCH}
+             )`,
+          [LOCATION_RETENTION_DAYS],
+        )
+        total += rowCount ?? 0
+        if (!rowCount || rowCount < BATCH) break
+        await new Promise((r) => setTimeout(r, 200)) // respiro entre lotes
+      }
+      if (total > 0) app.log.info({ total }, '[location-retention] linhas antigas removidas')
+    } catch (err) {
+      app.log.error({ err }, '[location-retention] cleanup failed')
+    }
+  }
+  // Primeira poda ~1min após o boot (não competir com boot/migrations/reconexões WA)
+  setTimeout(cleanupLocationHistory, 60_000)
+  setInterval(cleanupLocationHistory, 24 * 60 * 60_000)
+
   // ── Shutdown gracioso ──────────────────────────────────────────────────────
   // Deploy/restart: para de aceitar requests, deixa o job em voo terminar e para
   // de puxar novos. Jobs ainda na fila sobrevivem no Redis e são reprocessados.

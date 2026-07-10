@@ -39,10 +39,11 @@ function firstEligibleFrom(rodizio: RodizioEntry[], startIdx: number): { entry: 
   return null
 }
 
+// Invalida o cache de pedidos da loja bumpando a versão (mesma estratégia do
+// orders/interface/routes.ts) — sem `KEYS`, que bloqueia o Redis a cada scan.
 async function invalidateStoreOrders(storeId: string) {
   try {
-    const keys = await redis.keys(`orders:store:${storeId}:*`)
-    if (keys.length > 0) await redis.del(...(keys as [string, ...string[]]))
+    await redis.incr(`orders:ver:${storeId}`)
   } catch { /* non-fatal */ }
 }
 async function invalidateDelivererOrders(delivererId: string) {

@@ -36,15 +36,35 @@ const queuePushDeliverer = (delivererId: string, storeId: string, orderId: strin
 const STORE_ORDERS_TTL     = 30  // seconds
 const DELIVERER_ORDERS_TTL = 15  // seconds
 
-function storeOrdersCacheKey(storeId: string, userId: string, q: Record<string, string>) {
+function storeOrdersVersionKey(storeId: string) {
+  return `orders:ver:${storeId}`
+}
+
+// Versão do cache de pedidos por loja. Cada mutação faz INCR nesta chave, o que
+// invalida todas as entradas antigas sem varrer o keyspace — evita o `KEYS` O(N)
+// que bloqueava o Redis a cada criação/atribuição/cancelamento. As chaves da
+// versão anterior deixam de ser lidas e somem sozinhas pelo TTL.
+async function storeOrdersVersion(storeId: string): Promise<string> {
+  try {
+    return (await redis.get(storeOrdersVersionKey(storeId))) ?? '0'
+  } catch {
+    return '0'
+  }
+}
+
+function storeOrdersCacheKey(
+  storeId: string,
+  version: string,
+  userId: string,
+  q: Record<string, string>,
+) {
   const { status = '', delivererId = '', page = '1', limit = '50' } = q
-  return `orders:store:${storeId}:${userId}:${status}:${delivererId}:${page}:${limit}`
+  return `orders:store:${storeId}:v${version}:${userId}:${status}:${delivererId}:${page}:${limit}`
 }
 
 async function invalidateStoreOrders(storeId: string) {
   try {
-    const keys = await redis.keys(`orders:store:${storeId}:*`)
-    if (keys.length > 0) await redis.del(...(keys as [string, ...string[]]))
+    await redis.incr(storeOrdersVersionKey(storeId))
   } catch { /* non-fatal */ }
 }
 
@@ -371,7 +391,8 @@ export async function orderRoutes(app: FastifyInstance) {
         limit:           limit ? Number(limit) : 50,
       }
 
-      const cacheKey = storeOrdersCacheKey(req.actor.storeId, req.actor.sub, query)
+      const version = await storeOrdersVersion(req.actor.storeId)
+      const cacheKey = storeOrdersCacheKey(req.actor.storeId, version, req.actor.sub, query)
       try {
         const raw = await redis.get(cacheKey)
         if (raw) return signOrdersProof(JSON.parse(raw))
