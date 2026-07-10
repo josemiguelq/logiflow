@@ -286,7 +286,7 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-col items-center gap-4">
             <a
-              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.0.0/app-release.apk"
+              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.1.3/app-release.apk"
               download
               className="flex items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
             >
