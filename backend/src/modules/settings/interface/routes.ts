@@ -6,6 +6,7 @@ import { redis } from '../../../shared/infra/redis'
 import { invalidateStoreSettings } from '../store-settings-cache'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
+import { getEnabledFeatures } from '../../../shared/features/store-features'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
 import { billingStatus } from '../../../shared/billing'
 import { resolveStoreLimits, activeDelivererCount, monthlyDeliveredCount } from '../../../shared/plan-limits'
@@ -45,12 +46,7 @@ function parseStatusList(raw: string | undefined): string[] {
 export async function settingsRoutes(app: FastifyInstance) {
   // GET /store/features — returns all enabled feature flags for the store
   app.get('/store/features', { preHandler: requireStoreUser }, async (req) => {
-    const { rows } = await db.query(`
-      SELECT f.name FROM store_features_enabled sfe
-      JOIN features f ON f.id = sfe.feature_id
-      WHERE sfe.store_id = $1
-    `, [req.actor.storeId])
-    const names = rows.map((r: Record<string, unknown>) => r.name as string)
+    const names = await getEnabledFeatures(req.actor.storeId)
     return {
       whatsappEnabled:        names.includes('whatsapp'),
       customThemeEnabled:     names.includes('custom_theme'),

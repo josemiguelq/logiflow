@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { requireScope, requireFeature } from '../../../shared/middleware/rbac'
+import { storeHasFeature } from '../../../shared/features/store-features'
 import { createPgChatRepo } from '../infrastructure/repositories/pg-chat-repo'
 import { OrderMessage } from '../domain/entities'
 import { wsHub } from '../../../shared/infra/websocket'
@@ -36,16 +37,9 @@ export async function chatRoutes(app: FastifyInstance) {
   const chatRepo = createPgChatRepo(db)
 
   // Chat é uma feature controlada pelo superadmin. Para o entregador (que não é
-  // store_user, então requireFeature não se aplica) checamos direto pela loja.
-  const isChatEnabled = async (storeId: string): Promise<boolean> => {
-    const { rows } = await db.query(
-      `SELECT 1 FROM store_features_enabled sfe
-       JOIN features f ON f.id = sfe.feature_id
-       WHERE sfe.store_id = $1 AND f.name = 'chat' LIMIT 1`,
-      [storeId],
-    )
-    return rows.length > 0
-  }
+  // store_user, então requireFeature não se aplica) checamos direto pela loja
+  // (com cache Redis, mesma fonte do requireFeature).
+  const isChatEnabled = (storeId: string) => storeHasFeature(storeId, 'chat')
 
   // ── Operador (painel) ──────────────────────────────────────────────────────
   app.get(

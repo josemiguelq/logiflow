@@ -8,6 +8,7 @@ import { isLoginLocked, registerLoginFailure, clearLoginFailures } from '../../.
 import { DEFAULT_ROLE_SCOPES, SCOPES, SCOPE_LABELS, SCOPE_GROUPS } from '../../../shared/scopes'
 import { billingStatus } from '../../../shared/billing'
 import { activeDelivererCount, monthlyDeliveredCount, invalidateStoreLimits } from '../../../shared/plan-limits'
+import { invalidateStoreFeatures } from '../../../shared/features/store-features'
 
 const createStoreSchema = z.object({
   storeName:     z.string().min(2),
@@ -277,6 +278,7 @@ export async function superAdminRoutes(app: FastifyInstance) {
       )
 
       try { await redis.del(`theme:store:${storeId}`) } catch { /* ignore */ }
+      await invalidateStoreFeatures(storeId)
 
       return { storeId, featureId, featureName: feature.name }
     }
@@ -298,6 +300,7 @@ export async function superAdminRoutes(app: FastifyInstance) {
       )
 
       try { await redis.del(`theme:store:${storeId}`) } catch { /* ignore */ }
+      await invalidateStoreFeatures(storeId)
 
       return { ok: true }
     }
@@ -764,6 +767,7 @@ export async function superAdminRoutes(app: FastifyInstance) {
 
     await invalidateStoreLimits(storeId)
     try { await redis.del(`theme:store:${storeId}`) } catch { /* ignore */ }
+    if (body.planId) await invalidateStoreFeatures(storeId)
 
     return { ok: true }
   })

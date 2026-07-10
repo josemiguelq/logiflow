@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { DEFAULT_ROLE_SCOPES } from '../scopes'
-import { db } from '../db/client'
+import { storeHasFeature } from '../features/store-features'
 
 type Role = 'OWNER' | 'MANAGER' | 'ASSISTANT'
 
@@ -48,13 +48,7 @@ export function requireFeature(name: string) {
     if (!actor || actor.type !== 'store_user') {
       return reply.code(403).send({ error: 'Forbidden' })
     }
-    const { rows } = await db.query(
-      `SELECT 1 FROM store_features_enabled sfe
-       JOIN features f ON f.id = sfe.feature_id
-       WHERE sfe.store_id = $1 AND f.name = $2 LIMIT 1`,
-      [actor.storeId, name],
-    )
-    if (rows.length === 0) {
+    if (!(await storeHasFeature(actor.storeId, name))) {
       return reply.code(403).send({ error: 'feature_disabled' })
     }
   }
