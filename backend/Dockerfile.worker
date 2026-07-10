@@ -1,6 +1,7 @@
-# Dockerfile do SERVICE de jobs/cron (poda de location_history) — mesmo codebase
-# do backend, muda só o comando final. Aponte o "Dockerfile Path" desse service
-# no EasyPanel para `Dockerfile.worker`.
+# Dockerfile do SERVICE de workers/jobs — mesmo codebase do backend, muda só o
+# comando final. Um único service roda TODOS os jobs registrados em
+# src/jobs/registry.ts (runner: src/jobs/worker.ts). Aponte o "Dockerfile Path"
+# desse service no EasyPanel para `Dockerfile.worker`.
 #
 # ---- build stage ----
 FROM node:22-slim AS build
@@ -41,6 +42,7 @@ COPY scripts ./scripts
 # O worker dá newrelic.shutdown() antes de sair, então o flush dos logs acontece
 # mesmo no modo RUN_ONCE.
 #
-# Serviço contínuo (padrão): roda no boot e a cada 24h (LOCATION_RETENTION_INTERVAL_MS).
-# Cron/one-shot: rode com RUN_ONCE=true (roda uma vez e sai) e agende no EasyPanel.
-CMD ["node", "-r", "newrelic", "--dns-result-order=ipv4first", "dist/jobs/location-retention-worker.js"]
+# Seleção de jobs: WORKERS=all (default) ou lista por vírgula (ex.: "location-retention").
+# Serviço contínuo (padrão): cada job roda no boot e depois no seu intervalo.
+# Cron/one-shot: rode com RUN_ONCE=true (roda os selecionados uma vez e sai).
+CMD ["node", "-r", "newrelic", "--dns-result-order=ipv4first", "dist/jobs/worker.js"]

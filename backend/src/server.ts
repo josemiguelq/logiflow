@@ -328,9 +328,9 @@ async function start() {
   cleanupSessions()
   setInterval(cleanupSessions, 24 * 60 * 60_000)
 
-  // A poda de location_history foi movida para um service separado (mesmo
-  // codebase/imagem): `src/jobs/location-retention-worker.ts`, rodado via
-  // `npm run job:location-retention` como um service próprio no EasyPanel.
+  // A poda de location_history roda num service separado de workers (mesmo
+  // codebase/imagem): runner em `src/jobs/worker.ts` + registro em
+  // `src/jobs/registry.ts`, rodado via `npm run worker` no EasyPanel.
 
   // ── Shutdown gracioso ──────────────────────────────────────────────────────
   // Deploy/restart: para de aceitar requests, deixa o job em voo terminar e para
