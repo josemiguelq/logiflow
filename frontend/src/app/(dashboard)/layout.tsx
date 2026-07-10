@@ -103,6 +103,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       }
 
       if (order.status !== 'DELIVERED' && order.status !== 'OUT_FOR_DELIVERY') return
+      // O broadcast do reconhecimento ("Entendi") reenvia o pedido já entregue
+      // com inconsistenciesAck preenchido — não é uma entrega nova, então não
+      // deve reexibir a notificação de "Pedido entregue".
+      if (order.status === 'DELIVERED' && order.summary?.inconsistenciesAck) return
       const shortId = '#' + order.id.slice(-8).toUpperCase()
       const notif: DeliveryNotif = {
         id:            order.id,
