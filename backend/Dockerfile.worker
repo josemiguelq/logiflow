@@ -1,0 +1,43 @@
+# Dockerfile do SERVICE de jobs/cron (poda de location_history) — mesmo codebase
+# do backend, muda só o comando final. Aponte o "Dockerfile Path" desse service
+# no EasyPanel para `Dockerfile.worker`.
+#
+# ---- build stage ----
+FROM node:22-slim AS build
+WORKDIR /app
+
+# instala dependências (com dev) para compilar o TypeScript
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# copia o código e gera dist/
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+RUN npm run build
+
+# ---- runtime stage ----
+FROM node:22-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+# tsx/typescript estão em "dependencies", então --omit=dev mantém o necessário
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# artefatos compilados + scripts (migrations, se precisar rodar no mesmo service)
+COPY --from=build /app/dist ./dist
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+
+# Sem EXPOSE/porta: worker não serve HTTP.
+#
+# Sem `-r newrelic` de propósito: (1) o job de retenção não precisa de APM;
+# (2) em modo RUN_ONCE=true o agente do New Relic pode segurar o event loop e
+# atrasar o exit do processo. Se quiser APM aqui, adicione `-r newrelic` ao CMD
+# e use um NEW_RELIC_APP_NAME próprio para não misturar com o web.
+#
+# Serviço contínuo (padrão): roda no boot e a cada 24h (LOCATION_RETENTION_INTERVAL_MS).
+# Cron/one-shot: rode com RUN_ONCE=true (roda uma vez e sai) e agende no EasyPanel.
+CMD ["node", "--dns-result-order=ipv4first", "dist/jobs/location-retention-worker.js"]
