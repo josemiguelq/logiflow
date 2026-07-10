@@ -44,6 +44,7 @@ const FEATURE_LABEL: Record<string, string> = {
   custom_theme:     'Tema',
   csv_export:       'CSV',
   customer_ratings: 'Avaliações',
+  chat:             'Chat',
 }
 
 const fmtPrice = (cents: number) =>

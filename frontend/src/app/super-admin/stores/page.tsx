@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Store, Zap, Palette, X, Users, Trash2, ChevronDown, ChevronUp,
   CheckCircle, Download, Info, MapPin, Calendar, Package, Truck, Star,
-  CreditCard, AlertTriangle, Clock, ShieldCheck, Pencil, Check,
+  CreditCard, AlertTriangle, Clock, ShieldCheck, Pencil, Check, MessageCircle,
 } from 'lucide-react'
 
 const SA_TOKEN_KEY = 'logiflow_sa_token'
@@ -117,6 +117,7 @@ const FEATURE_META: Record<string, { label: string; icon: React.ReactNode }> = {
   csv_export:       { label: 'CSV',        icon: <Download className="h-3.5 w-3.5" /> },
   customer_ratings: { label: 'Avaliações', icon: <Star className="h-3.5 w-3.5" /> },
   warranties:       { label: 'Garantias',  icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+  chat:             { label: 'Chat',       icon: <MessageCircle className="h-3.5 w-3.5" /> },
 }
 
 export default function SuperAdminStoresPage() {
