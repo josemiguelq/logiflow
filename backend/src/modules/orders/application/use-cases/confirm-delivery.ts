@@ -86,20 +86,6 @@ export async function confirmDelivery(
     throw new Error('Só é permitido um pagamento em dinheiro por entrega')
   }
 
-  if (photoUrls && photoUrls.length > 0) {
-    for (let i = 0; i < photoUrls.length; i++) {
-      await orderRepo.addProof(orderId, photoUrls[i]!, lat, lng, i + 1)
-    }
-  }
-
-  // Pagamentos recebidos: grava cada um na tabela order_payments. Reenvios de um
-  // pedido já entregue nem chegam aqui (early-return acima), então não duplicam.
-  if (payments && payments.length > 0) {
-    for (const p of payments) {
-      await orderRepo.addPayment(orderId, p, delivererId)
-    }
-  }
-
   const collected = (payments && payments.length > 0) || cashCollected
   const deliveredAt = new Date()
 
@@ -113,13 +99,22 @@ export async function confirmDelivery(
     ...(inconsistencies.length ? { inconsistencies } : {}),
   }
 
-  await orderRepo.finalizeDelivered(orderId, {
-    deliveredAt,
-    deliveryNote:  note || undefined,
-    cashCollected: collected ? true : undefined,
-    logEntry:      deliveredEntry,
-    summary,
-  })
+  // Escritas independentes em PARALELO: comprovantes (proof_of_delivery),
+  // pagamentos (order_payments) e a finalização (orders) tocam tabelas/linhas
+  // distintas — não há corrida entre elas. Evita somar os round-trips
+  // sequenciais que antes rodavam um a um. Reenvios de um pedido já entregue nem
+  // chegam aqui (early-return acima), então não duplicam.
+  await Promise.all([
+    ...(photoUrls ?? []).map((url, i) => orderRepo.addProof(orderId, url, lat, lng, i + 1)),
+    ...(payments ?? []).map(p => orderRepo.addPayment(orderId, p, delivererId)),
+    orderRepo.finalizeDelivered(orderId, {
+      deliveredAt,
+      deliveryNote:  note || undefined,
+      cashCollected: collected ? true : undefined,
+      logEntry:      deliveredEntry,
+      summary,
+    }),
+  ])
 
   // Objeto enriquecido (com customer/deliverer do findById inicial) para o broadcast
   // e a resposta — sem uma segunda ida ao banco.

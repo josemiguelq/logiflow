@@ -49,6 +49,22 @@ export function getPublicUrl(path: string | null | undefined): string | null {
 }
 
 /**
+ * Gera uma URL PUT pré-assinada para o cliente subir o arquivo DIRETO ao storage,
+ * sem passar os bytes pelo backend (evita corpo grande + decode base64 + upload
+ * servidor→S3 no caminho crítico). Retorna a URL e o `path` final já com extensão.
+ */
+export async function presignUpload(
+  pathWithoutExt: string,
+  contentType = 'image/jpeg',
+  expiresIn = 300,
+): Promise<{ uploadUrl: string; path: string }> {
+  const path = `${pathWithoutExt}.${mimeToExt(contentType)}`
+  const command = new PutObjectCommand({ Bucket: BUCKET, Key: path, ContentType: contentType })
+  const uploadUrl = await getSignedUrl(s3, command, { expiresIn })
+  return { uploadUrl, path }
+}
+
+/**
  * Uploads a base64 data-URI to Supabase Storage via S3 protocol.
  * Returns the stored path (without bucket or base URL).
  * Throws a plain Error with a human-readable message on failure.

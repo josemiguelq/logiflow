@@ -17,7 +17,7 @@ import { getStoreSettings } from '../../settings/store-settings-cache'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
-import { uploadBase64, resolveImageUrl, deleteFiles } from '../../../shared/storage/client'
+import { uploadBase64, presignUpload, resolveImageUrl, deleteFiles } from '../../../shared/storage/client'
 import { assertCanCreateOrder } from '../../../shared/billing'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
@@ -1141,7 +1141,10 @@ export async function orderRoutes(app: FastifyInstance) {
   const deliverySchema = z.object({
     code:             z.string().default(''),
     photoUrl:         z.string().optional(),                      // legacy: old app — single photo
-    photoUrls:        z.array(z.string()).optional(),             // new: multiple photos
+    photoUrls:        z.array(z.string()).optional(),             // legacy: base64 (upload no backend)
+    // Novo: caminhos de fotos já enviadas DIRETO ao storage (URL pré-assinada).
+    // Evita mandar base64 no corpo — sem parse/decode/upload no backend.
+    photoPaths:       z.array(z.string()).optional(),
     lat:              z.number().optional(),
     lng:              z.number().optional(),
     note:             z.string().max(500).optional(),
@@ -1155,6 +1158,34 @@ export async function orderRoutes(app: FastifyInstance) {
     collectedAmount:  z.number().positive().optional(),
     collectedMethod:  z.enum(['cash', 'pix']).optional(),
   })
+
+  // Gera URLs pré-assinadas para o app subir as fotos do comprovante DIRETO ao
+  // storage (sem base64 no corpo do /deliver). O path é determinístico por índice
+  // — o mesmo do upload no backend — então o /deliver só recebe os caminhos.
+  const proofUrlsSchema = z.object({
+    count:       z.number().int().min(1).max(5),
+    contentType: z.string().max(60).optional(),
+  })
+  app.post(
+    '/deliverer/orders/:id/proof-upload-urls',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { count, contentType } = proofUrlsSchema.parse(req.body)
+      // Só o entregador do pedido pode gerar URLs de escrita para o comprovante.
+      const { rows: [own] } = await db.query(
+        `SELECT 1 FROM orders WHERE id = $1 AND store_id = $2 AND deliverer_id = $3`,
+        [id, req.actor.storeId, req.actor.sub]
+      )
+      if (!own) return reply.code(403).send({ error: 'Not your order' })
+      const urls = await Promise.all(
+        Array.from({ length: count }, (_, i) =>
+          presignUpload(`proof/${id}/${i + 1}`, contentType || 'image/jpeg')
+        )
+      )
+      return reply.send({ urls })   // [{ uploadUrl, path }]
+    }
+  )
 
   app.post(
     '/deliverer/orders/:id/pickup',
@@ -1192,28 +1223,33 @@ export async function orderRoutes(app: FastifyInstance) {
       const requireProximity    = sv.delivery_require_proximity === 'true'
       const proximityMeters     = parseInt(sv.delivery_proximity_meters ?? '100', 10) || 100
 
-      // Normalise: old clients send `photoUrl`, new clients send `photoUrls[]`
-      const rawUrls = body.photoUrls?.length
-        ? body.photoUrls
-        : body.photoUrl ? [body.photoUrl] : []
-
       const maxPhotos = parseInt(sv.max_proof_photos ?? '1', 10) || 1
-      const cappedUrls = rawUrls.slice(0, maxPhotos)
 
-      // Upload das fotos (base64 → storage) em PARALELO — o loop sequencial
-      // somava a latência de cada upload. Mantém a ordem para o photo_index;
-      // uploads que falham viram null e são descartados.
-      const uploadedUrls = (await Promise.all(
-        cappedUrls.map(async (url, i) => {
-          if (!url.startsWith('data:')) return url
-          try {
-            return await uploadBase64(`proof/${id}/${i + 1}`, url)
-          } catch (uploadErr) {
-            req.log.error({ err: uploadErr }, 'proof photo upload failed — skipping')
-            return null
-          }
-        })
-      )).filter((u): u is string => u !== null)
+      // Caminho rápido: o app já subiu as fotos direto ao storage (URL pré-assinada)
+      // e mandou só os paths — nada de base64 no corpo, sem parse/decode/upload aqui.
+      let uploadedUrls: string[]
+      if (body.photoPaths?.length) {
+        uploadedUrls = body.photoPaths.slice(0, maxPhotos)
+      } else {
+        // Legacy: apps antigos mandam base64 (photoUrls[] ou photoUrl). O backend
+        // ainda decodifica e sobe ao storage — em PARALELO. Uploads que falham
+        // viram null e são descartados.
+        const rawUrls = body.photoUrls?.length
+          ? body.photoUrls
+          : body.photoUrl ? [body.photoUrl] : []
+        const cappedUrls = rawUrls.slice(0, maxPhotos)
+        uploadedUrls = (await Promise.all(
+          cappedUrls.map(async (url, i) => {
+            if (!url.startsWith('data:')) return url
+            try {
+              return await uploadBase64(`proof/${id}/${i + 1}`, url)
+            } catch (uploadErr) {
+              req.log.error({ err: uploadErr }, 'proof photo upload failed — skipping')
+              return null
+            }
+          })
+        )).filter((u): u is string => u !== null)
+      }
 
       // Normaliza pagamentos: usa a lista nova quando presente; senão converte o
       // par antigo collectedAmount/collectedMethod num único pagamento.
@@ -1245,43 +1281,53 @@ export async function orderRoutes(app: FastifyInstance) {
         invalidateDelivererOrders(req.actor.sub)
         invalidateStoreOrders(req.actor.storeId)
 
-        // Auto-avanço da rota: a próxima parada (pedido ON_ROUTE de menor
-        // posição) entra em OUT_FOR_DELIVERY, disparando suas notificações.
-        if (order.routeId) {
-          const next = await orderRepo.findNextOnRoute(order.routeId)
-          if (next) await advanceToOutForDelivery(next, req.actor.storeId, order.delivererId)
-        }
+        // Responde ao entregador AGORA. A orquestração da rota (avançar a próxima
+        // parada, fechar a rota, avisar quem ficou livre) não altera ESTE pedido
+        // e não precisa bloquear a resposta — roda em background logo após, com
+        // seus próprios efeitos (log, broadcast, push). Corta um findById pesado
+        // e várias queries do caminho crítico.
+        reply.send(order)
 
-        // Auto-finish route when all its orders are delivered/cancelled
-        if (order.routeId) {
-          logRouteEvent(order.routeId, req.actor, 'ORDER_DELIVERED', { orderId: id })
-          const finished = await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
-          // Rota fechou → entregador ficou livre. Se há pedidos prontos esperando,
-          // avisa o entregador (push) e o operador (WS) para organizar logo.
-          if (finished) {
-            const { rows: [waiting] } = await db.query(
-              `SELECT COUNT(*)::int AS count FROM orders
-               WHERE store_id = $1 AND status = 'PREPARING' AND deliverer_id IS NULL`,
-              [req.actor.storeId]
-            )
-            const waitingCount = (waiting as { count: number } | undefined)?.count ?? 0
-            if (waitingCount > 0) {
-              notificationQueue.add('route_done_waiting', {
-                type:        'route_done_waiting',
-                storeId:     req.actor.storeId,
-                delivererId: req.actor.sub,
-                count:       waitingCount,
-              }).catch(() => { /* non-fatal */ })
-              wsHub.broadcastDelivererIdleWaiting(req.actor.storeId, {
-                delivererId:   req.actor.sub,
-                delivererName: req.actor.name,
-                waitingCount,
-              })
+        void (async () => {
+          try {
+            if (!order.routeId) return
+            // Auto-avanço da rota: a próxima parada (pedido ON_ROUTE de menor
+            // posição) entra em OUT_FOR_DELIVERY, disparando suas notificações.
+            const next = await orderRepo.findNextOnRoute(order.routeId)
+            if (next) await advanceToOutForDelivery(next, req.actor.storeId, order.delivererId)
+
+            // Fecha a rota quando todos os pedidos estão entregues/cancelados.
+            logRouteEvent(order.routeId, req.actor, 'ORDER_DELIVERED', { orderId: id })
+            const finished = await routeRepo.checkAndFinish(order.routeId, req.actor.storeId)
+            // Rota fechou → entregador ficou livre. Se há pedidos prontos esperando,
+            // avisa o entregador (push) e o operador (WS) para organizar logo.
+            if (finished) {
+              const { rows: [waiting] } = await db.query(
+                `SELECT COUNT(*)::int AS count FROM orders
+                 WHERE store_id = $1 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+                [req.actor.storeId]
+              )
+              const waitingCount = (waiting as { count: number } | undefined)?.count ?? 0
+              if (waitingCount > 0) {
+                notificationQueue.add('route_done_waiting', {
+                  type:        'route_done_waiting',
+                  storeId:     req.actor.storeId,
+                  delivererId: req.actor.sub,
+                  count:       waitingCount,
+                }).catch(() => { /* non-fatal */ })
+                wsHub.broadcastDelivererIdleWaiting(req.actor.storeId, {
+                  delivererId:   req.actor.sub,
+                  delivererName: req.actor.name,
+                  waitingCount,
+                })
+              }
             }
+          } catch (err) {
+            req.log.error({ err }, '[deliver] orquestração de rota pós-resposta falhou')
           }
-        }
+        })()
 
-        return order
+        return reply
       } catch (err: unknown) {
         return reply.code(400).send({ error: (err as Error).message })
       }
