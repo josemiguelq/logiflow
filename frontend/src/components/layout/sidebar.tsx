@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccess } from '@/hooks/useAccess'
 import { api } from '@/lib/api'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface ThemeData {
   theme:    { primary: string; secondary: string; accent: string; logoUrl?: string | null; storeName?: string | null }
@@ -53,7 +54,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
   const { user, logout } = useAuth()
   const { can }       = useAccess()
   const { data: themeData }   = useSWR<ThemeData>('/store/theme', (u: string) => api.get<ThemeData>(u))
-  const { data: billingData } = useSWR<BillingData>('/store/billing', (u: string) => api.get<BillingData>(u))
+  const { data: billingData, isLoading: billingLoading } = useSWR<BillingData>('/store/billing', (u: string) => api.get<BillingData>(u))
   const logoUrl          = themeData?.theme?.logoUrl ?? null
   const customTheme      = themeData?.features?.customThemeEnabled ?? false
   const storeName        = themeData?.theme?.storeName ?? null
@@ -139,6 +140,9 @@ export function Sidebar({ isOpen, onClose }: Props) {
             <p className="mt-0.5 text-xs font-medium" style={{ color: 'var(--color-primary)' }}>
               {user?.role}
             </p>
+            {billingLoading && (
+              <Skeleton className="mt-2 h-7 w-32 rounded-lg" />
+            )}
             {billingData?.status === 'trial' && billingData.trialDaysLeft !== null && (
               <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 px-2 py-1.5">
                 <Clock className="h-3 w-3 text-blue-500 shrink-0" />

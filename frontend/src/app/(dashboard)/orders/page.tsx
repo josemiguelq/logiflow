@@ -13,6 +13,7 @@ import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { OrderCard } from '@/components/orders/order-card'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { STATUS_LABELS, formatDate, getDelayInfo } from '@/lib/utils'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { NewOrderModal } from '@/components/orders/new-order-modal'
@@ -71,7 +72,7 @@ export default function OrdersPage() {
     prepRedMin: number
     deliverers: { available: number; active: number; inRoute: number; idle: number }
   }
-  const { data: pickupAlert } = useSWR<PickupAlert>(
+  const { data: pickupAlert, isLoading: pickupLoading } = useSWR<PickupAlert>(
     '/orders/pickup-alert',
     (u: string) => api.get<PickupAlert>(u),
     { refreshInterval: 30_000 },
@@ -261,16 +262,26 @@ export default function OrdersPage() {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               Entregadores:
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                {delivererCounts.available} disponível(is)
-              </span>
-              <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-0.5 font-medium text-orange-700">
-                {delivererCounts.inRoute} com rota ativa
-              </span>
-              <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 font-medium text-blue-700">
-                {delivererCounts.idle} sem rota ativa
-              </span>
+              {pickupLoading ? (
+                <>
+                  <Skeleton className="h-5 w-28 rounded-full" />
+                  <Skeleton className="h-5 w-28 rounded-full" />
+                  <Skeleton className="h-5 w-28 rounded-full" />
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    {delivererCounts.available} disponível(is)
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-0.5 font-medium text-orange-700">
+                    {delivererCounts.inRoute} com rota ativa
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 font-medium text-blue-700">
+                    {delivererCounts.idle} sem rota ativa
+                  </span>
+                </>
+              )}
             </div>
           </div>
 

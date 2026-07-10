@@ -8,6 +8,7 @@ import { Order, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
+import { TableSkeleton, type TableSkeletonColumn } from '@/components/ui/table-skeleton'
 import { STATUS_LABELS, formatDate } from '@/lib/utils'
 
 interface PagedOrders { items: Order[]; total: number; page: number; pages: number }
@@ -16,6 +17,17 @@ const fetcher = (url: string) => api.get<PagedOrders>(url)
 
 const STATUSES: OrderStatus[] = [
   'PREPARING', 'ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED',
+]
+
+// Colunas do shimmer — mesma ordem e classes responsivas dos headers da tabela.
+const SKELETON_COLS: TableSkeletonColumn[] = [
+  { bar: 'w-24' },                                // Pedido
+  { bar: 'w-28' },                                // Cliente
+  { cell: 'hidden sm:table-cell', bar: 'w-40' },  // Endereço
+  { cell: 'hidden md:table-cell', bar: 'w-24' },  // Entregador
+  { bar: 'w-16' },                                // Status
+  { bar: 'w-20' },                                // Data
+  { cell: 'text-right', bar: 'w-10' },            // Ações
 ]
 
 function paymentDiscrepancy(order: Order): { collected: number; expected: number } | null {
@@ -41,7 +53,7 @@ export default function AllOrdersPage() {
   if (dateFrom) params.set('dateFrom', dateFrom)
   if (dateTo)   params.set('dateTo', dateTo)
 
-  const { data } = useSWR(`/orders/search?${params}`, fetcher, { keepPreviousData: true })
+  const { data, isLoading } = useSWR(`/orders/search?${params}`, fetcher, { keepPreviousData: true })
 
   const orders = data?.items ?? []
   const total  = data?.total ?? 0
@@ -129,12 +141,6 @@ export default function AllOrdersPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        {orders.length === 0 ? (
-          <div className="flex flex-col items-center py-12 text-gray-400">
-            <p className="font-medium">Nenhum pedido encontrado</p>
-            <p className="mt-1 text-sm">Ajuste os filtros para ver mais resultados</p>
-          </div>
-        ) : (
           <table className="w-full min-w-[640px] text-sm">
             <thead className="border-b border-gray-100 bg-gray-50">
               <tr className="text-xs font-medium text-gray-500">
@@ -148,7 +154,19 @@ export default function AllOrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders.map(order => (
+              {isLoading ? (
+                <TableSkeleton columns={SKELETON_COLS} />
+              ) : orders.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12">
+                    <div className="flex flex-col items-center text-gray-400">
+                      <p className="font-medium">Nenhum pedido encontrado</p>
+                      <p className="mt-1 text-sm">Ajuste os filtros para ver mais resultados</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                orders.map(order => (
                 <tr key={order.id} className="transition-colors hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-700">
                     <span className="inline-flex items-center gap-1.5">
@@ -199,10 +217,10 @@ export default function AllOrdersPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
-        )}
       </div>
 
       <Pagination page={page} pages={pages} onChange={setPage} />
