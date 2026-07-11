@@ -248,23 +248,22 @@ export default function LandingPage() {
             </svg>
             Entregador?{' '}
             <a
-              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.0.9%2B1/app-release.apk"
-              download
+              href="#app"
               className="font-medium text-blue-600 underline underline-offset-2 hover:text-blue-800"
             >
-              Baixe o app gratuito — sem limite de entregas
+              Baixe o app gratuito na App Store ou Android
             </a>
           </div>
         </div>
       </section>
 
       {/* ── App download banner ── */}
-      <section className="bg-gray-900 py-16 px-6">
+      <section className="bg-gray-900 py-16 px-6" id="app">
         <div className="mx-auto max-w-5xl flex flex-col items-center gap-10 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-center sm:text-left">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-green-500/20 px-3 py-1 text-sm font-medium text-green-400">
               <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-              Disponível agora para Android
+              Disponível agora para Android e iPhone
             </div>
             <h2 className="mb-3 text-3xl font-bold text-white">
               App do entregador — gratuito
@@ -284,11 +283,25 @@ export default function LandingPage() {
               ))}
             </ul>
           </div>
-          <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-3">
+            <a
+              href="https://apps.apple.com/br/app/logiflow/id6776034206"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.05 12.536c-.028-2.898 2.366-4.287 2.474-4.355-1.348-1.972-3.446-2.242-4.19-2.273-1.785-.181-3.483 1.05-4.388 1.05-.9 0-2.297-1.025-3.778-.997-1.944.029-3.738 1.13-4.74 2.87-2.02 3.503-.517 8.69 1.446 11.53.96 1.39 2.104 2.951 3.605 2.895 1.446-.058 1.994-.935 3.743-.935 1.75 0 2.242.935 3.775.906 1.558-.028 2.545-1.417 3.498-2.813 1.102-1.614 1.556-3.176 1.582-3.256-.034-.016-3.036-1.166-3.066-4.622zM14.23 3.83c.799-.968 1.337-2.313 1.19-3.654-1.15.047-2.545.766-3.372 1.734-.741.858-1.39 2.229-1.216 3.544 1.284.099 2.598-.653 3.398-1.624z" />
+              </svg>
+              <div className="text-left">
+                <div className="text-xs text-gray-500 font-normal">Baixar na</div>
+                <div className="text-base">App Store</div>
+              </div>
+            </a>
             <a
               href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.1.3/app-release.apk"
               download
-              className="flex items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
+              className="flex w-full items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
             >
               <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.523 15.341a.75.75 0 01-.06 1.06 9.75 9.75 0 01-11.003 1.63l-1.94 1.94a.75.75 0 01-1.06-1.06l1.94-1.94A9.75 9.75 0 0116.463 5.463a.75.75 0 011.06 1.06 8.25 8.25 0 00-9.31 13.4l.003.003a8.25 8.25 0 009.307-4.585zM12 8.25a.75.75 0 01.75.75v3.44l1.72 1.72a.75.75 0 11-1.06 1.06l-2-2A.75.75 0 0111.25 12V9a.75.75 0 01.75-.75z" />
@@ -298,7 +311,7 @@ export default function LandingPage() {
                 <div className="text-base">Android (.apk)</div>
               </div>
             </a>
-            <p className="text-xs text-gray-500">v1.0.0 · Grátis para entregadores</p>
+            <p className="text-xs text-gray-500">Grátis para entregadores</p>
           </div>
         </div>
       </section>
