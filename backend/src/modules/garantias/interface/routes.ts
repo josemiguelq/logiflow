@@ -119,6 +119,7 @@ export async function garantiaRoutes(app: FastifyInstance) {
       id: z.string(),
       label: z.string().min(1),
       required: z.boolean(),
+      image: z.string().optional(),
     })).min(1),
   })
 

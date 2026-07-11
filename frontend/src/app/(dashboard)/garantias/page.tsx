@@ -48,7 +48,7 @@ export default function GarantiasPage() {
   const [configOpen, setConfigOpen] = useState(false)
   const [configData, setConfigData] = useState<WarrantyConfig | null>(null)
   const [configVideoUrl, setConfigVideoUrl] = useState('')
-  const [configQuestions, setConfigQuestions] = useState<{ id: string; label: string; required: boolean }[]>([])
+  const [configQuestions, setConfigQuestions] = useState<{ id: string; label: string; required: boolean; image?: string }[]>([])
   const [savingConfig, setSavingConfig] = useState(false)
   const [publishConfirm, setPublishConfirm] = useState(false)
   const [publishing, setPublishing] = useState(false)

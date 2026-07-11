@@ -26,6 +26,14 @@ function embedVideoUrl(url: string | null): { type: 'youtube' | 'direct'; src: s
   return { type: 'direct', src: url }
 }
 
+// Imagens ilustrativas das perguntas são assets estáticos servidos pela pasta
+// public do frontend (ex.: "instructions/warranty/v1/x.png" → "/instructions/…").
+function questionImageUrl(image: string | undefined): string | null {
+  if (!image) return null
+  if (/^https?:\/\//.test(image)) return image
+  return `/${image.replace(/^\/+/, '')}`
+}
+
 export default function PublicGarantiaPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
 
@@ -485,36 +493,70 @@ export default function PublicGarantiaPage({ params }: { params: Promise<{ token
           </p>
         )}
 
-        {/* Questions */}
-        <div className="rounded-2xl bg-white p-4 shadow-sm space-y-3">
-          <p className="text-sm font-semibold text-gray-900">Declarações</p>
-          {data.questions.map(q => (
-            <label
-              key={q.id}
-              className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
-                answers[q.id] ? 'border-green-400 bg-green-50' : 'border-gray-200'
-              }`}
-            >
-              <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                answers[q.id] ? 'border-green-500 bg-green-500' : 'border-gray-300'
-              }`}>
-                {answers[q.id] && <CheckCircle className="h-4 w-4 text-white" />}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-800">{q.label}</p>
-                {q.required && (
-                  <span className="text-xs text-gray-400">* Obrigatório</span>
-                )}
-              </div>
-              <input
-                type="checkbox"
-                checked={!!answers[q.id]}
-                onChange={() => toggleQuestion(q.id)}
-                className="sr-only"
-              />
-            </label>
-          ))}
-        </div>
+        {/* Questions — reveladas uma a uma: a próxima só aparece após concordar
+            com a anterior. */}
+        {(() => {
+          // Índice da primeira pergunta ainda não marcada: revelamos todas as
+          // já concordadas mais essa (a atual). As demais ficam ocultas.
+          let revealCount = 0
+          while (revealCount < data.questions.length && answers[data.questions[revealCount].id]) {
+            revealCount++
+          }
+          const visible = data.questions.slice(0, revealCount + 1)
+          return (
+            <div className="space-y-3">
+              {visible.map((q, idx) => {
+                const img = questionImageUrl(q.image)
+                const checked = !!answers[q.id]
+                const isCurrent = idx === revealCount
+                return (
+                  <div
+                    key={q.id}
+                    className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-colors ${
+                      checked ? 'border-green-400' : isCurrent ? 'border-gray-300' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between px-4 pt-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        Passo {idx + 1} de {data.questions.length}
+                      </span>
+                    </div>
+
+                    {img && (
+                      <div className="mt-2 px-4">
+                        <img
+                          src={img}
+                          alt=""
+                          className="w-full rounded-xl border border-gray-100 object-contain"
+                        />
+                      </div>
+                    )}
+
+                    <label className="flex cursor-pointer items-start gap-3 p-4">
+                      <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                        checked ? 'border-green-500 bg-green-500' : 'border-gray-300'
+                      }`}>
+                        {checked && <CheckCircle className="h-4 w-4 text-white" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-800">{q.label}</p>
+                        {q.required && (
+                          <span className="text-xs text-gray-400">* Obrigatório</span>
+                        )}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleQuestion(q.id)}
+                        className="sr-only"
+                      />
+                    </label>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {/* Signature */}
         <div className="rounded-2xl bg-white p-4 shadow-sm">

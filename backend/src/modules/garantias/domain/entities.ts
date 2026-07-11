@@ -2,7 +2,7 @@ export interface WarrantyQuestionSet {
   id: string
   storeId: string
   videoUrl: string | null
-  questions: { id: string; label: string; required: boolean }[]
+  questions: { id: string; label: string; required: boolean; image?: string }[]
   createdBy: string | null
   createdByName: string | null
   updatedBy: string | null
@@ -21,6 +21,7 @@ export interface WarrantyQuestion {
   id: string
   label: string
   required: boolean
+  image?: string
 }
 
 // Versão publicada e imutável dos termos (perguntas + vídeo) de uma loja.

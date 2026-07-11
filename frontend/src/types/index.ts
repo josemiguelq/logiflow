@@ -235,6 +235,8 @@ export interface WarrantyQuestion {
   id: string
   label: string
   required: boolean
+  // Caminho relativo de uma imagem ilustrativa (servida pela pasta public).
+  image?: string
 }
 
 export interface WarrantyAnswer {
