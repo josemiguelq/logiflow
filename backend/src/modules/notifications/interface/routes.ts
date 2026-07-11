@@ -1,60 +1,31 @@
 import { FastifyInstance } from 'fastify'
-import QRCode from 'qrcode'
 import { db } from '../../../shared/db/client'
 import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
-import { createBaileysProvider } from '../infrastructure/baileys/baileys-provider'
+import { createCloudApiProvider } from '../infrastructure/cloud-api/cloud-api-provider'
 
+// Fase 1: número central da LogiFlow (Cloud API oficial). Não há mais pareamento
+// por QR — o status reflete apenas se o número central está configurado/ativo.
+// (Os endpoints de connect/disconnect ficam como no-op compatível para não quebrar
+// o frontend; o Embedded Signup por loja entra na fase 2.)
 export async function notificationRoutes(app: FastifyInstance) {
-  const whatsapp = createBaileysProvider(db, app.log)
+  const whatsapp = createCloudApiProvider(db, app.log)
 
   app.get(
     '/whatsapp/status',
     { preHandler: [requireStoreUser, requireScope('whatsapp:view')] },
-    async (req) => ({ status: await whatsapp.getStatus(req.actor.storeId) })
+    async (req) => ({ status: await whatsapp.getStatus(req.actor.storeId), central: true })
   )
 
   app.post(
     '/whatsapp/connect',
     { preHandler: [requireStoreUser, requireScope('whatsapp:connect')] },
-    async (req, reply) => {
-      await whatsapp.connect(req.actor.storeId)
-
-      // Poll for QR for up to 20 seconds (Baileys is async — QR arrives via event)
-      const deadline = Date.now() + 20_000
-      while (Date.now() < deadline) {
-        await new Promise((res) => setTimeout(res, 800))
-        const qr = await whatsapp.getQRCode(req.actor.storeId)
-        if (qr) {
-          const dataUrl = await QRCode.toDataURL(qr)
-          return reply.send({ status: 'CONNECTING', qrCode: dataUrl })
-        }
-        const status = await whatsapp.getStatus(req.actor.storeId)
-        if (status === 'CONNECTED') return reply.send({ status })
-      }
-
-      const status = await whatsapp.getStatus(req.actor.storeId)
-      return reply.send({ status })
-    }
-  )
-
-  app.get(
-    '/whatsapp/qr',
-    { preHandler: [requireStoreUser, requireScope('whatsapp:view')] },
-    async (req, reply) => {
-      const qr = await whatsapp.getQRCode(req.actor.storeId)
-      if (!qr) return reply.code(404).send({ error: 'No QR available' })
-      const dataUrl = await QRCode.toDataURL(qr)
-      return { qrCode: dataUrl }
-    }
+    async (req) => ({ status: await whatsapp.getStatus(req.actor.storeId), central: true })
   )
 
   app.post(
     '/whatsapp/disconnect',
     { preHandler: [requireStoreUser, requireScope('whatsapp:connect')] },
-    async (req) => {
-      await whatsapp.disconnect(req.actor.storeId)
-      return { ok: true }
-    }
+    async () => ({ ok: true })
   )
 }

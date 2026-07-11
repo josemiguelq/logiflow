@@ -188,6 +188,12 @@ export function createBaileysProvider(db: DB, logger: Logger = consoleLogger): I
       return sessionStore.getStatus(storeId)
     },
 
+    // Baileys não usa templates (é WhatsApp comum). Presente só para satisfazer o
+    // port durante a transição; o envio real por template é do cloud-api-provider.
+    async sendTemplate() {
+      throw new Error('sendTemplate não é suportado pelo provider Baileys')
+    },
+
     async sendMessage(storeId, phone, text) {
       const socket = sockets.get(storeId)
       if (!socket) throw new Error(`No active WhatsApp session for store ${storeId}`)

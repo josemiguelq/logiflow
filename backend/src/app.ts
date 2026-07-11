@@ -13,6 +13,7 @@ import { assistanceRoutes } from './modules/assistances/interface/routes'
 import { delivererRoutes } from './modules/deliverers/interface/routes'
 import { trackingRoutes } from './modules/tracking/interface/routes'
 import { notificationRoutes } from './modules/notifications/interface/routes'
+import { whatsappWebhookRoutes } from './modules/notifications/interface/webhook-routes'
 import { settingsRoutes } from './modules/settings/interface/routes'
 import { routeRoutes } from './modules/routes/interface/routes'
 import { autoRouteRoutes } from './modules/auto-routes/interface/routes'
@@ -153,7 +154,9 @@ export function buildApp() {
   // Fastify 5 rejects Content-Type: application/json with empty body by default.
   // Clients (Dio, fetch) send that header on DELETE requests with no body, so we
   // replace the built-in parser with one that treats an empty body as {}.
-  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    // Guarda o corpo cru p/ validar a assinatura do webhook do WhatsApp (HMAC).
+    ;(req as unknown as { rawBody?: string }).rawBody = body as string
     if (!body || (body as string).length === 0) {
       done(null, {})
       return
@@ -231,6 +234,7 @@ export function buildApp() {
   app.register(delivererRoutes)
   app.register(trackingRoutes)
   app.register(notificationRoutes)
+  app.register(whatsappWebhookRoutes)
   app.register(settingsRoutes)
   app.register(routeRoutes)
   app.register(autoRouteRoutes)

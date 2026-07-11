@@ -1,5 +1,5 @@
 import { DB } from '../../../../shared/db/client'
-import { IMessageLogRepository } from '../../domain/ports'
+import { IMessageLogRepository, MessageStatus } from '../../domain/ports'
 
 export function createPgMessageLogRepo(db: DB): IMessageLogRepository {
   return {
@@ -32,6 +32,19 @@ export function createPgMessageLogRepo(db: DB): IMessageLogRepository {
       )
     },
 
+    async markStatus(waMessageId, status, error) {
+      // Casa pelo id do WhatsApp. Não regride de READ (evento final) para não
+      // sobrescrever com um 'delivered' que chegue fora de ordem.
+      await db.query(
+        `UPDATE message_logs
+         SET status = $2::message_status,
+             error  = COALESCE($3, error)
+         WHERE wa_message_id = $1
+           AND status <> 'READ'`,
+        [waMessageId, status, error ?? null]
+      )
+    },
+
     async findByOrder(storeId, orderId) {
       const { rows } = await db.query(
         `SELECT id, message, status, created_at
@@ -43,7 +56,7 @@ export function createPgMessageLogRepo(db: DB): IMessageLogRepository {
       return (rows as Record<string, unknown>[]).map((r) => ({
         id:        r.id as string,
         message:   r.message as string,
-        status:    r.status as 'PENDING' | 'SENT' | 'FAILED',
+        status:    r.status as MessageStatus,
         createdAt: r.created_at as Date,
       }))
     },

@@ -6,7 +6,8 @@ import { scanDelayedOrders, scanPriorityOverdue } from './modules/orders/applica
 import { scanAutoRoutes } from './modules/orders/application/use-cases/scan-auto-routes'
 import { createPgAutoRouteRepo } from './modules/auto-routes/infrastructure/repositories/pg-auto-route-repo'
 import { db } from './shared/db/client'
-import { createBaileysProvider } from './modules/notifications/infrastructure/baileys/baileys-provider'
+import { createCloudApiProvider } from './modules/notifications/infrastructure/cloud-api/cloud-api-provider'
+import { TemplateParams } from './modules/notifications/domain/ports'
 import { createPgMessageLogRepo } from './modules/notifications/infrastructure/repositories/pg-message-log-repo'
 import { createPgOrderRepo } from './modules/orders/infrastructure/repositories/pg-order-repo'
 import { createFcmProvider } from './modules/notifications/infrastructure/fcm/fcm-provider'
@@ -90,10 +91,70 @@ function buildStatusMessage(
   }
 }
 
+// Idioma dos templates aprovados na Meta.
+const WA_TEMPLATE_LANG = 'pt_BR'
+
+// Mapeia um statusEvent para o template aprovado + parâmetros, na ordem definida
+// em docs/whatsapp-templates.md. O botão de URL (quando existe) usa o orderId como
+// sufixo dinâmico do link de rastreio. Retorna null para status sem template.
+function buildStatusTemplate(
+  statusEvent: string,
+  {
+    customerName,
+    storeName,
+    delivererName,
+    deliveryCode,
+    deliveryAddress,
+    orderId,
+    requireDeliveryCode,
+  }: {
+    customerName: string
+    storeName: string
+    delivererName: string | undefined
+    deliveryCode: string
+    deliveryAddress: string
+    orderId: string
+    requireDeliveryCode: boolean
+  },
+): { name: string; params: TemplateParams } | null {
+  // A Cloud API rejeita parâmetros vazios — garante um valor não-vazio.
+  const customer  = customerName || 'Cliente'
+  const store     = storeName || 'a loja'
+  const deliverer = delivererName || 'o entregador'
+  const address   = deliveryAddress || 'endereço informado no pedido'
+  const code      = deliveryCode || '----'
+  const track     = orderId // sufixo do botão de URL dinâmico
+
+  switch (statusEvent) {
+    case 'PREPARING':
+      return { name: 'order_preparing', params: { body: [customer, store, address] } }
+    case 'ASSIGNED':
+      return { name: 'order_assigned', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
+    case 'ON_ROUTE':
+      return { name: 'order_on_route', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
+    case 'OUT_FOR_DELIVERY':
+      return requireDeliveryCode
+        ? { name: 'order_out_for_delivery', params: { body: [customer, store, deliverer, code], buttonUrlSuffix: track } }
+        : { name: 'order_out_for_delivery_no_code', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
+    case 'ARRIVING':
+      return requireDeliveryCode
+        ? { name: 'order_arriving', params: { body: [customer, store, code] } }
+        : { name: 'order_arriving_no_code', params: { body: [customer, store] } }
+    case 'DELIVERED':
+      return { name: 'order_delivered', params: { body: [customer, store, address] } }
+    case 'CANCELLED':
+      return { name: 'order_cancelled', params: { body: [customer, store] } }
+    case 'ADDRESS_CHANGED':
+      return { name: 'order_address_updated', params: { body: [customer, store, address], buttonUrlSuffix: track } }
+    default:
+      return null
+  }
+}
+
 async function start() {
   const app            = buildApp()
   app.log.info({ buildTime }, '[boot] version')
-  const whatsapp       = createBaileysProvider(db, app.log)
+  const whatsapp       = createCloudApiProvider(db, app.log)
   const messageLogRepo = createPgMessageLogRepo(db)
   const orderRepo      = createPgOrderRepo(db)
   const autoRouteRepo  = createPgAutoRouteRepo(db)
@@ -259,6 +320,27 @@ async function start() {
     )
     const requireDeliveryCode = (codeCfg as { value?: string } | undefined)?.value !== 'false'
 
+    // Nome da loja — vai no corpo do template (o número é central da LogiFlow, o
+    // cliente precisa reconhecer de qual loja é a mensagem).
+    const { rows: [storeRow] } = await db.query('SELECT name FROM stores WHERE id = $1', [storeId])
+    const storeName = (storeRow as { name?: string } | undefined)?.name ?? ''
+
+    // Seleciona o template aprovado + parâmetros para este status.
+    const template = buildStatusTemplate(statusEvent, {
+      customerName:        order.customer.name,
+      storeName,
+      delivererName:       order.deliverer?.name,
+      deliveryCode:        order.deliveryCode,
+      deliveryAddress:     order.customer.address,
+      orderId,
+      requireDeliveryCode,
+    })
+    if (!template) {
+      app.log.error({ orderId, storeId, statusEvent }, '[whatsapp] NOT sent — status sem template mapeado')
+      return
+    }
+
+    // Texto legível salvo em message_logs (histórico do painel / _order-messages).
     const trackingUrl = `${process.env.TRACKING_BASE_URL ?? 'https://logiflow-beige.vercel.app/rastreio'}/${orderId}`
     const message = buildStatusMessage(
       statusEvent,
@@ -272,12 +354,13 @@ async function start() {
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
     try {
-      const waId = await whatsapp.sendMessage(storeId, phone, message)
+      const waId = await whatsapp.sendTemplate(storeId, phone, template.name, WA_TEMPLATE_LANG, template.params)
       await messageLogRepo.markSent(logId, waId)
-      app.log.warn({ orderId, storeId, statusEvent, phone, waId }, '[whatsapp] sent')
+      app.log.warn({ orderId, storeId, statusEvent, phone, waId, template: template.name }, '[whatsapp] sent')
     } catch (err) {
-      await messageLogRepo.markFailed(logId)
-      app.log.error({ err, orderId, storeId, statusEvent, phone }, '[whatsapp] NOT sent — sendMessage threw')
+      const reason = err instanceof Error ? err.message : String(err)
+      await messageLogRepo.markFailed(logId, reason)
+      app.log.error({ err, orderId, storeId, statusEvent, phone, template: template.name }, '[whatsapp] NOT sent — sendTemplate threw')
     }
   })
 
