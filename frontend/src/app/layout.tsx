@@ -9,31 +9,44 @@ const inter = Inter({ subsets: ['latin'] })
 
 const gaId = process.env.NEXT_PUBLIC_GA_ID
 
-const title = 'LogiFlow — Gestão de Entregas'
+const title = 'LogiFlow — Gestão de Entregas e Logística Urbana'
 const description =
-  'Plataforma de gestão de entregas urbanas: pedidos, rotas, rastreamento GPS ao vivo e confirmação de entrega para a sua loja.'
+  'LogiFlow é a plataforma de gestão de entregas e logística urbana: pedidos, rotas, rastreamento GPS ao vivo e confirmação de entrega para a sua loja.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title,
   description,
+  applicationName: 'LogiFlow',
+  authors:  [{ name: 'LogiFlow' }],
+  creator:  'LogiFlow',
+  publisher: 'LogiFlow',
+  keywords: [
+    'logiflow',
+    'logística',
+    'gestão de entregas',
+    'logística urbana',
+    'rastreamento de entregas',
+    'roteirização',
+    'gestão de entregadores',
+  ],
   // Só a landing é canônica/indexável; o restante é bloqueado via robots.ts.
   alternates: { canonical: '/' },
   verification: { google: '4Sx71ffmBoZnMfrVpw4z8u_7ZKN_2O8lX3gF13F4M84' },
   openGraph: {
+    // A imagem é gerada automaticamente por src/app/opengraph-image.tsx (1200×630).
     type:        'website',
     siteName:    'LogiFlow',
     title,
     description,
     url:         SITE_URL,
     locale:      'pt_BR',
-    images:      [{ url: '/icons/icon-512.png', width: 512, height: 512, alt: 'LogiFlow' }],
   },
   twitter: {
-    card:        'summary',
+    // A imagem é gerada automaticamente por src/app/twitter-image.tsx.
+    card:        'summary_large_image',
     title,
     description,
-    images:      ['/icons/icon-512.png'],
   },
   // Manifest default (nome "LogiFlow"), usado na tela de login. Após o login, o
   // dynamic-manifest reescreve o <link rel="manifest"> com o nome da loja.

@@ -1,4 +1,39 @@
 import Link from 'next/link'
+import { SITE_URL } from '@/lib/site'
+
+// ─── structured data (JSON-LD) ───────────────────────────────────────────────
+// Reforça "LogiFlow" como entidade de marca ligada a logística/entregas para o Google.
+
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'LogiFlow',
+      url: SITE_URL,
+      logo: `${SITE_URL}/icons/icon-512.png`,
+      description:
+        'LogiFlow é a plataforma de gestão de entregas e logística urbana para lojas: pedidos, rotas, rastreamento GPS e confirmação de entrega.',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'LogiFlow',
+      url: SITE_URL,
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web, Android, iOS',
+      description:
+        'Plataforma de gestão de entregas e logística urbana: pedidos, rotas automáticas, rastreamento GPS ao vivo, confirmação com foto e notificações para o cliente.',
+      offers: {
+        '@type': 'Offer',
+        price: '80',
+        priceCurrency: 'BRL',
+        description: 'A partir de R$80/mês, com 3 meses grátis.',
+      },
+      publisher: { '@id': `${SITE_URL}/#organization` },
+    },
+  ],
+}
 
 // ─── data ────────────────────────────────────────────────────────────────────
 
@@ -186,6 +221,12 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900">
 
+      {/* ── Structured data (SEO) ── */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
+
       {/* ── Nav ── */}
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
@@ -225,8 +266,8 @@ export default function LandingPage() {
             de verdade
           </h1>
           <p className="mx-auto mb-10 max-w-2xl text-xl text-gray-500 leading-relaxed">
-            Do pedido à confirmação com foto — gerencie seus entregadores, rotas e clientes em um único lugar.
-            Seus clientes acompanham a entrega em tempo real.
+            A plataforma de logística e entregas urbanas da sua loja. Do pedido à confirmação com foto —
+            gerencie entregadores, rotas e clientes em um único lugar. Seus clientes acompanham a entrega em tempo real.
           </p>
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
@@ -334,7 +375,7 @@ export default function LandingPage() {
           <div className="mb-16 text-center">
             <h2 className="mb-4 text-4xl font-bold text-gray-900">Tudo que sua operação precisa</h2>
             <p className="mx-auto max-w-xl text-lg text-gray-500">
-              Do app do entregador ao painel do gestor — cada etapa da entrega coberta.
+              Do app do entregador ao painel do gestor — toda a logística da sua loja, com cada etapa da entrega coberta.
             </p>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -618,11 +659,14 @@ export default function LandingPage() {
       {/* ── Footer ── */}
       <footer className="border-t border-gray-100 bg-white py-10 px-6">
         <div className="mx-auto max-w-6xl flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
-              <span className="text-xs font-bold text-white">L</span>
+          <div className="flex flex-col items-center gap-1 sm:items-start">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
+                <span className="text-xs font-bold text-white">L</span>
+              </div>
+              <span className="font-semibold text-gray-900">LogiFlow</span>
             </div>
-            <span className="font-semibold text-gray-900">LogiFlow</span>
+            <p className="text-xs text-gray-400">Gestão de entregas e logística urbana</p>
           </div>
           <p className="text-sm text-gray-400">© {new Date().getFullYear()} LogiFlow. Todos os direitos reservados.</p>
           <div className="flex items-center gap-4 text-sm text-gray-500">
