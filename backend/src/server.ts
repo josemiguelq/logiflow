@@ -116,7 +116,7 @@ function buildStatusTemplate(
     orderId: string
     requireDeliveryCode: boolean
   },
-): { name: string; params: TemplateParams } | null {
+): { name: string; lang: string; params: TemplateParams } | null {
   // A Cloud API rejeita parâmetros vazios — garante um valor não-vazio.
   const customer  = customerName || 'Cliente'
   const store     = storeName || 'a loja'
@@ -125,30 +125,45 @@ function buildStatusTemplate(
   const code      = deliveryCode || '----'
   const track     = orderId // sufixo do botão de URL dinâmico
 
-  switch (statusEvent) {
-    case 'PREPARING':
-      return { name: 'order_preparing', params: { body: [customer, store, address] } }
-    case 'ASSIGNED':
-      return { name: 'order_assigned', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
-    case 'ON_ROUTE':
-      return { name: 'order_on_route', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
-    case 'OUT_FOR_DELIVERY':
-      return requireDeliveryCode
-        ? { name: 'order_out_for_delivery', params: { body: [customer, store, deliverer, code], buttonUrlSuffix: track } }
-        : { name: 'order_out_for_delivery_no_code', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
-    case 'ARRIVING':
-      return requireDeliveryCode
-        ? { name: 'order_arriving', params: { body: [customer, store, code] } }
-        : { name: 'order_arriving_no_code', params: { body: [customer, store] } }
-    case 'DELIVERED':
-      return { name: 'order_delivered', params: { body: [customer, store, address] } }
-    case 'CANCELLED':
-      return { name: 'order_cancelled', params: { body: [customer, store] } }
-    case 'ADDRESS_CHANGED':
-      return { name: 'order_address_updated', params: { body: [customer, store, address], buttonUrlSuffix: track } }
-    default:
-      return null
+  // Modo de teste: força o template de amostra JÁ aprovado (en_US) em qualquer
+  // status, para validar número/token/webhook enquanto os templates reais estão
+  // em revisão. O corpo dele tem 3 variáveis: nome, nº do pedido e data.
+  if (process.env.WHATSAPP_TEST_TEMPLATE === 'true') {
+    return {
+      name: 'jaspers_market_order_confirmation_v1',
+      lang: 'en_US',
+      params: { body: [customer, orderId, new Date().toLocaleDateString('pt-BR')] },
+    }
   }
+
+  const selected: { name: string; params: TemplateParams } | null = (() => {
+    switch (statusEvent) {
+      case 'PREPARING':
+        return { name: 'order_preparing', params: { body: [customer, store, address] } }
+      case 'ASSIGNED':
+        return { name: 'order_assigned', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
+      case 'ON_ROUTE':
+        return { name: 'order_on_route', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
+      case 'OUT_FOR_DELIVERY':
+        return requireDeliveryCode
+          ? { name: 'order_out_for_delivery', params: { body: [customer, store, deliverer, code], buttonUrlSuffix: track } }
+          : { name: 'order_out_for_delivery_no_code', params: { body: [customer, store, deliverer], buttonUrlSuffix: track } }
+      case 'ARRIVING':
+        return requireDeliveryCode
+          ? { name: 'order_arriving', params: { body: [customer, store, code] } }
+          : { name: 'order_arriving_no_code', params: { body: [customer, store] } }
+      case 'DELIVERED':
+        return { name: 'order_delivered', params: { body: [customer, store, address] } }
+      case 'CANCELLED':
+        return { name: 'order_cancelled', params: { body: [customer, store] } }
+      case 'ADDRESS_CHANGED':
+        return { name: 'order_address_updated', params: { body: [customer, store, address], buttonUrlSuffix: track } }
+      default:
+        return null
+    }
+  })()
+
+  return selected ? { ...selected, lang: WA_TEMPLATE_LANG } : null
 }
 
 async function start() {
@@ -354,7 +369,7 @@ async function start() {
 
     const logId = await messageLogRepo.log({ storeId, orderId, phone, message })
     try {
-      const waId = await whatsapp.sendTemplate(storeId, phone, template.name, WA_TEMPLATE_LANG, template.params)
+      const waId = await whatsapp.sendTemplate(storeId, phone, template.name, template.lang, template.params)
       await messageLogRepo.markSent(logId, waId)
       app.log.warn({ orderId, storeId, statusEvent, phone, waId, template: template.name }, '[whatsapp] sent')
     } catch (err) {
