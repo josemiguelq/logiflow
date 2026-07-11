@@ -1,0 +1,693 @@
+import Link from 'next/link'
+import { SITE_URL } from '@/lib/site'
+
+// ─── i18n da landing ──────────────────────────────────────────────────────────
+// Dicionário leve (sem lib). Só a home é traduzida por enquanto. pt = padrão,
+// es = espanhol (browser em espanhol ou rota /es).
+
+export type Locale = 'pt' | 'es'
+
+// Dados estruturais dos planos (não traduzíveis): preço, destaque, ativo, badge.
+// O texto (nome, limites, features, badge) vem do dicionário, casado por índice.
+const PLAN_STRUCT = [
+  { price: 80,  highlight: false, active: true,  badge: false },
+  { price: 100, highlight: false, active: false, badge: false },
+  { price: 120, highlight: false, active: true,  badge: false },
+  { price: 140, highlight: true,  active: false, badge: true  },
+  { price: 160, highlight: false, active: true,  badge: false },
+]
+
+const pt = {
+  nav: { login: 'Entrar', signup: 'Começar grátis' },
+  hero: {
+    badge: '3 meses grátis — sem cartão de crédito',
+    titleA: 'Entregas urbanas', titleHighlight: 'organizadas', titleB: 'de verdade',
+    subtitle:
+      'A plataforma de logística e entregas urbanas da sua loja. Do pedido à confirmação com foto — gerencie entregadores, rotas e clientes em um único lugar. Seus clientes acompanham a entrega em tempo real.',
+    ctaPrimary: 'Começar 3 meses grátis',
+    ctaSecondary: 'Ver planos',
+    delivererPrefix: 'Entregador?',
+    delivererLink: 'Baixe o app gratuito na App Store ou Android',
+  },
+  appBanner: {
+    badge: 'Disponível agora para Android e iPhone',
+    title: 'App do entregador — gratuito',
+    subtitle:
+      'Sem mensalidade para o entregador, sem limite de entregas por rota. Baixe agora e comece a usar em minutos.',
+    bullets: ['Sem limite de entregas', 'Navegação integrada', 'Confirmação com foto', 'Offline parcial'],
+    storeSmall: 'Baixar na', storeName: 'App Store',
+    androidSmall: 'Baixar para', androidName: 'Android (.apk)',
+    freeNote: 'Grátis para entregadores',
+  },
+  socialProof: ['App nativo para entregadores', 'Rastreamento GPS em tempo real', 'Rotas automáticas', 'Mapa de clientes', 'Alertas de atraso', 'Notificações WhatsApp', 'Sem limite de entregas'],
+  features: {
+    title: 'Tudo que sua operação precisa',
+    subtitle: 'Do app do entregador ao painel do gestor — toda a logística da sua loja, com cada etapa da entrega coberta.',
+    items: [
+      { icon: '📦', title: 'Gestão de pedidos', desc: 'Crie, atribua e acompanhe todos os pedidos da sua loja em tempo real, com status atualizado automaticamente a cada etapa.' },
+      { icon: '🗺️', title: 'Rastreamento GPS ao vivo', desc: 'Veja a localização exata de cada entregador no mapa enquanto ele faz a rota — sem precisar ligar ou mandar mensagem.' },
+      { icon: '🛣️', title: 'Rotas inteligentes', desc: 'O entregador organiza a ordem de entrega no app e confirma a rota antes de sair, reduzindo desvios e atrasos.' },
+      { icon: '🔀', title: 'Rotas automáticas com rodízio', desc: 'Configure um rodízio de entregadores e deixe o sistema montar as rotas sozinho: quando a fila enche ou os pedidos esperam demais, a rota nasce pronta e vai para o "entregador da vez", que é avisado por push.' },
+      { icon: '📸', title: 'Confirmação com código e foto', desc: 'Exija o código de 4 dígitos do destinatário (em todos os planos, ativável pela loja) e, nos planos Pro, também a foto da entrega — garantindo que o pedido chegou ao lugar certo.' },
+      { icon: '💬', title: 'Notificações via WhatsApp', desc: 'Avise automaticamente o cliente quando o pedido sair para entrega e quando for entregue — sem digitação manual.' },
+      { icon: '🔗', title: 'Link de rastreamento para o cliente', desc: 'Cada pedido gera um link único, protegido por senha (os 4 últimos dígitos do telefone), com o entregador e o endereço de entrega no mapa em tempo real.' },
+      { icon: '📊', title: 'Métricas e relatórios', desc: 'Histórico completo de entregas, tempo médio por rota e avaliações. Filtre as rotas por entregador e período e exporte exatamente o que está vendo em CSV.' },
+      { icon: '📍', title: 'Mapa de clientes', desc: 'Veja todos os seus clientes no mapa, identifique a concentração de entregas por região e exporte a lista da área visível com um clique.' },
+      { icon: '🚨', title: 'Alertas de pedidos atrasados', desc: 'Seja avisado quando houver pedidos parados além do limite — para retirar ou entregar — e notifique com um toque os entregadores livres para buscarem os pedidos na loja.' },
+      { icon: '🕓', title: 'Linha do tempo e auditoria', desc: 'Cada pedido registra quem fez o quê e quando, e o tempo gasto em cada etapa — da criação à entrega. Rastreabilidade total da operação.' },
+      { icon: '📈', title: 'Painel do entregador no app', desc: 'No próprio app, o entregador acompanha quantas entregas fez hoje e o resumo do mês: entregas, cancelamentos e viagens realizadas.' },
+      { icon: '⭐', title: 'Avaliação de entregadores', desc: 'Clientes avaliam a entrega com até 5 estrelas diretamente pelo link de rastreamento. Monitore o desempenho da sua equipe.' },
+      { icon: '🎨', title: 'Personalização de marca', desc: 'Coloque a logo e as cores da sua loja no app do entregador e na página de rastreamento do cliente.' },
+    ],
+  },
+  autoRoutes: {
+    title: 'Rotas automáticas com rodízio de entregadores',
+    subtitle: 'Pare de montar rota na mão. Configure o rodízio uma vez e o LogiFlow distribui a fila de pedidos sozinho — de forma justa, sem ninguém ficar parado nem sobrecarregado.',
+    steps: [
+      { n: '1', title: 'Defina o rodízio', desc: 'Ordene seus entregadores. O primeiro que estiver online é o "entregador da vez"; se estiver offline, a vez passa automaticamente ao próximo.' },
+      { n: '2', title: 'Escolha o gatilho', desc: 'A rota é criada quando o pedido mais antigo espera além do tempo definido OU quando a fila atinge a quantidade que você configurou.' },
+      { n: '3', title: 'A rota nasce sozinha', desc: 'Todos os pedidos em preparação viram uma rota já atribuída ao entregador da vez — respeitando o máximo de pedidos por rota, se você definir um.' },
+      { n: '4', title: 'Push proativo', desc: 'Quem recebe a rota é notificado na hora, e o próximo do rodízio recebe um aviso para já ficar preparado.' },
+    ],
+    simulateBold: 'Simule antes de salvar:',
+    simulateRest: 'veja exatamente qual rota seria criada, para quem e com quais pedidos — sem afetar a operação.',
+    configCaption: 'Configuração das rotas automáticas, direto na tela de Rotas',
+    configAlt: 'Tela de configuração das rotas automáticas: rodízio de entregadores, tempo de espera e tamanho da fila',
+    resultTitle: 'A rota criada aparece pronta no painel',
+    resultSubtitle: 'Com mapa, ordem de entrega otimizada e todos os pedidos agrupados — o entregador é só sair para rodar.',
+    resultAlt: 'Detalhes de uma rota no painel: mapa com as paradas numeradas, entregador atribuído e lista de pedidos',
+  },
+  benefits: {
+    title: 'Por que o LogiFlow funciona',
+    subtitle: 'Resultados reais para quem já cansou de gerenciar entrega por WhatsApp e planilha.',
+    items: [
+      { icon: '👁️', title: 'Mais visibilidade para o cliente', desc: 'O link de rastreamento em tempo real responde à pergunta "onde está meu pedido?" sem o cliente precisar ligar. Menos suporte, mais confiança.' },
+      { icon: '📋', title: 'Registro completo das rotas', desc: 'Histórico de todas as entregas com localização GPS, horários exatos e provas fotográficas — tudo acessível no painel.' },
+      { icon: '📈', title: 'Métricas que geram decisões', desc: 'Saiba quais entregadores têm melhor avaliação, quais rotas demoram mais e quantas entregas aconteceram em cada período.' },
+      { icon: '🤝', title: 'Profissionalização imediata', desc: 'Código de coleta, confirmação com foto e notificações automáticas elevam o padrão das suas entregas sem aumentar a equipe.' },
+      { icon: '⚡', title: 'Menos erros, mais agilidade', desc: 'Entregadores confirmam cada etapa no app — coleta, rota e entrega — eliminando dúvidas e retrabalho na operação.' },
+      { icon: '🔒', title: 'Controle e segurança', desc: 'Permissões por papel (proprietário, gerente, assistente), trilha de auditoria por pedido e link de rastreamento protegido por senha garantem que cada um veja só o que precisa.' },
+    ],
+  },
+  pricing: {
+    trialBadge: '✅ 3 meses de trial gratuito em qualquer plano',
+    title: 'Planos simples e transparentes',
+    subtitle: 'Escolha o plano que cabe na sua operação. Escale quando precisar.',
+    includedLead: '📱 Todos os planos incluem o',
+    includedBold: 'app do entregador — grátis e ilimitado',
+    includedTail: 'e o painel de pedidos completo',
+    includedItems: ['App do entregador — grátis e ilimitado', 'Painel de pedidos', 'Link de rastreamento para o cliente', 'Confirmação por código na entrega (ativável pela loja)'],
+    currency: 'R$',
+    perMonth: '/mês',
+    extraLabel: 'Além de tudo que todo plano tem:',
+    starterFallback: 'Tudo o que sua operação precisa para começar.',
+    ctaActive: 'Começar grátis',
+    footnote: 'Todos os planos incluem 3 meses de trial completo. Cancele quando quiser.',
+    plans: [
+      { name: 'Starter', deliverers: 'Até 2 entregadores', deliveries: 'Até 1.000 entregas/mês', features: ['Fotos de entrega salvas por 15 dias'], badge: null as string | null },
+      { name: 'Starter + WhatsApp', deliverers: 'Até 2 entregadores', deliveries: 'Até 1.000 entregas/mês', features: ['Notificações WhatsApp automáticas'], badge: null },
+      { name: 'Pro', deliverers: 'Até 4 entregadores', deliveries: 'Sem limite de entregas', features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Fotos de entrega salvas por 3 meses'], badge: null },
+      { name: 'Pro + WhatsApp', deliverers: 'Até 4 entregadores', deliveries: 'Sem limite de entregas', features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Fotos de entrega salvas por 3 meses'], badge: 'Mais popular' },
+      { name: 'Pro Premium', deliverers: 'Entregadores ilimitados', deliveries: 'Sem limite de entregas', features: ['Confirmação com foto da entrega', 'Avaliação de entregadores', 'Exportação CSV com filtros', 'Notificações WhatsApp automáticas', 'Logo e cores personalizadas', 'Fotos de entrega salvas por 1 ano'], badge: null },
+    ],
+  },
+  finalCta: {
+    title: 'Comece a organizar suas entregas hoje',
+    subtitle: '3 meses grátis, sem cartão de crédito. Configure em menos de 5 minutos.',
+    cta: 'Criar conta gratuita',
+  },
+  footer: {
+    tagline: 'Gestão de entregas e logística urbana',
+    rights: 'Todos os direitos reservados.',
+    privacy: 'Privacidade', terms: 'Termos de Uso', panel: 'Acessar painel →',
+  },
+  jsonLd: {
+    orgDesc: 'LogiFlow é a plataforma de gestão de entregas e logística urbana para lojas: pedidos, rotas, rastreamento GPS e confirmação de entrega.',
+    appDesc: 'Plataforma de gestão de entregas e logística urbana: pedidos, rotas automáticas, rastreamento GPS ao vivo, confirmação com foto e notificações para o cliente.',
+    offerDesc: 'A partir de R$80/mês, com 3 meses grátis.',
+  },
+}
+
+type Dict = typeof pt
+
+const es: Dict = {
+  nav: { login: 'Entrar', signup: 'Empezar gratis' },
+  hero: {
+    badge: '3 meses gratis — sin tarjeta de crédito',
+    titleA: 'Entregas urbanas', titleHighlight: 'organizadas', titleB: 'de verdad',
+    subtitle:
+      'La plataforma de logística y entregas urbanas de tu tienda. Del pedido a la confirmación con foto: gestiona repartidores, rutas y clientes en un solo lugar. Tus clientes siguen la entrega en tiempo real.',
+    ctaPrimary: 'Empezar 3 meses gratis',
+    ctaSecondary: 'Ver planes',
+    delivererPrefix: '¿Repartidor?',
+    delivererLink: 'Descarga la app gratis en App Store o Android',
+  },
+  appBanner: {
+    badge: 'Disponible ahora para Android y iPhone',
+    title: 'App del repartidor — gratis',
+    subtitle:
+      'Sin mensualidad para el repartidor, sin límite de entregas por ruta. Descárgala ahora y empieza a usarla en minutos.',
+    bullets: ['Sin límite de entregas', 'Navegación integrada', 'Confirmación con foto', 'Offline parcial'],
+    storeSmall: 'Descargar en', storeName: 'App Store',
+    androidSmall: 'Descargar para', androidName: 'Android (.apk)',
+    freeNote: 'Gratis para repartidores',
+  },
+  socialProof: ['App nativa para repartidores', 'Rastreo GPS en tiempo real', 'Rutas automáticas', 'Mapa de clientes', 'Alertas de retraso', 'Notificaciones WhatsApp', 'Sin límite de entregas'],
+  features: {
+    title: 'Todo lo que tu operación necesita',
+    subtitle: 'De la app del repartidor al panel del gestor: toda la logística de tu tienda, con cada etapa de la entrega cubierta.',
+    items: [
+      { icon: '📦', title: 'Gestión de pedidos', desc: 'Crea, asigna y haz seguimiento de todos los pedidos de tu tienda en tiempo real, con el estado actualizado automáticamente en cada etapa.' },
+      { icon: '🗺️', title: 'Rastreo GPS en vivo', desc: 'Mira la ubicación exacta de cada repartidor en el mapa mientras hace la ruta, sin necesidad de llamar ni enviar mensajes.' },
+      { icon: '🛣️', title: 'Rutas inteligentes', desc: 'El repartidor organiza el orden de entrega en la app y confirma la ruta antes de salir, reduciendo desvíos y retrasos.' },
+      { icon: '🔀', title: 'Rutas automáticas con rotación', desc: 'Configura una rotación de repartidores y deja que el sistema arme las rutas solo: cuando la cola se llena o los pedidos esperan demasiado, la ruta nace lista y va al "repartidor de turno", avisado por push.' },
+      { icon: '📸', title: 'Confirmación con código y foto', desc: 'Exige el código de 4 dígitos del destinatario (en todos los planes, activable por la tienda) y, en los planes Pro, también la foto de la entrega, garantizando que el pedido llegó al lugar correcto.' },
+      { icon: '💬', title: 'Notificaciones por WhatsApp', desc: 'Avisa automáticamente al cliente cuando el pedido sale para entrega y cuando es entregado, sin escribir nada a mano.' },
+      { icon: '🔗', title: 'Enlace de rastreo para el cliente', desc: 'Cada pedido genera un enlace único, protegido por contraseña (los últimos 4 dígitos del teléfono), con el repartidor y la dirección de entrega en el mapa en tiempo real.' },
+      { icon: '📊', title: 'Métricas e informes', desc: 'Historial completo de entregas, tiempo promedio por ruta y valoraciones. Filtra las rutas por repartidor y período y exporta exactamente lo que ves en CSV.' },
+      { icon: '📍', title: 'Mapa de clientes', desc: 'Mira todos tus clientes en el mapa, identifica la concentración de entregas por región y exporta la lista del área visible con un clic.' },
+      { icon: '🚨', title: 'Alertas de pedidos atrasados', desc: 'Recibe un aviso cuando haya pedidos detenidos más allá del límite —para retirar o entregar— y notifica con un toque a los repartidores libres para que busquen los pedidos en la tienda.' },
+      { icon: '🕓', title: 'Línea de tiempo y auditoría', desc: 'Cada pedido registra quién hizo qué y cuándo, y el tiempo gastado en cada etapa, de la creación a la entrega. Trazabilidad total de la operación.' },
+      { icon: '📈', title: 'Panel del repartidor en la app', desc: 'En la propia app, el repartidor ve cuántas entregas hizo hoy y el resumen del mes: entregas, cancelaciones y viajes realizados.' },
+      { icon: '⭐', title: 'Valoración de repartidores', desc: 'Los clientes valoran la entrega con hasta 5 estrellas directamente desde el enlace de rastreo. Monitorea el desempeño de tu equipo.' },
+      { icon: '🎨', title: 'Personalización de marca', desc: 'Pon el logo y los colores de tu tienda en la app del repartidor y en la página de rastreo del cliente.' },
+    ],
+  },
+  autoRoutes: {
+    title: 'Rutas automáticas con rotación de repartidores',
+    subtitle: 'Deja de armar rutas a mano. Configura la rotación una vez y LogiFlow distribuye la cola de pedidos solo, de forma justa, sin que nadie quede parado ni sobrecargado.',
+    steps: [
+      { n: '1', title: 'Define la rotación', desc: 'Ordena tus repartidores. El primero que esté en línea es el "repartidor de turno"; si está desconectado, el turno pasa automáticamente al siguiente.' },
+      { n: '2', title: 'Elige el disparador', desc: 'La ruta se crea cuando el pedido más antiguo espera más allá del tiempo definido O cuando la cola alcanza la cantidad que configuraste.' },
+      { n: '3', title: 'La ruta nace sola', desc: 'Todos los pedidos en preparación se convierten en una ruta ya asignada al repartidor de turno, respetando el máximo de pedidos por ruta, si defines uno.' },
+      { n: '4', title: 'Push proactivo', desc: 'Quien recibe la ruta es notificado al instante, y el siguiente de la rotación recibe un aviso para ir preparándose.' },
+    ],
+    simulateBold: 'Simula antes de guardar:',
+    simulateRest: 'mira exactamente qué ruta se crearía, para quién y con qué pedidos, sin afectar la operación.',
+    configCaption: 'Configuración de las rutas automáticas, directo en la pantalla de Rutas',
+    configAlt: 'Pantalla de configuración de las rutas automáticas: rotación de repartidores, tiempo de espera y tamaño de la cola',
+    resultTitle: 'La ruta creada aparece lista en el panel',
+    resultSubtitle: 'Con mapa, orden de entrega optimizado y todos los pedidos agrupados: el repartidor solo tiene que salir a rodar.',
+    resultAlt: 'Detalles de una ruta en el panel: mapa con las paradas numeradas, repartidor asignado y lista de pedidos',
+  },
+  benefits: {
+    title: 'Por qué LogiFlow funciona',
+    subtitle: 'Resultados reales para quien ya se cansó de gestionar entregas por WhatsApp y planilla.',
+    items: [
+      { icon: '👁️', title: 'Más visibilidad para el cliente', desc: 'El enlace de rastreo en tiempo real responde a la pregunta "¿dónde está mi pedido?" sin que el cliente tenga que llamar. Menos soporte, más confianza.' },
+      { icon: '📋', title: 'Registro completo de las rutas', desc: 'Historial de todas las entregas con ubicación GPS, horarios exactos y pruebas fotográficas, todo accesible en el panel.' },
+      { icon: '📈', title: 'Métricas que generan decisiones', desc: 'Sabe qué repartidores tienen mejor valoración, qué rutas tardan más y cuántas entregas ocurrieron en cada período.' },
+      { icon: '🤝', title: 'Profesionalización inmediata', desc: 'Código de recogida, confirmación con foto y notificaciones automáticas elevan el estándar de tus entregas sin aumentar el equipo.' },
+      { icon: '⚡', title: 'Menos errores, más agilidad', desc: 'Los repartidores confirman cada etapa en la app —recogida, ruta y entrega— eliminando dudas y retrabajo en la operación.' },
+      { icon: '🔒', title: 'Control y seguridad', desc: 'Permisos por rol (propietario, gerente, asistente), registro de auditoría por pedido y enlace de rastreo protegido por contraseña garantizan que cada uno vea solo lo que necesita.' },
+    ],
+  },
+  pricing: {
+    trialBadge: '✅ 3 meses de prueba gratis en cualquier plan',
+    title: 'Planes simples y transparentes',
+    subtitle: 'Elige el plan que se ajusta a tu operación. Escala cuando lo necesites.',
+    includedLead: '📱 Todos los planes incluyen la',
+    includedBold: 'app del repartidor — gratis e ilimitada',
+    includedTail: 'y el panel de pedidos completo',
+    includedItems: ['App del repartidor — gratis e ilimitada', 'Panel de pedidos', 'Enlace de rastreo para el cliente', 'Confirmación por código en la entrega (activable por la tienda)'],
+    currency: 'R$',
+    perMonth: '/mes',
+    extraLabel: 'Además de todo lo que tiene cada plan:',
+    starterFallback: 'Todo lo que tu operación necesita para empezar.',
+    ctaActive: 'Empezar gratis',
+    footnote: 'Todos los planes incluyen 3 meses de prueba completa. Cancela cuando quieras.',
+    plans: [
+      { name: 'Starter', deliverers: 'Hasta 2 repartidores', deliveries: 'Hasta 1.000 entregas/mes', features: ['Fotos de entrega guardadas por 15 días'], badge: null },
+      { name: 'Starter + WhatsApp', deliverers: 'Hasta 2 repartidores', deliveries: 'Hasta 1.000 entregas/mes', features: ['Notificaciones WhatsApp automáticas'], badge: null },
+      { name: 'Pro', deliverers: 'Hasta 4 repartidores', deliveries: 'Sin límite de entregas', features: ['Confirmación con foto de la entrega', 'Valoración de repartidores', 'Exportación CSV con filtros', 'Fotos de entrega guardadas por 3 meses'], badge: null },
+      { name: 'Pro + WhatsApp', deliverers: 'Hasta 4 repartidores', deliveries: 'Sin límite de entregas', features: ['Confirmación con foto de la entrega', 'Valoración de repartidores', 'Exportación CSV con filtros', 'Notificaciones WhatsApp automáticas', 'Fotos de entrega guardadas por 3 meses'], badge: 'Más popular' },
+      { name: 'Pro Premium', deliverers: 'Repartidores ilimitados', deliveries: 'Sin límite de entregas', features: ['Confirmación con foto de la entrega', 'Valoración de repartidores', 'Exportación CSV con filtros', 'Notificaciones WhatsApp automáticas', 'Logo y colores personalizados', 'Fotos de entrega guardadas por 1 año'], badge: null },
+    ],
+  },
+  finalCta: {
+    title: 'Empieza a organizar tus entregas hoy',
+    subtitle: '3 meses gratis, sin tarjeta de crédito. Configúralo en menos de 5 minutos.',
+    cta: 'Crear cuenta gratis',
+  },
+  footer: {
+    tagline: 'Gestión de entregas y logística urbana',
+    rights: 'Todos los derechos reservados.',
+    privacy: 'Privacidad', terms: 'Términos de uso', panel: 'Acceder al panel →',
+  },
+  jsonLd: {
+    orgDesc: 'LogiFlow es la plataforma de gestión de entregas y logística urbana para tiendas: pedidos, rutas, rastreo GPS y confirmación de entrega.',
+    appDesc: 'Plataforma de gestión de entregas y logística urbana: pedidos, rutas automáticas, rastreo GPS en vivo, confirmación con foto y notificaciones para el cliente.',
+    offerDesc: 'Desde R$80/mes, con 3 meses gratis.',
+  },
+}
+
+export const dictionaries: Record<Locale, Dict> = { pt, es }
+
+// ─── components ──────────────────────────────────────────────────────────────
+
+function CheckIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+    </svg>
+  )
+}
+
+function buildJsonLd(dict: Dict) {
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${SITE_URL}/#organization`,
+        name: 'LogiFlow',
+        url: SITE_URL,
+        logo: `${SITE_URL}/icons/icon-512.png`,
+        description: dict.jsonLd.orgDesc,
+      },
+      {
+        '@type': 'SoftwareApplication',
+        name: 'LogiFlow',
+        url: SITE_URL,
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web, Android, iOS',
+        description: dict.jsonLd.appDesc,
+        offers: { '@type': 'Offer', price: '80', priceCurrency: 'BRL', description: dict.jsonLd.offerDesc },
+        publisher: { '@id': `${SITE_URL}/#organization` },
+      },
+    ],
+  }
+}
+
+// ─── page ────────────────────────────────────────────────────────────────────
+
+export default function HomeLanding({ dict }: { dict: Dict; locale: Locale }) {
+  return (
+    <div className="min-h-screen bg-white text-gray-900">
+
+      {/* ── Structured data (SEO) ── */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(buildJsonLd(dict)) }}
+      />
+
+      {/* ── Nav ── */}
+      <nav className="fixed inset-x-0 top-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
+              <span className="text-sm font-bold text-white">L</span>
+            </div>
+            <span className="text-lg font-bold text-gray-900">LogiFlow</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+              {dict.nav.login}
+            </Link>
+            <Link href="/cadastro" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              {dict.nav.signup}
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero ── */}
+      <section className="pt-32 pb-20 px-6">
+        <div className="mx-auto max-w-4xl text-center">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
+            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            {dict.hero.badge}
+          </div>
+          <h1 className="mb-6 text-5xl font-bold leading-tight text-gray-900 sm:text-6xl">
+            {dict.hero.titleA}{' '}
+            <span className="text-blue-600">{dict.hero.titleHighlight}</span>{' '}
+            {dict.hero.titleB}
+          </h1>
+          <p className="mx-auto mb-10 max-w-2xl text-xl text-gray-500 leading-relaxed">
+            {dict.hero.subtitle}
+          </p>
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link href="/cadastro" className="rounded-xl bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors">
+              {dict.hero.ctaPrimary}
+            </Link>
+            <a href="#planos" className="rounded-xl border border-gray-200 px-8 py-4 text-base font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+              {dict.hero.ctaSecondary}
+            </a>
+          </div>
+          <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-400">
+            <svg className="h-4 w-4 text-green-500" viewBox="0 0 24 24" fill="currentColor">
+              <path fillRule="evenodd" d="M10.5 3.75a6.75 6.75 0 100 13.5 6.75 6.75 0 000-13.5zM2.25 10.5a8.25 8.25 0 1114.59 5.28l4.69 4.69a.75.75 0 11-1.06 1.06l-4.69-4.69A8.25 8.25 0 012.25 10.5z" clipRule="evenodd" />
+            </svg>
+            {dict.hero.delivererPrefix}{' '}
+            <a href="#app" className="font-medium text-blue-600 underline underline-offset-2 hover:text-blue-800">
+              {dict.hero.delivererLink}
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── App download banner ── */}
+      <section className="bg-gray-900 py-16 px-6" id="app">
+        <div className="mx-auto max-w-5xl flex flex-col items-center gap-10 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-center sm:text-left">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-green-500/20 px-3 py-1 text-sm font-medium text-green-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              {dict.appBanner.badge}
+            </div>
+            <h2 className="mb-3 text-3xl font-bold text-white">
+              {dict.appBanner.title}
+            </h2>
+            <p className="max-w-md text-gray-400 leading-relaxed">
+              {dict.appBanner.subtitle}
+            </p>
+            <ul className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-400">
+              {dict.appBanner.bullets.map(item => (
+                <li key={item} className="flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex flex-col items-center gap-3">
+            <a
+              href="https://apps.apple.com/br/app/logiflow/id6776034206"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.05 12.536c-.028-2.898 2.366-4.287 2.474-4.355-1.348-1.972-3.446-2.242-4.19-2.273-1.785-.181-3.483 1.05-4.388 1.05-.9 0-2.297-1.025-3.778-.997-1.944.029-3.738 1.13-4.74 2.87-2.02 3.503-.517 8.69 1.446 11.53.96 1.39 2.104 2.951 3.605 2.895 1.446-.058 1.994-.935 3.743-.935 1.75 0 2.242.935 3.775.906 1.558-.028 2.545-1.417 3.498-2.813 1.102-1.614 1.556-3.176 1.582-3.256-.034-.016-3.036-1.166-3.066-4.622zM14.23 3.83c.799-.968 1.337-2.313 1.19-3.654-1.15.047-2.545.766-3.372 1.734-.741.858-1.39 2.229-1.216 3.544 1.284.099 2.598-.653 3.398-1.624z" />
+              </svg>
+              <div className="text-left">
+                <div className="text-xs text-gray-500 font-normal">{dict.appBanner.storeSmall}</div>
+                <div className="text-base">{dict.appBanner.storeName}</div>
+              </div>
+            </a>
+            <a
+              href="https://github.com/josemiguelq/logiflow-app/releases/download/v1.1.3/app-release.apk"
+              download
+              className="flex w-full items-center gap-3 rounded-2xl bg-white px-7 py-4 text-gray-900 font-semibold shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.523 15.341a.75.75 0 01-.06 1.06 9.75 9.75 0 01-11.003 1.63l-1.94 1.94a.75.75 0 01-1.06-1.06l1.94-1.94A9.75 9.75 0 0116.463 5.463a.75.75 0 011.06 1.06 8.25 8.25 0 00-9.31 13.4l.003.003a8.25 8.25 0 009.307-4.585zM12 8.25a.75.75 0 01.75.75v3.44l1.72 1.72a.75.75 0 11-1.06 1.06l-2-2A.75.75 0 0111.25 12V9a.75.75 0 01.75-.75z" />
+              </svg>
+              <div className="text-left">
+                <div className="text-xs text-gray-500 font-normal">{dict.appBanner.androidSmall}</div>
+                <div className="text-base">{dict.appBanner.androidName}</div>
+              </div>
+            </a>
+            <p className="text-xs text-gray-500">{dict.appBanner.freeNote}</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Social proof strip ── */}
+      <section className="border-y border-gray-100 bg-gray-50 py-5 px-6">
+        <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-sm text-gray-500">
+          {dict.socialProof.map(item => (
+            <span key={item} className="flex items-center gap-1.5">
+              <CheckIcon />
+              {item}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Features ── */}
+      <section className="py-24 px-6" id="funcionalidades">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-16 text-center">
+            <h2 className="mb-4 text-4xl font-bold text-gray-900">{dict.features.title}</h2>
+            <p className="mx-auto max-w-xl text-lg text-gray-500">
+              {dict.features.subtitle}
+            </p>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {dict.features.items.map(f => (
+              <div key={f.title} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm hover:shadow-md hover:border-blue-100 transition-all">
+                <div className="mb-4 text-3xl">{f.icon}</div>
+                <h3 className="mb-2 text-base font-semibold text-gray-900">{f.title}</h3>
+                <p className="text-sm leading-relaxed text-gray-500">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Auto-routes showcase ── */}
+      <section className="border-t border-gray-100 bg-gradient-to-b from-white to-blue-50/50 py-24 px-6" id="rotas-automaticas">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-14 text-center">
+            <h2 className="mb-4 text-4xl font-bold text-gray-900">
+              {dict.autoRoutes.title}
+            </h2>
+            <p className="mx-auto max-w-2xl text-lg text-gray-500">
+              {dict.autoRoutes.subtitle}
+            </p>
+          </div>
+
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            {/* Steps */}
+            <div className="order-2 lg:order-1">
+              <ol className="space-y-6">
+                {dict.autoRoutes.steps.map(step => (
+                  <li key={step.n} className="flex gap-4">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                      {step.n}
+                    </div>
+                    <div>
+                      <h3 className="mb-1 font-semibold text-gray-900">{step.title}</h3>
+                      <p className="text-sm leading-relaxed text-gray-500">{step.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-8 flex items-start gap-2 rounded-xl border border-blue-100 bg-white p-4 text-sm text-gray-600 shadow-sm">
+                <span className="text-lg leading-none">🧪</span>
+                <p>
+                  <span className="font-semibold text-gray-900">{dict.autoRoutes.simulateBold}</span>{' '}
+                  {dict.autoRoutes.simulateRest}
+                </p>
+              </div>
+            </div>
+
+            {/* Config screenshot */}
+            <div className="order-1 lg:order-2">
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl shadow-blue-100/50 ring-1 ring-gray-100">
+                <img src="/screenshots/auto-route.png" alt={dict.autoRoutes.configAlt} className="w-full" loading="lazy" />
+              </div>
+              <p className="mt-3 text-center text-sm text-gray-400">
+                {dict.autoRoutes.configCaption}
+              </p>
+            </div>
+          </div>
+
+          {/* Result screenshot */}
+          <div className="mt-20">
+            <div className="mx-auto mb-6 max-w-2xl text-center">
+              <h3 className="mb-2 text-2xl font-bold text-gray-900">
+                {dict.autoRoutes.resultTitle}
+              </h3>
+              <p className="text-gray-500">
+                {dict.autoRoutes.resultSubtitle}
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-blue-100/50 ring-1 ring-gray-100">
+              <img src="/screenshots/route-details.png" alt={dict.autoRoutes.resultAlt} className="w-full" loading="lazy" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Benefits ── */}
+      <section className="bg-gray-50 py-24 px-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-16 text-center">
+            <h2 className="mb-4 text-4xl font-bold text-gray-900">{dict.benefits.title}</h2>
+            <p className="mx-auto max-w-xl text-lg text-gray-500">
+              {dict.benefits.subtitle}
+            </p>
+          </div>
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {dict.benefits.items.map(b => (
+              <div key={b.title} className="flex gap-4">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xl">
+                  {b.icon}
+                </div>
+                <div>
+                  <h3 className="mb-1.5 font-semibold text-gray-900">{b.title}</h3>
+                  <p className="text-sm leading-relaxed text-gray-500">{b.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pricing ── */}
+      <section className="py-24 px-6" id="planos">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-4 text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-green-100 bg-green-50 px-4 py-1.5 text-sm font-medium text-green-700">
+              {dict.pricing.trialBadge}
+            </div>
+            <h2 className="mb-4 text-4xl font-bold text-gray-900">{dict.pricing.title}</h2>
+            <p className="mx-auto max-w-xl text-lg text-gray-500">
+              {dict.pricing.subtitle}
+            </p>
+          </div>
+
+          {/* Incluído em todos os planos */}
+          <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-blue-100 bg-blue-50 px-6 py-5">
+            <p className="text-center text-sm font-semibold text-blue-900">
+              {dict.pricing.includedLead} <span className="font-bold">{dict.pricing.includedBold}</span> {dict.pricing.includedTail}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-blue-800">
+              {dict.pricing.includedItems.map(item => (
+                <span key={item} className="flex items-center gap-1.5">
+                  <CheckIcon />
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {dict.pricing.plans.map((plan, i) => {
+              const s = PLAN_STRUCT[i]
+              return (
+                <div
+                  key={plan.name}
+                  className={`relative flex flex-col rounded-2xl border p-6 ${
+                    s.highlight
+                      ? 'border-blue-500 bg-blue-600 shadow-xl shadow-blue-200 text-white'
+                      : 'border-gray-200 bg-white shadow-sm'
+                  }`}
+                >
+                  {s.badge && plan.badge && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-white shadow">
+                      {plan.badge}
+                    </div>
+                  )}
+
+                  <div className="mb-4">
+                    <p className={`text-sm font-semibold mb-3 ${s.highlight ? 'text-blue-100' : 'text-gray-500'}`}>
+                      {plan.name}
+                    </p>
+                    <div className="flex items-end gap-1">
+                      <span className={`text-4xl font-bold ${s.highlight ? 'text-white' : 'text-gray-900'}`}>
+                        {dict.pricing.currency}{s.price}
+                      </span>
+                      <span className={`mb-1 text-sm ${s.highlight ? 'text-blue-200' : 'text-gray-400'}`}>{dict.pricing.perMonth}</span>
+                    </div>
+                    <div className={`mt-2 flex flex-wrap gap-2 text-xs ${s.highlight ? 'text-blue-100' : 'text-gray-500'}`}>
+                      <span className={`rounded-full px-2 py-0.5 ${s.highlight ? 'bg-blue-500' : 'bg-gray-100'}`}>
+                        {plan.deliverers}
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 ${s.highlight ? 'bg-blue-500' : 'bg-gray-100'}`}>
+                        {plan.deliveries}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mb-6 flex-1">
+                    {plan.features.length > 0 ? (
+                      <>
+                        <p className={`mb-2.5 text-xs font-medium ${s.highlight ? 'text-blue-100' : 'text-gray-400'}`}>
+                          {dict.pricing.extraLabel}
+                        </p>
+                        <ul className="space-y-2.5">
+                          {plan.features.map(feat => (
+                            <li key={feat} className="flex items-start gap-2 text-sm">
+                              {s.highlight ? (
+                                <svg className="h-4 w-4 shrink-0 mt-0.5 text-blue-200" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <CheckIcon />
+                              )}
+                              <span className={s.highlight ? 'text-blue-50' : 'text-gray-600'}>{feat}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-500">
+                        {dict.pricing.starterFallback}
+                      </p>
+                    )}
+                  </div>
+
+                  {s.active ? (
+                    <Link
+                      href="/cadastro"
+                      className={`block rounded-xl py-3 text-center text-sm font-semibold transition-colors ${
+                        s.highlight
+                          ? 'bg-white text-blue-600 hover:bg-blue-50'
+                          : 'bg-gray-900 text-white hover:bg-gray-700'
+                      }`}
+                    >
+                      {dict.pricing.ctaActive}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="block w-full cursor-not-allowed rounded-xl bg-gray-200 py-3 text-center text-sm font-semibold text-gray-400"
+                    >
+                      {dict.pricing.ctaActive}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <p className="mt-8 text-center text-sm text-gray-400">
+            {dict.pricing.footnote}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Final CTA ── */}
+      <section className="bg-blue-600 py-20 px-6">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="mb-4 text-4xl font-bold text-white">
+            {dict.finalCta.title}
+          </h2>
+          <p className="mb-8 text-lg text-blue-100">
+            {dict.finalCta.subtitle}
+          </p>
+          <Link href="/cadastro" className="inline-block rounded-xl bg-white px-8 py-4 text-base font-semibold text-blue-600 shadow-lg hover:bg-blue-50 transition-colors">
+            {dict.finalCta.cta}
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer className="border-t border-gray-100 bg-white py-10 px-6">
+        <div className="mx-auto max-w-6xl flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+          <div className="flex flex-col items-center gap-1 sm:items-start">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
+                <span className="text-xs font-bold text-white">L</span>
+              </div>
+              <span className="font-semibold text-gray-900">LogiFlow</span>
+            </div>
+            <p className="text-xs text-gray-400">{dict.footer.tagline}</p>
+          </div>
+          <p className="text-sm text-gray-400">© {new Date().getFullYear()} LogiFlow. {dict.footer.rights}</p>
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <Link href="/privacidade" className="hover:text-gray-900">{dict.footer.privacy}</Link>
+            <Link href="/termos" className="hover:text-gray-900">{dict.footer.terms}</Link>
+            <Link href="/login" className="hover:text-gray-900">{dict.footer.panel}</Link>
+          </div>
+        </div>
+      </footer>
+
+    </div>
+  )
+}
