@@ -7,11 +7,15 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'dart:convert';
 import '../../core/api/api_client.dart';
+import '../../core/map_tiles.dart';
 import '../../core/models/order.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/app_drawer.dart';
 
 final _activeDeliveryProvider =
     FutureProvider.autoDispose<List<Order>>((ref) async {
@@ -28,71 +32,635 @@ final _activeDeliveryProvider =
     ..sort((a, b) => (a.routePosition ?? 99).compareTo(b.routePosition ?? 99));
 });
 
-class DeliveryScreen extends ConsumerWidget {
+// Verde de acento da tela de entregas (mesmo tom já usado nos status/entregue).
+const _green = Color(0xFF16A34A);
+
+class DeliveryScreen extends ConsumerStatefulWidget {
   const DeliveryScreen({super.key});
+
+  @override
+  ConsumerState<DeliveryScreen> createState() => _DeliveryScreenState();
+}
+
+class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
+  int _tabIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(storeSettingsProvider);
+    const subtitles = ['Entregas em rota', 'Mapa da rota', 'Histórico', 'Perfil'];
+
+    return Scaffold(
+      // Sidebar mantido: o hambúrguer da AppBar abre o drawer.
+      drawer: const AppDrawer(),
+      appBar: AppBar(
+        centerTitle: true,
+        title: _BrandTitle(
+          brand: settings.value?.brandName ?? 'LogiFlow',
+          subtitle: subtitles[_tabIndex],
+        ),
+        actions: [
+          if (_tabIndex <= 1)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => ref.invalidate(_activeDeliveryProvider),
+            ),
+        ],
+      ),
+      body: switch (_tabIndex) {
+        0 => const _RouteTab(),
+        1 => const _MapTab(),
+        2 => const _ComingSoon(
+            icon: Icons.history,
+            title: 'Histórico',
+            message: 'O histórico de entregas chega em breve.'),
+        _ => const _ComingSoon(
+            icon: Icons.person_outline,
+            title: 'Perfil',
+            message: 'Seu perfil de entregador chega em breve.'),
+      },
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _tabIndex,
+        onTap: (i) => setState(() => _tabIndex = i),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: _green,
+        unselectedItemColor: Colors.grey.shade500,
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.alt_route), label: 'Rota'),
+          BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Mapa'),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Histórico'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline), label: 'Perfil'),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Tab "Rota" ───────────────────────────────────────────────────────────────
+
+class _RouteTab extends ConsumerWidget {
+  const _RouteTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final orders = ref.watch(_activeDeliveryProvider);
     final settings = ref.watch(storeSettingsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: _BrandTitle(
-          brand: settings.value?.brandName ?? 'LogiFlow',
-          subtitle: 'Entregas em rota',
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/orders'),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(_activeDeliveryProvider),
+    return orders.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _DeliveryErrorState(
+        offline: isNoInternetError(e),
+        onRetry: () => ref.invalidate(_activeDeliveryProvider),
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return _EmptyDeliveryState(onGoOrders: () => context.go('/orders'));
+        }
+        final enforceOrder = settings.value?.enforceDeliveryOrder ?? false;
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(_activeDeliveryProvider),
+          child: _RouteListView(
+            list: list,
+            enforceOrder: enforceOrder,
+            onChanged: () => ref.invalidate(_activeDeliveryProvider),
           ),
+        );
+      },
+    );
+  }
+}
+
+// Mantém qual card está expandido. Só a "próxima entrega" (primeiro card
+// acionável) vem expandida por padrão; tocar em outro card expande-o e recolhe
+// o anterior — preservando as ações de qualquer pedido quando a loja não força
+// a ordem da rota.
+class _RouteListView extends StatefulWidget {
+  final List<Order> list;
+  final bool enforceOrder;
+  final VoidCallback onChanged;
+  const _RouteListView({
+    required this.list,
+    required this.enforceOrder,
+    required this.onChanged,
+  });
+
+  @override
+  State<_RouteListView> createState() => _RouteListViewState();
+}
+
+class _RouteListViewState extends State<_RouteListView> {
+  String? _expandedId;
+
+  String? get _firstActionableId {
+    for (final o in widget.list) {
+      if (o.status != 'DELIVERED') return o.id;
+    }
+    return null;
+  }
+
+  // Bloqueia se a loja exige ordem e há outra parada anterior da mesma rota
+  // AINDA PENDENTE (paradas já entregues não bloqueiam).
+  bool _blocked(Order order) {
+    if (!widget.enforceOrder || order.routeId == null) return false;
+    return widget.list.any((o) =>
+        o.routeId == order.routeId &&
+        o.status != 'DELIVERED' &&
+        (o.routePosition ?? 9999) < (order.routePosition ?? 9999));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.list;
+    final firstId = _firstActionableId;
+    // Usa a seleção do usuário se ainda válida (existe e não foi entregue);
+    // senão, volta para a próxima entrega.
+    final selection = _expandedId;
+    final validSelection = selection != null &&
+        list.any((o) => o.id == selection && o.status != 'DELIVERED');
+    final expandedId = validSelection ? selection : firstId;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _RouteHeader(onReport: () => _showReportSheet(context)),
+        const SizedBox(height: 14),
+        _RouteSummaryCard(list: list),
+        const SizedBox(height: 16),
+        for (int i = 0; i < list.length; i++) ...[
+          _DeliveryCard(
+            key: ValueKey(list[i].id),
+            order: list[i],
+            position: i + 1,
+            total: list.length,
+            expanded: list[i].id == expandedId,
+            isNext: list[i].id == firstId,
+            deliverBlocked: _blocked(list[i]),
+            onTap: () => setState(() => _expandedId = list[i].id),
+            onDelivered: widget.onChanged,
+          ),
+          if (i != list.length - 1) const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _showReportSheet(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const _ReportProblemSheet(),
+    );
+  }
+}
+
+class _RouteHeader extends StatelessWidget {
+  final VoidCallback onReport;
+  const _RouteHeader({required this.onReport});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: const BoxDecoration(color: _green, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        const Expanded(
+          child: Text('Rota em andamento',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: onReport,
+          icon: const Icon(Icons.warning_amber_rounded, size: 18),
+          label: const Text('Reportar problema'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFFDC2626),
+            side: const BorderSide(color: Color(0xFFFCA5A5)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Card de resumo com barra de progresso e "tempo em rota" ao vivo.
+class _RouteSummaryCard extends StatefulWidget {
+  final List<Order> list;
+  const _RouteSummaryCard({required this.list});
+
+  @override
+  State<_RouteSummaryCard> createState() => _RouteSummaryCardState();
+}
+
+class _RouteSummaryCardState extends State<_RouteSummaryCard> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // "Em rota há X" avança sozinho.
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // Início da rota = retirada (pickedUpAt), que o backend grava no mesmo momento
+  // em que a rota recebe `started_at`. Usamos a retirada mais antiga entre os
+  // pedidos da rota — equivalente ao `startedAt` da rota.
+  DateTime? get _routeStart {
+    DateTime? earliest;
+    for (final o in widget.list) {
+      final t = o.pickedUpAt;
+      if (t != null && (earliest == null || t.isBefore(earliest))) earliest = t;
+    }
+    return earliest;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.list;
+    final total = list.length;
+    final done = list.where((o) => o.status == 'DELIVERED').length;
+    final faltam = total - done;
+    final progress = total == 0 ? 0.0 : done / total;
+
+    final start = _routeStart;
+    final elapsed = start == null
+        ? null
+        : formatWaitDuration(DateTime.now().difference(start).inMinutes);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border:
+            const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2)),
         ],
       ),
-      body: orders.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => _DeliveryErrorState(
-          offline: isNoInternetError(e),
-          onRetry: () => ref.invalidate(_activeDeliveryProvider),
-        ),
-        data: (list) {
-          if (list.isEmpty) {
-            return _EmptyDeliveryState(onGoOrders: () => context.go('/orders'));
-          }
-          final enforceOrder = settings.value?.enforceDeliveryOrder ?? false;
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(_activeDeliveryProvider),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: list.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (_, i) {
-                final order = list[i];
-                // Bloqueia se a loja exige ordem e há outra parada anterior da
-                // mesma rota AINDA PENDENTE (paradas já entregues não bloqueiam).
-                final blocked = enforceOrder &&
-                    order.routeId != null &&
-                    list.any((o) =>
-                        o.routeId == order.routeId &&
-                        o.status != 'DELIVERED' &&
-                        (o.routePosition ?? 9999) <
-                            (order.routePosition ?? 9999));
-                return _DeliveryCard(
-                  order: order,
-                  position: i + 1,
-                  total: list.length,
-                  deliverBlocked: blocked,
-                  onDelivered: () => ref.invalidate(_activeDeliveryProvider),
-                );
-              },
+      // Progresso à esquerda; estatísticas (Faltam / Em rota há) na mesma linha,
+      // à direita — como no mockup.
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Progresso da rota',
+                    style:
+                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(100),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 8,
+                    backgroundColor: const Color(0xFFE5E7EB),
+                    valueColor: const AlwaysStoppedAnimation(_green),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text('$done/$total',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          _SummaryStat(
+            icon: Icons.local_shipping_outlined,
+            label: 'Faltam',
+            value: '$faltam ${faltam == 1 ? 'entrega' : 'entregas'}',
+          ),
+          if (elapsed != null) ...[
+            const SizedBox(width: 16),
+            _SummaryStat(
+              icon: Icons.schedule,
+              label: 'Em rota há',
+              value: elapsed,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _SummaryStat(
+      {required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18, color: Colors.grey.shade500),
+        const SizedBox(height: 4),
+        Text(label,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
+}
+
+// ── Tab "Mapa" ───────────────────────────────────────────────────────────────
+
+class _MapTab extends ConsumerWidget {
+  const _MapTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orders = ref.watch(_activeDeliveryProvider);
+    return orders.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _DeliveryErrorState(
+        offline: isNoInternetError(e),
+        onRetry: () => ref.invalidate(_activeDeliveryProvider),
+      ),
+      data: (list) {
+        final withCoords = list
+            .where((o) => o.customerLat != null && o.customerLng != null)
+            .toList();
+        if (withCoords.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.map_outlined, size: 56, color: Colors.grey.shade400),
+                const SizedBox(height: 12),
+                Text('Nenhum ponto com localização disponível',
+                    style: TextStyle(color: Colors.grey.shade600)),
+              ],
             ),
           );
-        },
+        }
+        final center = LatLng(
+          withCoords.map((o) => o.customerLat!).reduce((a, b) => a + b) /
+              withCoords.length,
+          withCoords.map((o) => o.customerLng!).reduce((a, b) => a + b) /
+              withCoords.length,
+        );
+        return FlutterMap(
+          options: MapOptions(initialCenter: center, initialZoom: 13),
+          children: [
+            appTileLayer(),
+            MarkerLayer(
+              markers: [
+                for (int i = 0; i < list.length; i++)
+                  if (list[i].customerLat != null &&
+                      list[i].customerLng != null)
+                    Marker(
+                      point:
+                          LatLng(list[i].customerLat!, list[i].customerLng!),
+                      width: 160,
+                      height: 64,
+                      alignment: Alignment.topCenter,
+                      child: _MapPin(
+                        position: i + 1,
+                        name: list[i].customerName,
+                        delivered: list[i].status == 'DELIVERED',
+                      ),
+                    ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MapPin extends StatelessWidget {
+  final int position;
+  final String name;
+  final bool delivered;
+  const _MapPin(
+      {required this.position, required this.name, required this.delivered});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = delivered ? Colors.grey.shade400 : _green;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2)),
+            ],
+          ),
+          child: Center(
+            child: Text('$position',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13)),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 3),
+            ],
+          ),
+          child: Text(name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Placeholder "em breve" (Histórico / Perfil) ──────────────────────────────
+
+class _ComingSoon extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  const _ComingSoon(
+      {required this.icon, required this.title, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE0E7FF),
+                  borderRadius: BorderRadius.circular(100)),
+              child: const Text('Em breve',
+                  style: TextStyle(
+                      color: Color(0xFF4F46E5),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reportar problema (stub) ─────────────────────────────────────────────────
+// TODO: wire backend — ainda não há endpoint para reportar problema da rota.
+
+const _reportReasons = <String>[
+  'Endereço não encontrado',
+  'Cliente não atende',
+  'Problema com o veículo',
+  'Outro',
+];
+
+class _ReportProblemSheet extends StatefulWidget {
+  const _ReportProblemSheet();
+
+  @override
+  State<_ReportProblemSheet> createState() => _ReportProblemSheetState();
+}
+
+class _ReportProblemSheetState extends State<_ReportProblemSheet> {
+  final _noteCtrl = TextEditingController();
+  String? _reason;
+
+  @override
+  void dispose() {
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    // TODO: wire backend — por ora só confirma localmente.
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Problema reportado ao operador.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final bottomPad = 20 + mq.viewInsets.bottom + mq.viewPadding.bottom;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Row(children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626)),
+            SizedBox(width: 8),
+            Text('Reportar problema',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+          ]),
+          const SizedBox(height: 16),
+          for (final r in _reportReasons)
+            RadioListTile<String>(
+              value: r,
+              groupValue: _reason,
+              onChanged: (v) => setState(() => _reason = v),
+              title: Text(r, style: const TextStyle(fontSize: 15)),
+              activeColor: const Color(0xFFDC2626),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+            ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _noteCtrl,
+            maxLines: 3,
+            maxLength: 500,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              labelText: 'Detalhes (opcional)',
+              alignLabelWithHint: true,
+              counterText: '',
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _reason == null ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626)),
+              child: const Text('Enviar', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -102,13 +670,20 @@ class _DeliveryCard extends ConsumerStatefulWidget {
   final Order order;
   final int position;
   final int total;
+  final bool expanded;
+  final bool isNext;
   final bool deliverBlocked;
+  final VoidCallback onTap;
   final VoidCallback onDelivered;
 
   const _DeliveryCard({
+    super.key,
     required this.order,
     required this.position,
     required this.total,
+    required this.expanded,
+    required this.isNext,
+    required this.onTap,
     required this.onDelivered,
     this.deliverBlocked = false,
   });
@@ -153,255 +728,325 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDelivered = widget.order.status == 'DELIVERED';
+    if (isDelivered) {
+      // Entregue: card compacto e opaco, sem ações (comportamento preservado).
+      return Opacity(opacity: 0.55, child: _buildCompact(delivered: true));
+    }
+    if (widget.expanded) return _buildExpanded();
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: _buildCompact(delivered: false),
+    );
+  }
+
+  Widget _numberBadge() {
+    final color = widget.order.status == 'DELIVERED'
+        ? Colors.grey.shade400
+        : widget.isNext
+            ? _green
+            : AppTheme.primary;
+    return CircleAvatar(
+      backgroundColor: color,
+      radius: 16,
+      child: Text('${widget.position}',
+          style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 13)),
+    );
+  }
+
+  Widget _statusBadge() {
     final order = widget.order;
     final isDelivered = order.status == 'DELIVERED';
-    final isOutForDelivery = order.status == 'OUT_FOR_DELIVERY';
-    final statusColor = isDelivered
+    final isOut = order.status == 'OUT_FOR_DELIVERY';
+    final bg = isDelivered
         ? const Color(0xFFDCFCE7)
-        : isOutForDelivery
+        : isOut
             ? const Color(0xFFFFEDD5)
             : const Color(0xFFE0E7FF);
-    final statusText = isDelivered
+    final txt = isDelivered
         ? 'Entregue'
-        : isOutForDelivery
+        : isOut
             ? 'Saiu p/ entrega'
             : 'Em rota';
-    final statusTextColor = isDelivered
+    final txtColor = isDelivered
         ? const Color(0xFF16A34A)
-        : isOutForDelivery
+        : isOut
             ? const Color(0xFFEA580C)
             : const Color(0xFF4F46E5);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(100)),
+      child: Text(txt,
+          style: TextStyle(
+              color: txtColor, fontSize: 12, fontWeight: FontWeight.w500)),
+    );
+  }
 
-    // Pedidos entregues permanecem na lista, porém opacos e sem ações.
-    return Opacity(
-      opacity: isDelivered ? 0.55 : 1.0,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border:
-              const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2)),
+  // Card recolhido: uma linha clicável com badge, nome, endereço e status.
+  Widget _buildCompact({required bool delivered}) {
+    final order = widget.order;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border:
+            const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            _numberBadge(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(order.customerName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 15),
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text(order.customerAddress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _statusBadge(),
+            if (!delivered) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
           ],
         ),
-        child: Column(
-          children: [
-            // Header
+      ),
+    );
+  }
+
+  // Card expandido ("próxima entrega"): borda verde e todas as ações.
+  Widget _buildExpanded() {
+    final order = widget.order;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _green, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+              color: _green.withOpacity(0.10),
+              blurRadius: 12,
+              offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _numberBadge(),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.isNext)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 2),
+                          child: Text('PRÓXIMA ENTREGA',
+                              style: TextStyle(
+                                  color: _green,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5)),
+                        ),
+                      Text(order.customerName,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16),
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _statusBadge(),
+              ],
+            ),
+          ),
+          // Address
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Row(
+              children: [
+                Icon(Icons.location_on_outlined,
+                    size: 16, color: Colors.grey.shade500),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(order.customerAddress,
+                      style:
+                          TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+          // Notes row
+          if (order.notes != null && order.notes!.isNotEmpty) _notesRow(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Divider(height: 1),
+          ),
+          // Action buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Row(
+              children: [
+                // Navigate → sets OUT_FOR_DELIVERY
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _navigating ? null : _navigateTo,
+                    icon: _navigating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.navigation_outlined, size: 18),
+                    label: const Text('Navegar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Confirm delivery — mantém todos os checks do fluxo atual
+                // (proximidade, código, foto, cobrança de valores).
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: widget.deliverBlocked
+                        ? null
+                        : () => _showDeliveryDialog(context),
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Confirmar entrega'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _green,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.deliverBlocked)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: AppTheme.primary,
-                    radius: 16,
-                    child: Text('${widget.position}',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13)),
-                  ),
-                  const SizedBox(width: 10),
+                  const Icon(Icons.lock_outline,
+                      size: 14, color: Color(0xFF92400E)),
+                  const SizedBox(width: 6),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(order.customerName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 15),
-                            overflow: TextOverflow.ellipsis),
-                        Text('#${order.shortId}',
-                            style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontSize: 12,
-                                fontFamily: 'monospace')),
-                      ],
+                    child: Text(
+                      'Conclua a entrega anterior da rota primeiro.',
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: Text(statusText,
-                        style: TextStyle(
-                            color: statusTextColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
                   ),
                 ],
               ),
             ),
-
-            // Address
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Row(
-                children: [
-                  Icon(Icons.location_on_outlined,
-                      size: 16, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(order.customerAddress,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: (_navigating || _returning || _cancelling)
+                        ? null
+                        : () => _returnToQueue(context),
+                    icon: _returning
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(Icons.undo_rounded,
+                            size: 16, color: Colors.grey.shade500),
+                    label: Text('Devolver à fila',
                         style: TextStyle(
                             color: Colors.grey.shade600, fontSize: 13)),
                   ),
-                ],
-              ),
-            ),
-
-            // Notes row
-            if (order.notes != null && order.notes!.isNotEmpty)
-              GestureDetector(
-                onTap: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('Observações'),
-                    content: Text(order.notes!),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(_),
-                        child: const Text('Fechar'),
-                      ),
-                    ],
-                  ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.info_outline,
-                          size: 15, color: Color(0xFFD97706)),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'Observações',
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: (_navigating || _returning || _cancelling)
+                        ? null
+                        : () => _showCancelSheet(context),
+                    icon: _cancelling
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Color(0xFFDC2626)))
+                        : const Icon(Icons.close,
+                            size: 16, color: Color(0xFFDC2626)),
+                    label: const Text('Cancelar entrega',
                         style: TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFFD97706),
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ],
+                            color: Color(0xFFDC2626), fontSize: 13)),
                   ),
                 ),
-              ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // Entregue: sem divisória e sem ações — apenas um respiro no rodapé.
-            if (isDelivered) const SizedBox(height: 14),
-
-            if (!isDelivered) ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Divider(height: 1),
-              ),
-              // Action buttons
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: Row(
-                  children: [
-                    // Navigate → sets OUT_FOR_DELIVERY
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _navigating ? null : _navigateTo,
-                        icon: _navigating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.navigation_outlined, size: 18),
-                        label: const Text('Navegar'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primary,
-                          side: const BorderSide(color: AppTheme.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // Confirm delivery
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: widget.deliverBlocked
-                            ? null
-                            : () => _showDeliveryDialog(context),
-                        icon: const Icon(Icons.check_circle_outline, size: 18),
-                        label: const Text('Entregar'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF16A34A),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (widget.deliverBlocked)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.lock_outline,
-                          size: 14, color: Color(0xFF92400E)),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Conclua a entrega anterior da rota primeiro.',
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.grey.shade700),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed: (_navigating || _returning || _cancelling)
-                            ? null
-                            : () => _returnToQueue(context),
-                        icon: _returning
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : Icon(Icons.undo_rounded,
-                                size: 16, color: Colors.grey.shade500),
-                        label: Text('Devolver à fila',
-                            style: TextStyle(
-                                color: Colors.grey.shade600, fontSize: 13)),
-                      ),
-                    ),
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed: (_navigating || _returning || _cancelling)
-                            ? null
-                            : () => _showCancelSheet(context),
-                        icon: _cancelling
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Color(0xFFDC2626)))
-                            : const Icon(Icons.close,
-                                size: 16, color: Color(0xFFDC2626)),
-                        label: const Text('Cancelar entrega',
-                            style: TextStyle(
-                                color: Color(0xFFDC2626), fontSize: 13)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+  Widget _notesRow() {
+    return GestureDetector(
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Observações'),
+          content: Text(widget.order.notes!),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Fechar'),
+            ),
+          ],
+        ),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 15, color: Color(0xFFD97706)),
+            SizedBox(width: 6),
+            Text(
+              'Observações',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFFD97706),
+                  fontWeight: FontWeight.w500),
+            ),
           ],
         ),
       ),
