@@ -1354,19 +1354,20 @@ export async function orderRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: 'Pedido não pode ser devolvido neste status' })
       }
 
-      const { rows: [{ route_id: returnedRouteId }] } = await db.query(
+      const routeId = (order as Record<string, unknown>).route_id as string | undefined
+
+      await db.query(
         `UPDATE orders
          SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
-         WHERE id = $1
-         RETURNING route_id`,
+         WHERE id = $1`,
         [id]
       )
       // Finaliza a rota se, após sair este pedido, os restantes já estiverem todos
       // entregues/cancelados (ou a rota tiver ficado vazia). checkAndFinish cobre
       // ambos os casos (route_id sem pedidos pendentes → FINISHED).
-      if (returnedRouteId) {
-        logRouteEvent(returnedRouteId as string, req.actor, 'ORDER_RETURNED_TO_QUEUE', { orderId: id })
-        await routeRepo.checkAndFinish(returnedRouteId as string, req.actor.storeId)
+      if (routeId) {
+        logRouteEvent(routeId, req.actor, 'ORDER_RETURNED_TO_QUEUE', { orderId: id })
+        await routeRepo.checkAndFinish(routeId, req.actor.storeId)
       }
 
       logEvent(id, req.actor, 'RETURNED_TO_QUEUE')
