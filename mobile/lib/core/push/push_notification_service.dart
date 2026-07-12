@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../api/api_client.dart';
+import 'local_notifications.dart';
 
 // ignore: avoid_print
 void _log(String msg) => print('[FCM] $msg');
@@ -20,6 +21,10 @@ class PushNotificationService {
 
   static Future<void> init() async {
     _log('init() called');
+    // Canal/plugin de notificação local — necessário para exibir a notificação
+    // quando a mensagem chega com o app em foreground (o Android não mostra
+    // notification-messages automaticamente nesse caso).
+    await initLocalNotifications();
     FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
     final settings = await _messaging.requestPermission(
@@ -42,9 +47,16 @@ class PushNotificationService {
       sound: true,
     );
 
-    // Foreground message listener
+    // Foreground message listener — em foreground o sistema não exibe a
+    // notificação sozinho, então mostramos uma notificação local.
     FirebaseMessaging.onMessage.listen((message) {
       _log('foreground message: ${message.messageId} | ${message.notification?.title} | ${message.notification?.body}');
+      final n = message.notification;
+      final title = n?.title ?? message.data['title'];
+      final body = n?.body ?? message.data['body'];
+      if (title != null || body != null) {
+        showLocalNotification(title: title ?? '', body: body ?? '');
+      }
     });
 
     final token = await _messaging.getToken();
