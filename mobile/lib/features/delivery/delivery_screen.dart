@@ -16,6 +16,8 @@ import '../../core/models/order.dart';
 import '../../core/providers/store_settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/priority_badge.dart';
+import '../chat/order_chat_screen.dart';
 
 final _activeDeliveryProvider =
     FutureProvider.autoDispose<List<Order>>((ref) async {
@@ -45,10 +47,14 @@ class DeliveryScreen extends ConsumerStatefulWidget {
 class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
   int _tabIndex = 0;
 
+  // Índice 2 é uma AÇÃO (abre "Reportar problema"), não uma aba — por isso o
+  // índice selecionado nunca é 2.
+  static const _reportIndex = 2;
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(storeSettingsProvider);
-    const subtitles = ['Entregas em rota', 'Mapa da rota', 'Histórico', 'Perfil'];
+    const subtitles = ['Entregas em rota', 'Mapa da rota', '', 'Perfil'];
 
     return Scaffold(
       // Sidebar mantido: o hambúrguer da AppBar abre o drawer.
@@ -70,10 +76,6 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
       body: switch (_tabIndex) {
         0 => const _RouteTab(),
         1 => const _MapTab(),
-        2 => const _ComingSoon(
-            icon: Icons.history,
-            title: 'Histórico',
-            message: 'O histórico de entregas chega em breve.'),
         _ => const _ComingSoon(
             icon: Icons.person_outline,
             title: 'Perfil',
@@ -81,7 +83,13 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
       },
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tabIndex,
-        onTap: (i) => setState(() => _tabIndex = i),
+        onTap: (i) {
+          if (i == _reportIndex) {
+            showReportProblemSheet(context);
+            return;
+          }
+          setState(() => _tabIndex = i);
+        },
         type: BottomNavigationBarType.fixed,
         selectedItemColor: _green,
         unselectedItemColor: Colors.grey.shade500,
@@ -90,13 +98,25 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.alt_route), label: 'Rota'),
           BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Mapa'),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Histórico'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.report_problem_outlined), label: 'Reportar'),
           BottomNavigationBarItem(
               icon: Icon(Icons.person_outline), label: 'Perfil'),
         ],
       ),
     );
   }
+}
+
+Future<void> showReportProblemSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => const _ReportProblemSheet(),
+  );
 }
 
 // ── Tab "Rota" ───────────────────────────────────────────────────────────────
@@ -153,12 +173,46 @@ class _RouteListView extends StatefulWidget {
 
 class _RouteListViewState extends State<_RouteListView> {
   String? _expandedId;
+  // Modo de edição: reordenar as paradas arrastando. Pedidos entregues ficam
+  // travados no início e não podem ser movidos.
+  bool _editing = false;
+  bool _saving = false;
+  late List<Order> _cards;
+
+  @override
+  void initState() {
+    super.initState();
+    _cards = List.of(widget.list);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RouteListView old) {
+    super.didUpdateWidget(old);
+    // Enquanto edita, mantém a ordem local; fora da edição, segue o provider.
+    if (!_editing) _cards = List.of(widget.list);
+  }
 
   String? get _firstActionableId {
     for (final o in widget.list) {
       if (o.status != 'DELIVERED') return o.id;
     }
     return null;
+  }
+
+  int get _movableCount =>
+      widget.list.where((o) => o.status != 'DELIVERED').length;
+
+  // Quantos pedidos entregues estão no início (travados na reordenação).
+  int get _leadingDelivered {
+    var n = 0;
+    for (final o in _cards) {
+      if (o.status == 'DELIVERED') {
+        n++;
+      } else {
+        break;
+      }
+    }
+    return n;
   }
 
   // Bloqueia se a loja exige ordem e há outra parada anterior da mesma rota
@@ -171,8 +225,69 @@ class _RouteListViewState extends State<_RouteListView> {
         (o.routePosition ?? 9999) < (order.routePosition ?? 9999));
   }
 
+  void _onReorder(int oldIndex, int newIndex) {
+    final locked = _leadingDelivered;
+    if (oldIndex < locked) return; // entregues não movem
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < locked) newIndex = locked; // não pode ir antes dos entregues
+    if (newIndex == oldIndex) return;
+    setState(() {
+      final moved = _cards.removeAt(oldIndex);
+      _cards.insert(newIndex, moved);
+    });
+  }
+
+  Future<void> _toggleEdit() async {
+    if (!_editing) {
+      setState(() {
+        _editing = true;
+        _expandedId = null;
+        _cards = List.of(widget.list);
+      });
+      return;
+    }
+    // Concluir: persiste apenas se a ordem mudou.
+    final newIds = _cards.map((o) => o.id).toList();
+    final oldIds = widget.list.map((o) => o.id).toList();
+    var changed = newIds.length != oldIds.length;
+    for (var i = 0; !changed && i < newIds.length; i++) {
+      if (newIds[i] != oldIds[i]) changed = true;
+    }
+    if (!changed) {
+      setState(() => _editing = false);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await ApiClient()
+          .dio
+          .patch('/deliverer/orders/reorder', data: {'orderIds': newIds});
+      widget.onChanged();
+      if (mounted) setState(() {
+        _editing = false;
+        _saving = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _cards = List.of(widget.list);
+      });
+      final msg = isNoInternetError(e)
+          ? kNoInternetMessage
+          : 'Não foi possível salvar a nova ordem. Tente novamente.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_editing) return _buildEditing();
+    return _buildNormal();
+  }
+
+  Widget _buildNormal() {
     final list = widget.list;
     final firstId = _firstActionableId;
     // Usa a seleção do usuário se ainda válida (existe e não foi entregue);
@@ -185,7 +300,12 @@ class _RouteListViewState extends State<_RouteListView> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _RouteHeader(onReport: () => _showReportSheet(context)),
+        _RouteHeader(
+          editing: false,
+          saving: false,
+          canEdit: _movableCount >= 2,
+          onToggleEdit: _toggleEdit,
+        ),
         const SizedBox(height: 14),
         _RouteSummaryCard(list: list),
         const SizedBox(height: 16),
@@ -207,21 +327,68 @@ class _RouteListViewState extends State<_RouteListView> {
     );
   }
 
-  Future<void> _showReportSheet(BuildContext context) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => const _ReportProblemSheet(),
+  Widget _buildEditing() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          child: _RouteHeader(
+            editing: true,
+            saving: _saving,
+            canEdit: true,
+            onToggleEdit: _toggleEdit,
+          ),
+        ),
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            itemCount: _cards.length,
+            buildDefaultDragHandles: false,
+            onReorder: _onReorder,
+            itemBuilder: (ctx, i) {
+              final order = _cards[i];
+              final delivered = order.status == 'DELIVERED';
+              final tile = Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _DeliveryCard(
+                  order: order,
+                  position: i + 1,
+                  total: _cards.length,
+                  expanded: false,
+                  isNext: false,
+                  editing: true,
+                  onTap: () {},
+                  onDelivered: widget.onChanged,
+                ),
+              );
+              // Entregues: não arrastáveis. Demais: arrasta de qualquer ponto.
+              if (delivered) {
+                return KeyedSubtree(key: ValueKey(order.id), child: tile);
+              }
+              return ReorderableDelayedDragStartListener(
+                key: ValueKey(order.id),
+                index: i,
+                child: tile,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _RouteHeader extends StatelessWidget {
-  final VoidCallback onReport;
-  const _RouteHeader({required this.onReport});
+  final bool editing;
+  final bool saving;
+  final bool canEdit;
+  final VoidCallback onToggleEdit;
+  const _RouteHeader({
+    required this.editing,
+    required this.saving,
+    required this.canEdit,
+    required this.onToggleEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -233,22 +400,37 @@ class _RouteHeader extends StatelessWidget {
           decoration: const BoxDecoration(color: _green, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
-        const Expanded(
-          child: Text('Rota em andamento',
+        Expanded(
+          child: Text(editing ? 'Arraste para reordenar' : 'Rota em andamento',
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
         const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: onReport,
-          icon: const Icon(Icons.warning_amber_rounded, size: 18),
-          label: const Text('Reportar problema'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFFDC2626),
-            side: const BorderSide(color: Color(0xFFFCA5A5)),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        if (editing)
+          ElevatedButton.icon(
+            onPressed: saving ? null : onToggleEdit,
+            icon: saving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.check, size: 18),
+            label: const Text('Concluir'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _green,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            ),
+          )
+        else if (canEdit)
+          // Caneta: entra no modo de reordenar as paradas.
+          IconButton(
+            onPressed: onToggleEdit,
+            icon: const Icon(Icons.edit_outlined),
+            color: AppTheme.primary,
+            tooltip: 'Reordenar rota',
           ),
-        ),
       ],
     );
   }
@@ -672,6 +854,7 @@ class _DeliveryCard extends ConsumerStatefulWidget {
   final int total;
   final bool expanded;
   final bool isNext;
+  final bool editing;
   final bool deliverBlocked;
   final VoidCallback onTap;
   final VoidCallback onDelivered;
@@ -685,6 +868,7 @@ class _DeliveryCard extends ConsumerStatefulWidget {
     required this.isNext,
     required this.onTap,
     required this.onDelivered,
+    this.editing = false,
     this.deliverBlocked = false,
   });
 
@@ -729,6 +913,11 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   @override
   Widget build(BuildContext context) {
     final isDelivered = widget.order.status == 'DELIVERED';
+    // Modo de edição (reordenar): tudo compacto, sombra reforçada, sem expandir.
+    if (widget.editing) {
+      final card = _buildCompact(delivered: isDelivered, editing: true);
+      return isDelivered ? Opacity(opacity: 0.55, child: card) : card;
+    }
     if (isDelivered) {
       // Entregue: card compacto e opaco, sem ações (comportamento preservado).
       return Opacity(opacity: 0.55, child: _buildCompact(delivered: true));
@@ -787,20 +976,62 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     );
   }
 
+  // Chat do pedido — abre a conversa com o operador da loja.
+  Widget _chatButton() {
+    final order = widget.order;
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => OrderChatScreen(
+            orderId: order.id,
+            title: '#${order.shortId}',
+          ),
+        ),
+      ),
+      borderRadius: BorderRadius.circular(100),
+      child: const Padding(
+        padding: EdgeInsets.all(4),
+        child: Icon(Icons.chat_bubble_outline, size: 20, color: AppTheme.primary),
+      ),
+    );
+  }
+
+  // Coluna à direita do card: status em cima, botão de chat embaixo.
+  Widget _trailing() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _statusBadge(),
+        const SizedBox(height: 6),
+        _chatButton(),
+      ],
+    );
+  }
+
   // Card recolhido: uma linha clicável com badge, nome, endereço e status.
-  Widget _buildCompact({required bool delivered}) {
+  // Em `editing`, ganha sombra reforçada e uma alça de arrastar no lugar do
+  // status/chat, deixando claro que está no modo de reordenar.
+  Widget _buildCompact({required bool delivered, bool editing = false}) {
     final order = widget.order;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border:
-            const Border.fromBorderSide(BorderSide(color: Color(0xFFE5E7EB))),
+        border: Border.fromBorderSide(BorderSide(
+            color: editing && !delivered
+                ? AppTheme.primary.withOpacity(0.35)
+                : const Color(0xFFE5E7EB))),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2)),
+          editing
+              ? BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6))
+              : BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2)),
         ],
       ),
       child: Padding(
@@ -817,21 +1048,33 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 15),
                       overflow: TextOverflow.ellipsis),
+                  Text('#${order.shortId}',
+                      style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                          fontFamily: 'monospace')),
                   const SizedBox(height: 2),
                   Text(order.customerAddress,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style:
                           TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  // Pedido entregue não precisa mais destacar prioridade.
+                  if (order.isPriority && !delivered) ...[
+                    const SizedBox(height: 6),
+                    PriorityBadge(order: order),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            _statusBadge(),
-            if (!delivered) ...[
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
-            ],
+            // Em edição: alça de arrastar (entregues não arrastam); fora: status + chat.
+            if (editing)
+              delivered
+                  ? Icon(Icons.lock_outline, color: Colors.grey.shade400, size: 20)
+                  : Icon(Icons.drag_handle, color: Colors.grey.shade500)
+            else
+              _trailing(),
           ],
         ),
       ),
@@ -867,6 +1110,13 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Coroa de prioridade no topo do card ("Próxima entrega").
+                      // Entregue não precisa destacar prioridade.
+                      if (order.isPriority && order.status != 'DELIVERED')
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: PriorityBadge(order: order),
+                        ),
                       if (widget.isNext)
                         const Padding(
                           padding: EdgeInsets.only(bottom: 2),
@@ -881,11 +1131,16 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16),
                           overflow: TextOverflow.ellipsis),
+                      Text('#${order.shortId}',
+                          style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 12,
+                              fontFamily: 'monospace')),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                _statusBadge(),
+                _trailing(),
               ],
             ),
           ),
