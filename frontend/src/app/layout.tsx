@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   ],
   // Só a landing é canônica/indexável; o restante é bloqueado via robots.ts.
   alternates: { canonical: '/' },
-  verification: { google: '4Sx71ffmBoZnMfrVpw4z8u_7ZKN_2O8lX3gF13F4M84' },
+  verification: { google: 'M-z1VW2i0D49RHISGYiZEofsunDvhb8LM9YrVKZtpAg' },
   openGraph: {
     // A imagem é gerada automaticamente por src/app/opengraph-image.tsx (1200×630).
     type:        'website',
