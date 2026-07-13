@@ -1,0 +1,4 @@
+ALTER TABLE routes ADD COLUMN IF NOT EXISTS issues JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- DOWN (rollback)
+-- ALTER TABLE routes DROP COLUMN IF EXISTS issues;

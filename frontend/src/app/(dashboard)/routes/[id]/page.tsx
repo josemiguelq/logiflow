@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil, ChevronDown } from 'lucide-react'
-import { DeliveryRoute, RouteStatus } from '@/types'
+import { DeliveryRoute, RouteStatus, RouteIssue, RouteIssueCategory } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
 import { RouteEditor } from './_edit'
@@ -52,6 +52,16 @@ const ROUTE_LOG_ACTION_LABEL: Record<string, string> = {
   ORDER_RETURNED_TO_QUEUE: 'Pedido devolvido à fila',
   ORDER_CANCELLED:         'Pedido cancelado',
   ORDER_DELIVERED:         'Pedido entregue',
+  ISSUE_REPORTED:          'Problema reportado',
+}
+
+const ISSUE_CATEGORY_LABEL: Record<RouteIssueCategory, string> = {
+  ADDRESS_NOT_FOUND:    'Endereço não encontrado',
+  ACCESS_BLOCKED:       'Acesso bloqueado',
+  CUSTOMER_UNAVAILABLE: 'Cliente indisponível',
+  WRONG_ADDRESS:        'Endereço incorreto',
+  DAMAGED_PACKAGE:      'Embalagem danificada',
+  OTHER:                'Outro',
 }
 
 function actorLabel(by: { type: string; name?: string }): string {
@@ -432,6 +442,54 @@ export default function RouteDetailPage({ params }: Props) {
             <OrderMessages orderId={order.id} />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Problemas reportados */}
+      {route.issues && route.issues.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-red-200 bg-white">
+          <div className="flex items-center gap-2 p-5 pb-3">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
+              Problemas reportados
+              <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium normal-case tracking-normal text-red-600">
+                {route.issues.length}
+              </span>
+            </h2>
+          </div>
+          <div className="px-5 pb-5">
+            <div className="space-y-3">
+              {[...route.issues]
+                .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
+                .map((issue) => {
+                  const linkedOrder = route.orders.find(o => o.id === issue.orderId)
+                  return (
+                    <div key={issue.id} className="rounded-xl border border-gray-100 bg-red-50/50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                              {ISSUE_CATEGORY_LABEL[issue.category]}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              #{issue.orderId.slice(-8).toUpperCase()}
+                              {linkedOrder && ` · ${linkedOrder.customerName}`}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700">{issue.description}</p>
+                        </div>
+                        <span className="shrink-0 text-xs text-gray-400" title={issue.reportedAt}>
+                          {fmtDateTime(issue.reportedAt)}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        Reportado por {issue.reportedBy.name}
+                      </p>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
         </div>
       )}
 

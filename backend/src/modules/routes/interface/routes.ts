@@ -432,4 +432,56 @@ export async function routeRoutes(app: FastifyInstance) {
     }
   )
 
+  // ── Report route issue (deliverer mobile) ────────────────────────────────
+  app.post(
+    '/deliverer/routes/:id/issues',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { category, description, orderId } = z.object({
+        category:    z.enum(['ADDRESS_NOT_FOUND', 'ACCESS_BLOCKED', 'CUSTOMER_UNAVAILABLE', 'WRONG_ADDRESS', 'DAMAGED_PACKAGE', 'OTHER']),
+        description: z.string().trim().min(1).max(500),
+        orderId:     z.string().uuid(),
+      }).parse(req.body)
+
+      // Verificar que a rota existe e pertence ao entregador
+      const { rows } = await db.query(
+        `SELECT id, store_id FROM routes WHERE id = $1 AND deliverer_id = $2`,
+        [id, req.actor.sub]
+      )
+      if (!rows[0]) return reply.code(404).send({ error: 'Rota não encontrada' })
+
+      const route = rows[0] as { id: string; store_id: string }
+
+      // Validar que o pedido pertence à rota
+      const { rows: orderRows } = await db.query(
+        `SELECT id FROM orders WHERE id = $1 AND route_id = $2`,
+        [orderId, id]
+      )
+      if (!orderRows[0]) return reply.code(404).send({ error: 'Pedido não pertence a esta rota' })
+
+      const issue = {
+        id:          crypto.randomUUID(),
+        category,
+        description,
+        orderId:     orderId ?? undefined,
+        reportedBy:  { id: req.actor.sub, name: req.actor.name },
+        reportedAt:  new Date().toISOString(),
+      }
+
+      await routeRepo.appendIssue(id, issue)
+
+      // Auditoria
+      logRouteEvent(id, req.actor, 'ISSUE_REPORTED', { issueId: issue.id, category, orderId })
+
+      // Broadcast: loja vê a atualização em tempo real
+      const updatedRoute = await routeRepo.findById(id, route.store_id)
+      if (updatedRoute) {
+        wsHub.broadcastOrderUpdate(route.store_id, { routeId: id, issues: updatedRoute.issues } as any)
+      }
+
+      return { ok: true, issue }
+    }
+  )
+
 }

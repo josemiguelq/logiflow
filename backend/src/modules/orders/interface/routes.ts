@@ -1137,6 +1137,65 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Reordenar a rota em andamento (pelo próprio entregador). Recebe a lista
+  // ordenada de IDs (todos da mesma rota do entregador). Pedidos já concluídos
+  // (DELIVERED/CANCELLED) não podem mudar de posição: precisam manter a ordem
+  // atual e permanecer antes dos pendentes.
+  app.patch(
+    '/deliverer/orders/reorder',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { orderIds } = z.object({
+        orderIds: z.array(z.string().uuid()).min(2),
+      }).parse(req.body)
+
+      const { rows } = await db.query(
+        `SELECT id, status, route_id, route_position
+           FROM orders
+          WHERE deliverer_id = $1 AND id = ANY($2::uuid[])`,
+        [req.actor.sub, orderIds]
+      )
+      if (rows.length !== orderIds.length) {
+        return reply.code(400).send({ error: 'Pedidos inválidos para reordenar' })
+      }
+      const routeId = rows[0].route_id as string | null
+      if (!routeId || rows.some(r => r.route_id !== routeId)) {
+        return reply.code(400).send({ error: 'Os pedidos precisam ser da mesma rota' })
+      }
+
+      // Pedidos concluídos travam nas posições iniciais, na ordem atual.
+      const statusById = new Map(rows.map(r => [r.id as string, r.status as string]))
+      const finished = rows
+        .filter(r => r.status === 'DELIVERED' || r.status === 'CANCELLED')
+        .sort((a, b) => ((a.route_position as number) ?? 0) - ((b.route_position as number) ?? 0))
+        .map(r => r.id as string)
+      const prefix = orderIds.slice(0, finished.length)
+      const sameOrder = finished.every((id, i) => prefix[i] === id)
+      const prefixAllFinished = prefix.every(id => {
+        const st = statusById.get(id)
+        return st === 'DELIVERED' || st === 'CANCELLED'
+      })
+      if (!sameOrder || !prefixAllFinished) {
+        return reply.code(409).send({ error: 'Pedidos já concluídos não podem ser reordenados' })
+      }
+
+      await db.transaction(async (client) => {
+        for (let i = 0; i < orderIds.length; i++) {
+          await client.query(
+            `UPDATE orders SET route_position = $1 WHERE id = $2 AND route_id = $3`,
+            [i + 1, orderIds[i], routeId]
+          )
+        }
+      })
+
+      invalidateDelivererOrders(req.actor.sub)
+      const updated = await orderRepo.findByRoute(routeId)
+      for (const o of updated) wsHub.broadcastOrderUpdate(req.actor.storeId, o)
+
+      return { ok: true, orders: updated }
+    }
+  )
+  
   const pickupSchema   = z.object({ code: z.string() })
   const deliverySchema = z.object({
     code:             z.string().default(''),

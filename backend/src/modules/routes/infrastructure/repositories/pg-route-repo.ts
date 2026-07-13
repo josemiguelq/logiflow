@@ -1,5 +1,5 @@
 import { DB } from '../../../../shared/db/client'
-import { DeliveryRoute, RouteStatus, RouteWithDetails, RouteOrderItem, RouteLogEntry } from '../../domain/entities'
+import { DeliveryRoute, RouteStatus, RouteWithDetails, RouteOrderItem, RouteLogEntry, RouteIssue } from '../../domain/entities'
 import { isDeliveredOffTarget } from '../../../../shared/utils/geo'
 
 function mapRoute(r: Record<string, unknown>): DeliveryRoute {
@@ -34,8 +34,17 @@ export function createPgRouteRepo(db: DB) {
     )
   }
 
+  // Anexa um problema reportado pelo entregador ao array JSONB issues da rota.
+  const appendIssue = async (routeId: string, issue: RouteIssue): Promise<void> => {
+    await db.query(
+      `UPDATE routes SET issues = COALESCE(issues, '[]'::jsonb) || $2::jsonb WHERE id = $1`,
+      [routeId, JSON.stringify([issue])]
+    )
+  }
+
   return {
     appendLog,
+    appendIssue,
 
     async findByStore(
       storeId: string,
@@ -80,6 +89,7 @@ export function createPgRouteRepo(db: DB) {
           },
           orders: [],
           log: [],   // listagem fica leve; o log completo só vem no detalhe
+          issues: [],
         })),
         total,
       }
@@ -127,6 +137,7 @@ export function createPgRouteRepo(db: DB) {
         ...mapRoute(r),
         orderCount: Number(r.order_count ?? 0),
         log: (r.log as RouteLogEntry[] | null) ?? [],
+        issues: (r.issues as RouteIssue[] | null) ?? [],
         deliverer: {
           id:       r.deliverer_id as string,
           name:     r.deliverer_name as string,
@@ -174,6 +185,7 @@ export function createPgRouteRepo(db: DB) {
         },
         orders: [],
         log: [],
+        issues: [],
       }))
     },
 

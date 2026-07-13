@@ -178,6 +178,23 @@ export interface OrderUnread {
 
 export type RouteStatus = 'CREATED' | 'STARTED' | 'FINISHED'
 
+export type RouteIssueCategory =
+  | 'ADDRESS_NOT_FOUND'
+  | 'ACCESS_BLOCKED'
+  | 'CUSTOMER_UNAVAILABLE'
+  | 'WRONG_ADDRESS'
+  | 'DAMAGED_PACKAGE'
+  | 'OTHER'
+
+export interface RouteIssue {
+  id:          string
+  category:    RouteIssueCategory
+  description: string
+  orderId:     string
+  reportedBy:  { id: string; name: string }
+  reportedAt:  string
+}
+
 export interface RouteOrderItem {
   id: string
   customerName: string
@@ -208,6 +225,7 @@ export interface DeliveryRoute {
   deliverer: { id: string; name: string; username: string }
   orders: RouteOrderItem[]
   log?: RouteLogEntry[]
+  issues?: RouteIssue[]
 }
 
 export interface RouteLogEntry {

@@ -8,6 +8,24 @@ export interface RouteLogEntry {
   details?: Record<string, unknown>
 }
 
+// Problema reportado pelo entregador na rota.
+export type RouteIssueCategory =
+  | 'ADDRESS_NOT_FOUND'
+  | 'ACCESS_BLOCKED'
+  | 'CUSTOMER_UNAVAILABLE'
+  | 'WRONG_ADDRESS'
+  | 'DAMAGED_PACKAGE'
+  | 'OTHER'
+
+export interface RouteIssue {
+  id:          string
+  category:    RouteIssueCategory
+  description: string
+  orderId:     string      // pedido que estava selecionado quando o problema foi reportado
+  reportedBy:  { id: string; name: string }
+  reportedAt:  string   // ISO timestamp
+}
+
 export interface DeliveryRoute {
   id: string
   storeId: string
@@ -24,6 +42,7 @@ export interface RouteWithDetails extends DeliveryRoute {
   deliverer: { id: string; name: string; username: string }
   orders: RouteOrderItem[]
   log: RouteLogEntry[]
+  issues: RouteIssue[]
 }
 
 export interface RouteOrderItem {
