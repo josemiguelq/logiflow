@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Search, ChevronDown, X, Crown, AlertTriangle } from 'lucide-react'
+import { Search, ChevronDown, X, Crown, AlertTriangle, Trash2, Loader2 } from 'lucide-react'
 import { Order, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
+import { useAccess } from '@/hooks/useAccess'
 import { StatusBadge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
 import { TableSkeleton, type TableSkeletonColumn } from '@/components/ui/table-skeleton'
@@ -39,11 +40,14 @@ function paymentDiscrepancy(order: Order): { collected: number; expected: number
 }
 
 export default function AllOrdersPage() {
+  const { can } = useAccess()
   const [search,   setSearch]   = useState('')
   const [status,   setStatus]   = useState<OrderStatus | ''>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
   const [page,     setPage]     = useState(1)
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Reset to first page whenever a filter changes
   useEffect(() => { setPage(1) }, [search, status, dateFrom, dateTo])
@@ -54,7 +58,7 @@ export default function AllOrdersPage() {
   if (dateFrom) params.set('dateFrom', dateFrom)
   if (dateTo)   params.set('dateTo', dateTo)
 
-  const { data, isLoading } = useSWR(`/orders/search?${params}`, fetcher, { keepPreviousData: true })
+  const { data, isLoading, mutate } = useSWR(`/orders/search?${params}`, fetcher, { keepPreviousData: true })
 
   const orders = data?.items ?? []
   const total  = data?.total ?? 0
@@ -67,6 +71,22 @@ export default function AllOrdersPage() {
     setStatus('')
     setDateFrom('')
     setDateTo('')
+  }
+
+  function handleDelete(order: Order) {
+    setDeletingOrder(order)
+  }
+
+  async function confirmDelete() {
+    if (!deletingOrder) return
+    setDeleteLoading(true)
+    try {
+      await api.delete(`/orders/${deletingOrder.id}`)
+      setDeletingOrder(null)
+      mutate()
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   return (
@@ -207,6 +227,15 @@ export default function AllOrdersPage() {
                         >
                           <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         </span>
+                      )}
+                      {can({ scope: 'orders:delete' }) && (
+                        <button
+                          onClick={() => handleDelete(order)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Excluir pedido"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       )}
                       <Link
                         href={`/orders/${order.id}`}
