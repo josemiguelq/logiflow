@@ -440,7 +440,7 @@ export async function routeRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const { category, description, orderId } = z.object({
         category:    z.enum(['ADDRESS_NOT_FOUND', 'ACCESS_BLOCKED', 'CUSTOMER_UNAVAILABLE', 'WRONG_ADDRESS', 'DAMAGED_PACKAGE', 'OTHER']),
-        description: z.string().trim().min(1).max(500),
+        description: z.string().trim().max(500).default(''),
         orderId:     z.string().uuid(),
       }).parse(req.body)
 
