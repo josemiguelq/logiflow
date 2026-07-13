@@ -102,6 +102,21 @@ export async function routeRoutes(app: FastifyInstance) {
     return route
   })
 
+  // GET /orders/:id/issues — problemas reportados para um pedido específico
+  app.get('/orders/:id/issues', { preHandler: requireStoreUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { rows } = await db.query(
+      `SELECT r.issues
+       FROM routes r
+       JOIN orders o ON o.route_id = r.id
+       WHERE o.id = $1 AND r.store_id = $2`,
+      [id, req.actor.storeId]
+    )
+    if (!rows[0]) return reply.code(404).send({ error: 'Pedido não encontrado' })
+    const allIssues = (rows[0].issues as Record<string, unknown>[] | null) ?? []
+    return allIssues.filter((i) => i.orderId === id)
+  })
+
   // GET /routes/:id/map-data — order pins + deliverer trail for the map
   app.get('/routes/:id/map-data', { preHandler: requireStoreUser }, async (req, reply) => {
     const { id } = req.params as { id: string }
@@ -439,8 +454,8 @@ export async function routeRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const { category, description, orderId } = z.object({
-        category:    z.enum(['ADDRESS_NOT_FOUND', 'ACCESS_BLOCKED', 'CUSTOMER_UNAVAILABLE', 'WRONG_ADDRESS', 'DAMAGED_PACKAGE', 'OTHER']),
-        description: z.string().trim().max(500).default(''),
+        category:    z.enum(['ADDRESS_NOT_FOUND', 'ACCESS_BLOCKED', 'CUSTOMER_UNAVAILABLE', 'WRONG_ADDRESS', 'DAMAGED_PACKAGE', 'TRAFFIC_ACCIDENT', 'VEHICLE_ISSUE', 'OTHER']),
+        description: z.string().trim().min(1).max(500),
         orderId:     z.string().uuid(),
       }).parse(req.body)
 

@@ -184,6 +184,8 @@ export type RouteIssueCategory =
   | 'CUSTOMER_UNAVAILABLE'
   | 'WRONG_ADDRESS'
   | 'DAMAGED_PACKAGE'
+  | 'TRAFFIC_ACCIDENT'
+  | 'VEHICLE_ISSUE'
   | 'OTHER'
 
 export interface RouteIssue {

@@ -61,6 +61,8 @@ const ISSUE_CATEGORY_LABEL: Record<RouteIssueCategory, string> = {
   CUSTOMER_UNAVAILABLE: 'Cliente indisponível',
   WRONG_ADDRESS:        'Endereço incorreto',
   DAMAGED_PACKAGE:      'Embalagem danificada',
+  TRAFFIC_ACCIDENT:     'Acidente de trânsito',
+  VEHICLE_ISSUE:        'Problema no veículo',
   OTHER:                'Outro',
 }
 

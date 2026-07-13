@@ -3,8 +3,8 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen } from 'lucide-react'
-import { Order } from '@/types'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen, ChevronDown } from 'lucide-react'
+import { Order, RouteIssue } from '@/types'
 import { api } from '@/lib/api'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate, getDelayInfo, formatDelayDuration, cancelReasonLabel } from '@/lib/utils'
@@ -40,6 +40,17 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   cash: 'Dinheiro',
   pix:  'Pix',
   card: 'Cartão',
+}
+
+const ISSUE_CATEGORY_LABEL: Record<string, string> = {
+  ADDRESS_NOT_FOUND:    'Endereço não encontrado',
+  ACCESS_BLOCKED:       'Acesso bloqueado',
+  CUSTOMER_UNAVAILABLE: 'Cliente indisponível',
+  WRONG_ADDRESS:        'Endereço incorreto',
+  DAMAGED_PACKAGE:      'Embalagem danificada',
+  TRAFFIC_ACCIDENT:     'Acidente de trânsito',
+  VEHICLE_ISSUE:        'Problema no veículo',
+  OTHER:                'Outro',
 }
 
 const formatBRL = (v: number) =>
@@ -78,8 +89,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [adjusting, setAdjusting] = useState(false)
   const [editingCash, setEditingCash] = useState(false)
   const [cashValue, setCashValue] = useState('')
+  const [showMessages, setShowMessages] = useState(false)
+  const [showIssues, setShowIssues]     = useState(false)
   const now        = useNow()
   const thresholds = useDelayThresholds()
+  const { data: issues } = useSWR<RouteIssue[]>(
+    order?.id ? `/orders/${order.id}/issues` : null,
+    (url: string) => api.get<RouteIssue[]>(url)
+  )
 
   if (isLoading) {
     return (
@@ -316,11 +333,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
           {chatEnabled && (
             <section className="border-t border-gray-100 pt-4">
-              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-gray-500">
+              <button
+                onClick={() => setShowMessages(v => !v)}
+                className="mb-3 flex w-full items-center gap-1.5 text-left text-sm font-semibold uppercase tracking-wide text-gray-500"
+              >
                 <MessageCircle className="h-3.5 w-3.5" />
                 Mensagens
-              </h2>
-              <OrderChatHistory orderId={order.id} />
+                <ChevronDown className={`ml-auto h-4 w-4 shrink-0 transition-transform ${showMessages ? 'rotate-180' : ''}`} />
+              </button>
+              {showMessages && <OrderChatHistory orderId={order.id} />}
             </section>
           )}
 
@@ -428,6 +449,48 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   )
                 })()}
               </div>
+            </section>
+          )}
+
+          {issues && issues.length > 0 && (
+            <section className="border-t border-gray-100 pt-4">
+              <button
+                onClick={() => setShowIssues(v => !v)}
+                className="mb-3 flex w-full items-center gap-1.5 text-left text-sm font-semibold uppercase tracking-wide text-gray-500"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                Problemas
+                <span className="ml-1.5 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
+                  {issues.length}
+                </span>
+                <ChevronDown className={`ml-auto h-4 w-4 shrink-0 transition-transform ${showIssues ? 'rotate-180' : ''}`} />
+              </button>
+              {showIssues && (
+                <div className="space-y-2">
+                  {[...issues]
+                    .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
+                    .map((issue) => (
+                      <div key={issue.id} className="rounded-xl border border-red-100 bg-red-50/50 p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                            {ISSUE_CATEGORY_LABEL[issue.category] ?? issue.category}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(issue.reportedAt).toLocaleString('pt-BR', {
+                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        {issue.description && (
+                          <p className="text-sm text-gray-700">{issue.description}</p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-400">
+                          Reportado por {issue.reportedBy.name}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              )}
             </section>
           )}
 
