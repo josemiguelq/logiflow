@@ -23,6 +23,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 text-sm text-gray-400">
           <span>© {new Date().getFullYear()} LogiFlow</span>
           <div className="flex gap-4">
+            <Link href="/faq" className="hover:text-gray-700">FAQ</Link>
             <Link href="/privacidade" className="hover:text-gray-700">Privacidade</Link>
             <Link href="/termos" className="hover:text-gray-700">Termos de Uso</Link>
           </div>
