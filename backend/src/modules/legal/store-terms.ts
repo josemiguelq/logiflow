@@ -2,7 +2,7 @@ export const STORE_TERMS = {
   version: '2026-07-14',
   content: `# Termo de Consentimento e Uso — Loja LogiFlow
 
-_Última atualização: 14/07/2026_
+_Última atualização: 14/05/2026_
 
 Ao criar sua conta no LogiFlow, você concorda com os termos abaixo.
 
