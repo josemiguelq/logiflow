@@ -11,7 +11,7 @@ const CONTACT = 'privacidade@logiflow-app.com.br'
 export default function FAQPage() {
   return (
     <>
-      <PageTitle title="Perguntas Frequentes" updated="14 de julho de 2026" />
+      <PageTitle title="Perguntas Frequentes" updated="14 de janeiro de 2026" />
 
       <Section title="Como o LogiFlow protege meus dados?">
         <p>
