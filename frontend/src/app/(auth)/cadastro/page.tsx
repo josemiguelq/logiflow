@@ -312,6 +312,28 @@ export default function CadastroPage() {
                 <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" placeholder="Repita a senha" />
               </Field>
 
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="mb-2 flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    id="consent"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="consent" className="text-sm text-gray-700">
+                    Li e aceito os{' '}
+                    <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
+                      Termos de Consentimento
+                    </a>{' '}
+                    e a{' '}
+                    <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
+                      Política de Privacidade
+                    </a>.
+                  </label>
+                </div>
+              </div>
+
               {GOOGLE_ENABLED && (
                 <>
                   <div className="flex items-center gap-3">
