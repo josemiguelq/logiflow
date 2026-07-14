@@ -1,5 +1,5 @@
 export const STORE_TERMS = {
-  version: '2026-07-14',
+  version: '2026-05-14',
   content: `# Termo de Consentimento e Uso — Loja LogiFlow
 
 _Última atualização: 14/05/2026_
