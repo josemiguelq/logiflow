@@ -4,6 +4,10 @@ import { Section, Bullets, PageTitle } from '../_ui'
 export const metadata: Metadata = {
   title: 'Perguntas Frequentes — LogiFlow',
   description: 'Dúvidas sobre segurança da informação, armazenamento de dados e conformidade com a LGPD no LogiFlow.',
+  openGraph: {
+    title: 'Perguntas Frequentes — LogiFlow',
+    description: 'Dúvidas sobre segurança da informação, armazenamento de dados e conformidade com a LGPD no LogiFlow.',
+  },
 }
 
 const CONTACT = 'privacidade@logiflow-app.com.br'
