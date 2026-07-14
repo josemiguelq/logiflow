@@ -81,6 +81,16 @@ export default function CadastroPage() {
   const [ownerName, setOwnerName] = useState('')
   const [password, setPassword]   = useState('')
   const [confirm, setConfirm]     = useState('')
+  const [consent, setConsent]     = useState(false)
+  const [termsContent, setTermsContent] = useState('')
+  const [termsVersion, setTermsVersion] = useState('')
+
+  useEffect(() => {
+    api.get<{ version: string; content: string }>('/auth/terms').then((t) => {
+      setTermsVersion(t.version)
+      setTermsContent(t.content)
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     api.get<Plan[]>('/plans').then(setPlans).catch(() => {})
@@ -136,11 +146,12 @@ export default function CadastroPage() {
     if (ownerName.trim().length < 2) return setError('Informe seu nome')
     if (password.length < 6) return setError('A senha deve ter ao menos 6 caracteres')
     if (password !== confirm) return setError('As senhas não coincidem')
+    if (!consent) return setError('Você precisa aceitar os termos de consentimento')
     setLoading(true); setError('')
     try {
       const res = await api.post<{ token: string; user: StoreUser }>(
         `/auth/prospect/${prospectId}/convert`,
-        { ownerName: ownerName.trim(), password, planId: planId || null }
+        { ownerName: ownerName.trim(), password, planId: planId || null, consentVersion: termsVersion }
       )
       setSession(res.token, res.user)
       router.push('/orders')
@@ -152,11 +163,12 @@ export default function CadastroPage() {
   // Conclui o cadastro com Google: o e-mail/nome da conta Google viram o acesso do owner.
   async function submitStep3Google(credential?: string) {
     if (!credential) return
+    if (!consent) return setError('Você precisa aceitar os termos de consentimento')
     setLoading(true); setError('')
     try {
       const res = await api.post<{ token: string; user: StoreUser }>(
         `/auth/prospect/${prospectId}/convert`,
-        { ownerName: ownerName.trim() || undefined, googleCredential: credential, planId: planId || null }
+        { ownerName: ownerName.trim() || undefined, googleCredential: credential, planId: planId || null, consentVersion: termsVersion }
       )
       setSession(res.token, res.user)
       router.push('/orders')

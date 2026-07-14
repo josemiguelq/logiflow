@@ -62,7 +62,7 @@ async function seed() {
       VALUES ('superadmin@logiflow.com', $1)
       ON CONFLICT (email) DO NOTHING
     `, [saHash])
-    console.log('[seed] superadmin: superadmin@logiflow.com / superadmin123')
+    console.log('[seed] superadmin criado')
 
     // ── Store 1: LogiFlow Demo ────────────────────────────────────────────────
     const { rows: existing1 } = await client.query(
@@ -115,7 +115,7 @@ async function seed() {
           VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
         `, [storeId, u.name, u.email, u.username, hash, u.role])
         userIds.push(row.id)
-        console.log(`[seed] usuário: ${u.email} (${u.role}) senha: ${u.password}`)
+        console.log(`[seed] usuário: ${u.email} (${u.role})`)
       }
       const ownerId = userIds[0]!
 
@@ -134,7 +134,7 @@ async function seed() {
           VALUES ($1,$2,$3,$4,'AVAILABLE', false) RETURNING id
         `, [storeId, d.name, d.username, hash])
         delivererIds.push(row.id)
-        console.log(`[seed] entregador: @${d.username} senha: ${d.password}`)
+        console.log(`[seed] entregador: @${d.username}`)
       }
 
       // ── Clientes em Campo Grande MS ────────────────────────────────────────
@@ -247,26 +247,23 @@ async function seed() {
         INSERT INTO store_users (store_id, name, email, username, password_hash, role)
         VALUES ($1, 'Beta Owner', 'owner@beta.com', 'beta.owner', $2, 'OWNER')
       `, [store2Id, hash2])
-      console.log('[seed] usuário loja 2: owner@beta.com / beta123')
+      console.log('[seed] usuário loja 2: owner@beta.com')
     }
   })
 
   console.log('\n[seed] concluído! ✓\n')
   console.log('─────────────────────────────────────────────────')
   console.log('  Super Admin: http://localhost:3000/super-admin')
-  console.log('  superadmin@logiflow.com  /  superadmin123')
+  console.log('  superadmin@logiflow.com')
   console.log('─────────────────────────────────────────────────')
   console.log('  Loja 1 — LogiFlow Demo')
-  console.log('  admin@logiflow.com  /  admin123')
-  console.log('  gerente@logiflow.com  /  gerente123')
+  console.log('  admin@logiflow.com  /  gerente@logiflow.com')
   console.log('─────────────────────────────────────────────────')
   console.log('  Loja 2 — LogiFlow Beta')
-  console.log('  owner@beta.com  /  beta123')
+  console.log('  owner@beta.com')
   console.log('─────────────────────────────────────────────────')
   console.log('  App entregador:')
-  console.log('  carlos.moto  /  carlos123')
-  console.log('  ana.bike     /  ana123     (rota ativa)')
-  console.log('  pedro.van    /  pedro123')
+  console.log('  carlos.moto  /  ana.bike  /  pedro.van')
   console.log('─────────────────────────────────────────────────\n')
   process.exit(0)
 }

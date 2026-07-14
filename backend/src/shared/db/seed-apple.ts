@@ -138,7 +138,6 @@ async function seed() {
   console.log('─────────────────────────────────────────────')
   console.log(`  App do Entregador (iOS)`)
   console.log(`  usuário: ${DRIVER_USER}`)
-  console.log(`  senha:   ${DRIVER_PASS}`)
   console.log('─────────────────────────────────────────────\n')
   process.exit(0)
 }

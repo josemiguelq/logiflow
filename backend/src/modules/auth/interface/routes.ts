@@ -14,6 +14,7 @@ import { loginDeliverer } from '../application/use-cases/login-deliverer'
 import { loginDelivererV2 } from '../application/use-cases/login-deliverer-v2'
 import { isValidDocument, onlyDigits } from '../../../shared/utils/document'
 import { isLoginLocked, registerLoginFailure, clearLoginFailures } from '../../../shared/login-throttle'
+import { STORE_TERMS } from '../../legal/store-terms'
 
 const TOO_MANY = 'Muitas tentativas de senha. Tente novamente em alguns minutos.'
 
@@ -281,6 +282,27 @@ export async function authRoutes(app: FastifyInstance) {
     }))
   })
 
+  // ── Termo de consentimento (cadastro / lojista) ───────────────────────────
+  // Retorna o texto e a versão atual do termo. Usado pelo wizard de cadastro.
+  app.get('/auth/terms', async () => {
+    return { version: STORE_TERMS.version, content: STORE_TERMS.content }
+  })
+
+  // Aceite pós-cadastro: um lojista já logado aceita a versão mais recente.
+  app.post('/auth/terms/accept', { preHandler: requireStoreUser }, async (req, reply) => {
+    const userAgent = req.headers['user-agent'] ?? null
+    await db.query(
+      `INSERT INTO store_terms_acceptance (store_user_id, store_id, version, ip, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.actor.sub, req.actor.storeId, STORE_TERMS.version, req.ip, userAgent]
+    )
+    await db.query(
+      'UPDATE store_users SET terms_accepted_version = $1, terms_accepted_at = now() WHERE id = $2',
+      [STORE_TERMS.version, req.actor.sub]
+    )
+    return { ok: true, version: STORE_TERMS.version }
+  })
+
   // ── Cadastro em etapas (prospects) ────────────────────────────────────────
   const prospectStep1 = z.object({
     storeName: z.string().min(2),
@@ -339,6 +361,7 @@ export async function authRoutes(app: FastifyInstance) {
     password:         z.string().min(6).optional(),
     googleCredential: z.string().min(1).optional(),
     planId:           z.string().uuid().nullable().optional(),
+    consentVersion:   z.string().min(1),
   }).refine(b => !!b.password !== !!b.googleCredential, {
     message: 'Informe senha OU login com Google (apenas um)',
   }).refine(b => !!b.googleCredential || !!b.ownerName, {
@@ -348,6 +371,10 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/prospect/:id/convert', async (req, reply) => {
     const { id } = req.params as { id: string }
     const body = convertSchema.parse(req.body)
+
+    if (body.consentVersion !== STORE_TERMS.version) {
+      return reply.code(400).send({ error: 'É necessário aceitar os termos de consentimento atualizados' })
+    }
 
     const { rows: [p] } = await db.query('SELECT * FROM prospects WHERE id = $1', [id])
     if (!p) return reply.code(404).send({ error: 'Cadastro não encontrado' })
@@ -380,6 +407,19 @@ export async function authRoutes(app: FastifyInstance) {
       password: body.password ?? null, googleSub,
       cpfCnpj: p.cpf_cnpj, address: p.address, lat: p.lat, lng: p.lng, planId,
     })
+
+    // Registra o aceite do termo de consentimento (auditável)
+    const userAgent = req.headers['user-agent'] ?? null
+    await db.query(
+      `INSERT INTO store_terms_acceptance (store_user_id, store_id, version, ip, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [result.user.id, result.user.storeId, STORE_TERMS.version, req.ip, userAgent]
+    )
+    await db.query(
+      'UPDATE store_users SET terms_accepted_version = $1, terms_accepted_at = now() WHERE id = $2',
+      [STORE_TERMS.version, result.user.id]
+    )
+
     await db.query(
       `UPDATE prospects SET status = 'CONVERTED', owner_name = $2, converted_store_id = $3, updated_at = now() WHERE id = $1`,
       [id, ownerName, result.user.storeId]

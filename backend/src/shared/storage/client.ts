@@ -39,15 +39,6 @@ export async function resolveImageUrl(
   return getSignedUrl(s3, command, { expiresIn })
 }
 
-/** @deprecated Use resolveImageUrl for proper signed URLs. */
-export function getPublicUrl(path: string | null | undefined): string | null {
-  if (!path) return null
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
-    return path
-  }
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`
-}
-
 /**
  * Gera uma URL PUT pré-assinada para o cliente subir o arquivo DIRETO ao storage,
  * sem passar os bytes pelo backend (evita corpo grande + decode base64 + upload
