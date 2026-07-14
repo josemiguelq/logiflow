@@ -38,8 +38,7 @@ export default function FAQPage() {
           items={[
             <><strong>Banco de dados relacional (PostgreSQL)</strong> — armazena pedidos, clientes, entregadores, configurações da loja e registros de auditoria.</>,
             <><strong>Armazenamento de imagens (AWS S3)</strong> — fotos de comprovante de entrega são armazenadas de forma segura e com controle de acesso.</>,
-            <><strong>Servidores de aplicação</strong> — o backend roda em infraestrutura gerenciada com monitoramento contínuo.</>,
-            <><strong>Frontend hospedado na Vercel</strong> — o painel web é servido por uma rede global com certificado SSL automático.</>,
+            <><strong>Servidores de aplicação</strong> — o backend roda em infraestrutura gerenciada com monitoramento contínuo.</>,          
           ]}
         />
       </Section>
@@ -66,11 +65,11 @@ export default function FAQPage() {
         </p>
         <Bullets
           items={[
-            'A <strong>exclusão</strong> dos seus dados pessoais;',
-            'A <strong>correção</strong> de dados incompletos ou desatualizados;',
-            'A <strong>confirmação</strong> da existência de tratamento e acesso aos seus dados;',
-            'A <strong>portabilidade</strong> dos seus dados;',
-            'A <strong>revogação</strong> do consentimento para tratamento de dados.',
+            <>A <strong>exclusão</strong> dos seus dados pessoais;</>,
+            <>A <strong>correção</strong> de dados incompletos ou desatualizados;</>,
+            <>A <strong>confirmação</strong> da existência de tratamento e acesso aos seus dados;</>,
+            <>A <strong>portabilidade</strong> dos seus dados;</>,
+            <>A <strong>revogação</strong> do consentimento para tratamento de dados.</>,
           ]}
         />
         <p>
