@@ -122,7 +122,8 @@ export function buildApp() {
     return payload
   })
 
-  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim()).filter(Boolean) ?? []
+  const corsOrigins = ((process.env.FRONTEND_URLS || process.env.FRONTEND_URL) ?? '')
+    .split(',').map((o) => o.trim()).filter(Boolean)
 
   // Allow local dev frontends (localhost, 127.0.0.1 and private LAN IPs) to hit
   // this backend regardless of FRONTEND_URL, so a local dev server can target
