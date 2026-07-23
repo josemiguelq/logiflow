@@ -51,7 +51,17 @@ export default function TermsPage() {
         />
       </Section>
 
-      <Section title="5. Uso aceitável">
+      <Section title="5. Relação entre a loja e o entregador">
+        <Bullets
+          items={[
+            'O vínculo e o contrato — de trabalho ou de prestação de serviços — são estabelecidos diretamente entre a loja e o entregador. O LogiFlow é apenas uma ferramenta de software e não intermedia, não contrata e não é parte dessa relação.',
+            'Remuneração, ajustes de valores, férias, descanso, seguro, benefícios, jornada e demais obrigações trabalhistas ou contratuais são de responsabilidade exclusiva da loja.',
+            'O LogiFlow não é empregador nem tomador de serviços do entregador e não responde por obrigações decorrentes dessa relação.',
+          ]}
+        />
+      </Section>
+
+      <Section title="6. Uso aceitável">
         <p>Ao usar o LogiFlow, você concorda em não:</p>
         <Bullets
           items={[
@@ -63,7 +73,7 @@ export default function TermsPage() {
         />
       </Section>
 
-      <Section title="6. Planos e cobrança">
+      <Section title="7. Planos e cobrança">
         <p>
           Alguns recursos podem depender do plano contratado pela loja. Quando houver
           cobrança ou assinatura, as condições, valores e ciclos serão informados no momento
@@ -71,7 +81,7 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="7. Propriedade intelectual">
+      <Section title="8. Propriedade intelectual">
         <p>
           O software, a marca e os elementos do LogiFlow são protegidos por direitos de
           propriedade intelectual. Estes Termos não concedem qualquer direito sobre a marca
@@ -80,7 +90,7 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="8. Disponibilidade e isenções">
+      <Section title="9. Disponibilidade e isenções">
         <p>
           O serviço é fornecido “no estado em que se encontra”. Empregamos esforços
           razoáveis para mantê-lo disponível e seguro, mas não garantimos operação
@@ -89,7 +99,7 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="9. Limitação de responsabilidade">
+      <Section title="10. Limitação de responsabilidade">
         <p>
           Na máxima extensão permitida pela lei, o LogiFlow não se responsabiliza por danos
           indiretos, lucros cessantes ou perdas decorrentes do uso ou da impossibilidade de
@@ -98,7 +108,7 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="10. Suspensão e encerramento">
+      <Section title="11. Suspensão e encerramento">
         <p>
           Podemos suspender ou encerrar o acesso em caso de violação destes Termos, uso
           indevido ou risco à segurança. A loja pode encerrar sua conta a qualquer momento;
@@ -106,14 +116,14 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="11. Lei aplicável e foro">
+      <Section title="12. Lei aplicável e foro">
         <p>
           Estes Termos são regidos pelas leis da República Federativa do Brasil. Fica eleito
           o foro do domicílio do usuário para dirimir controvérsias, quando aplicável.
         </p>
       </Section>
 
-      <Section title="12. Contato">
+      <Section title="13. Contato">
         <p>
           Dúvidas sobre estes Termos podem ser enviadas para{' '}
           <a className="text-blue-600 hover:underline" href={`mailto:${CONTACT}`}>{CONTACT}</a>.

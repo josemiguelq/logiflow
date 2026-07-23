@@ -1,8 +1,8 @@
 export const STORE_TERMS = {
-  version: '2026-05-14',
+  version: '2026-07-23',
   content: `# Termo de Consentimento e Uso — Loja LogiFlow
 
-_Última atualização: 14/05/2026_
+_Última atualização: 23/07/2026_
 
 Ao criar sua conta no LogiFlow, você concorda com os termos abaixo.
 
@@ -42,6 +42,11 @@ Adotamos criptografia de senhas, transmissão via HTTPS, controle de acesso por 
 
 ## 6. Retenção
 Mantemos os dados pelo tempo necessário para prestar o serviço e cumprir obrigações legais. Ao encerrar sua conta, os dados serão removidos ou anonimizados.
+
+## 7. Relação com os entregadores
+O contrato e o vínculo com os entregadores cadastrados na plataforma são estabelecidos **diretamente entre a loja e o entregador**. O LogiFlow é apenas a ferramenta de software e **não intermedia, não contrata e não é parte** dessa relação.
+
+Remuneração, ajustes de valores, **férias**, descanso, **seguro**, benefícios, jornada e demais obrigações trabalhistas ou contratuais são de **responsabilidade exclusiva da loja**. A loja declara ser a única responsável por manter essa relação em conformidade com a legislação aplicável.
 
 Ao marcar **"Li e concordo"**, você confirma que leu e aceita este termo e a Política de Privacidade do LogiFlow.`,
 } as const
