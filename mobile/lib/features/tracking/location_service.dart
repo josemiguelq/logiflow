@@ -37,6 +37,8 @@ class LocationService {
   // Limite máximo de pontos guardados offline (descarta os mais antigos).
   static const _maxQueueSize = 1000;
   static const _queueKey     = 'pending_location_points';
+  // Envia no máximo 100 pontos por batch para não sobrecarregar o servidor.
+  static const _batchSize    = 100;
 
   WebSocket?                    _socket;
   bool                          _connecting  = false;
@@ -46,6 +48,7 @@ class LocationService {
   String?                       _delivererId;
   StreamSubscription<Position>?      _positionSub;
   StreamSubscription<ServiceStatus>? _serviceStatusSub;
+  Timer?                        _retryTimer;
   final _api   = ApiClient();
   final _queue = <_PendingPoint>[];
 
@@ -292,24 +295,40 @@ class LocationService {
   Future<void> _flushQueue() async {
     if (_queue.isEmpty || _flushing) return;
     _flushing = true;
-    final snapshot = List<_PendingPoint>.from(_queue);
-    debugPrint('[Location] Enviando fila em batch: ${snapshot.length} pontos');
+    _retryTimer?.cancel();
     try {
-      await _api.dio.post('/tracking/location/batch', data: {
-        'points': snapshot.map((p) => p.toJson()).toList(),
-      });
-      _queue.removeRange(0, snapshot.length);
-      await _persistQueue();
-      debugPrint('[Location] Fila enviada e limpa');
-    } catch (e) {
-      debugPrint('[Location] Batch falhou — fila mantida: $e');
+      while (_queue.isNotEmpty) {
+        final chunk = _queue.take(_batchSize).toList();
+        debugPrint('[Location] Enviando batch: ${chunk.length} pontos (restam ${_queue.length})');
+        try {
+          await _api.dio.post('/tracking/location/batch', data: {
+            'points': chunk.map((p) => p.toJson()).toList(),
+          });
+          _queue.removeRange(0, chunk.length);
+          await _persistQueue();
+          debugPrint('[Location] Batch enviado com sucesso');
+        } catch (e) {
+          debugPrint('[Location] Batch falhou — reagendando retry: $e');
+          _scheduleRetry();
+          break;
+        }
+      }
     } finally {
       _flushing = false;
     }
   }
 
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    _retryTimer = Timer(const Duration(seconds: 30), () {
+      if (_queue.isNotEmpty) unawaited(_flushQueue());
+    });
+  }
+
   void stopTracking() {
     debugPrint('[Location] Parando rastreamento (fila=${_queue.length})');
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _flushQueue();   // tentativa de último envio antes de parar
     _started = false;
     _positionSub?.cancel();

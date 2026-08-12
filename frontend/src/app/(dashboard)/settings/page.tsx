@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
-import { Save, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck, MapPin, Search, Loader2 } from 'lucide-react'
+import { Save, Palette, SlidersHorizontal, CheckCircle, Upload, X, CreditCard, Clock, ShieldCheck, MapPin, Search, Loader2, Printer } from 'lucide-react'
 import { api } from '@/lib/api'
+import { LabelFormat } from '@/lib/print-label'
 import { useAuth } from '@/hooks/useAuth'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,7 @@ interface StoreSettings {
   enforceDeliveryOrder:     boolean
   inconsistencyNotifyEnabled: boolean
   whatsappNotifyStatuses:   string[]
+  labelFormat:              LabelFormat
 }
 
 interface ThemeData {
@@ -257,6 +259,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
   const [enforceOrder,       setEnforceOrder]       = useState(false)
   const [inconsistencyNotify, setInconsistencyNotify] = useState(true)
   const [delayedThreshold,   setDelayedThreshold]   = useState(3)
+  const [labelFormat,        setLabelFormat]        = useState<LabelFormat>('thermal80')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
@@ -280,6 +283,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
       setEnforceOrder(data.enforceDeliveryOrder ?? false)
       setInconsistencyNotify(data.inconsistencyNotifyEnabled ?? true)
       setDelayedThreshold(data.notifyOperatorDelayedThreshold ?? 3)
+      setLabelFormat(data.labelFormat ?? 'thermal80')
     }
   }, [data])
 
@@ -305,6 +309,7 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
         enforceDeliveryOrder:     enforceOrder,
         inconsistencyNotifyEnabled: inconsistencyNotify,
         notifyOperatorDelayedThreshold: delayedThreshold,
+        labelFormat,
         ...(features.customerRatingsEnabled ? { allowCustomerRatings } : {}),
       })
       mutate()
@@ -368,6 +373,35 @@ function OperationsSection({ onSaved }: { onSaved: () => void }) {
               className="flex-1 accent-[--color-primary]"
             />
             <span className="w-8 text-center text-sm font-semibold text-gray-900">{maxProofPhotos}</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+            <Printer className="h-4 w-4 text-gray-400" />
+            Formato da etiqueta de impressão
+          </label>
+          <p className="mb-2 text-xs text-gray-500">
+            Tamanho usado ao imprimir a etiqueta do pedido (nome, endereço, assistência e telefone)
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: 'a4',        label: 'Folha A4' },
+              { value: 'thermal80', label: 'Térmica 80mm' },
+              { value: 'thermal58', label: 'Térmica 58mm' },
+            ] as const).map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setLabelFormat(value)}
+                className="rounded-lg border-2 py-2 text-xs font-medium transition-colors"
+                style={labelFormat === value
+                  ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, white)' }
+                  : { borderColor: '#E5E7EB', color: '#6B7280' }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 

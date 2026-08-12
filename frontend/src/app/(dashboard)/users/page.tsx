@@ -57,7 +57,7 @@ export default function UsersPage() {
           <p className="text-sm text-gray-500">{users.length} usuário(s) nesta loja</p>
         </div>
         {canManage && (
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => setShowForm(true)} data-testid="users-new">
             <Plus className="h-4 w-4" /> Novo Usuário
           </Button>
         )}
@@ -259,19 +259,19 @@ function CreateUserModal({
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Nome</label>
-            <Input value={name} onChange={e => setName(e.target.value)} required />
+            <Input value={name} onChange={e => setName(e.target.value)} required data-testid="user-name" />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
-            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required data-testid="user-email" />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Username</label>
-            <Input value={username} onChange={e => setUsername(e.target.value.toLowerCase())} required placeholder="apenas letras, números, _ e ." />
+            <Input value={username} onChange={e => setUsername(e.target.value.toLowerCase())} required placeholder="apenas letras, números, _ e ." data-testid="user-username" />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Senha</label>
-            <Input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+            <Input type="password" value={password} onChange={e => setPassword(e.target.value)} required data-testid="user-password" />
           </div>
           {currentRole === 'OWNER' && (
             <div>
@@ -280,6 +280,7 @@ function CreateUserModal({
                 value={role}
                 onChange={e => setRole(e.target.value as 'MANAGER' | 'ASSISTANT')}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                data-testid="user-role"
               >
                 <option value="MANAGER">Gerente</option>
                 <option value="ASSISTANT">Assistente</option>
@@ -289,7 +290,7 @@ function CreateUserModal({
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" className="flex-1" disabled={loading}>
+            <Button type="submit" className="flex-1" disabled={loading} data-testid="user-submit">
               {loading ? 'Salvando...' : 'Criar'}
             </Button>
           </div>

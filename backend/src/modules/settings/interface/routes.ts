@@ -214,6 +214,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       inconsistencyNotifyEnabled: s.inconsistency_notify_enabled !== 'false',
       notifyOperatorDelayedThreshold: parseInt(s.notify_operator_delayed_threshold ?? '3'),
       whatsappNotifyStatuses:   parseStatusList(s.whatsapp_notify_statuses),
+      labelFormat:              s.label_format ?? 'thermal80',
     }
   })
 
@@ -239,6 +240,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     inconsistencyNotifyEnabled: z.boolean().optional(),
     notifyOperatorDelayedThreshold: z.number().int().min(1).max(100).optional(),
     whatsappNotifyStatuses: z.array(z.enum(WHATSAPP_NOTIFY_STATUSES)).optional(),
+    labelFormat:           z.enum(['a4', 'thermal80', 'thermal58']).optional(),
     storeAddress:          z.string().max(300).optional().nullable(),
     storeLat:              z.number().optional().nullable(),
     storeLng:              z.number().optional().nullable(),
@@ -277,6 +279,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       ['enforceDeliveryOrder',     'enforce_delivery_order'],
       ['inconsistencyNotifyEnabled', 'inconsistency_notify_enabled'],
       ['notifyOperatorDelayedThreshold', 'notify_operator_delayed_threshold'],
+      ['labelFormat', 'label_format'],
     ]
     for (const [key, dbName] of simpleMap) {
       if (body[key] !== undefined) await upsertSetting(dbName, String(body[key]))

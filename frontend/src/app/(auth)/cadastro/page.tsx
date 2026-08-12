@@ -215,16 +215,16 @@ export default function CadastroPage() {
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-gray-800">Dados da loja</h2>
               <Field label="Nome da loja">
-                <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Ex: Padaria do João" />
+                <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Ex: Padaria do João" data-testid="signup-store-name" />
               </Field>
               <Field label="CPF ou CNPJ">
-                <Input value={doc} onChange={(e) => setDoc(maskDocument(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" />
+                <Input value={doc} onChange={(e) => setDoc(maskDocument(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" data-testid="signup-document" />
               </Field>
               <Field label="E-mail">
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="seu@email.com" />
+                <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="seu@email.com" data-testid="signup-email" />
               </Field>
               <Field label="Telefone de contato">
-                <Input value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} inputMode="tel" placeholder="(11) 99999-9999" />
+                <Input value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} inputMode="tel" placeholder="(11) 99999-9999" data-testid="signup-phone" />
               </Field>
             </div>
           )}
@@ -236,8 +236,8 @@ export default function CadastroPage() {
               <p className="text-sm text-gray-500">Busque o endereço e ajuste o pino no mapa para confirmar a localização exata.</p>
               <div className="flex gap-2">
                 <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Rua, número, cidade"
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); locate() } }} />
-                <Button type="button" variant="outline" onClick={locate} disabled={geocoding}>
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); locate() } }} data-testid="signup-address" />
+                <Button type="button" variant="outline" onClick={locate} disabled={geocoding} data-testid="signup-address-search">
                   {geocoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 </Button>
               </div>
@@ -266,6 +266,7 @@ export default function CadastroPage() {
                     <button
                       key={p.id}
                       type="button"
+                      data-testid="signup-plan-option"
                       onClick={() => { setPlanId(p.id); setError('') }}
                       className={`w-full rounded-xl border p-3 text-left transition-colors ${
                         selected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
@@ -303,13 +304,13 @@ export default function CadastroPage() {
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-gray-800">Seu acesso</h2>
               <Field label="Seu nome">
-                <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="João Silva" />
+                <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="João Silva" data-testid="signup-owner-name" />
               </Field>
               <Field label="Senha">
-                <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Mínimo 6 caracteres" />
+                <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Mínimo 6 caracteres" data-testid="signup-password" />
               </Field>
               <Field label="Confirmar senha">
-                <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" placeholder="Repita a senha" />
+                <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" placeholder="Repita a senha" data-testid="signup-password-confirm" />
               </Field>
 
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -364,6 +365,7 @@ export default function CadastroPage() {
             type="button"
             className="mt-6 w-full"
             disabled={loading}
+            data-testid="signup-next"
             onClick={
               step === 0 ? submitStep1 :
               step === 1 ? submitStep2 :

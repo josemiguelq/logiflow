@@ -67,7 +67,7 @@ export default function LoginPage() {
               <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-gray-700">
                 E-mail
               </label>
-              <Input id="email" name="email" type="email" required placeholder="seu@email.com" />
+              <Input id="email" name="email" type="email" required placeholder="seu@email.com" data-testid="login-email" />
             </div>
 
             <div>
@@ -82,6 +82,7 @@ export default function LoginPage() {
                   required
                   placeholder="••••••••"
                   className="pr-10"
+                  data-testid="login-password"
                 />
                 <button
                   type="button"
@@ -99,7 +100,7 @@ export default function LoginPage() {
             <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
           )}
 
-          <Button type="submit" className="mt-6 w-full" disabled={loading}>
+          <Button type="submit" className="mt-6 w-full" disabled={loading} data-testid="login-submit">
             {loading ? 'Entrando...' : 'Entrar'}
           </Button>
 

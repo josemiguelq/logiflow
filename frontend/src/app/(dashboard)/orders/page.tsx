@@ -323,7 +323,7 @@ export default function OrdersPage() {
               <span className="hidden sm:inline">Atribuição em lote</span>
             </button>
 
-            <Button onClick={() => setShowNewOrder(true)}>
+            <Button onClick={() => setShowNewOrder(true)} data-testid="orders-new">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Novo Pedido</span>
             </Button>

@@ -3,9 +3,10 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen, ChevronDown } from 'lucide-react'
-import { Order, RouteIssue } from '@/types'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen, ChevronDown, Printer } from 'lucide-react'
+import { Order, RouteIssue, Customer } from '@/types'
 import { api } from '@/lib/api'
+import { printOrderLabel, LabelFormat } from '@/lib/print-label'
 import { StatusBadge } from '@/components/ui/badge'
 import { formatDate, getDelayInfo, formatDelayDuration, cancelReasonLabel } from '@/lib/utils'
 import { formatPhone } from '@/lib/phone'
@@ -97,6 +98,28 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     order?.id ? `/orders/${order.id}/issues` : null,
     (url: string) => api.get<RouteIssue[]>(url)
   )
+  // Nome da assistência (não vem no pedido) + formato de etiqueta da loja.
+  const { data: customer } = useSWR<Customer>(
+    order?.customer.id ? `/customers/${order.customer.id}` : null,
+    (url: string) => api.get<Customer>(url)
+  )
+  const { data: storeSettings } = useSWR<{ labelFormat: LabelFormat }>(
+    '/store/settings',
+    (url: string) => api.get<{ labelFormat: LabelFormat }>(url)
+  )
+
+  function handlePrintLabel() {
+    if (!order) return
+    printOrderLabel({
+      orderCode:      order.id.slice(-8).toUpperCase(),
+      createdAt:      order.createdAt,
+      customerName:   order.customer.name,
+      phone:          order.customer.phone,
+      address:        order.customer.address,
+      complement:     order.customer.complement,
+      assistanceName: customer?.assistanceName,
+    }, storeSettings?.labelFormat ?? 'thermal80')
+  }
 
   if (isLoading) {
     return (
@@ -213,15 +236,25 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   {order.customer.complement && ` — ${order.customer.complement}`}
                 </span>
               </div>
-              {!COMPLETED_STATUSES.includes(order.status) && (
+              <div className="flex flex-wrap items-center gap-4 pt-1">
+                {!COMPLETED_STATUSES.includes(order.status) && (
+                  <button
+                    onClick={() => setAdjusting(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                  >
+                    <MapPin className="h-3.5 w-3.5" />
+                    Ajustar endereço de entrega
+                  </button>
+                )}
                 <button
-                  onClick={() => setAdjusting(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                  onClick={handlePrintLabel}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:underline"
+                  data-testid="order-print-label"
                 >
-                  <MapPin className="h-3.5 w-3.5" />
-                  Ajustar endereço de entrega
+                  <Printer className="h-3.5 w-3.5" />
+                  Imprimir etiqueta
                 </button>
-              )}
+              </div>
             </div>
           </section>
 

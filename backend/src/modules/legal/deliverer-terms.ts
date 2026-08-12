@@ -3,10 +3,10 @@
 // pelo entregador com esta). Mantenha o conteúdo em markdown simples.
 
 export const DELIVERER_TERMS = {
-  version: '2026-06-25',
+  version: '2026-07-23',
   content: `# Termo de Uso e Consentimento de Localização — Entregador LogiFlow
 
-_Última atualização: 25/06/2026_
+_Última atualização: 23/07/2026_
 
 Ao usar o aplicativo do entregador, você concorda com este termo.
 
@@ -24,7 +24,12 @@ Ao se marcar como **indisponível**, o app **para de registrar sua localização
 ## 3. Não há rastreamento publicitário
 Seus dados de localização **não** são usados para publicidade, **não** são vendidos e **não** são compartilhados com corretores de dados. São tratados conforme a Política de Privacidade do LogiFlow.
 
-## 4. Seus direitos (LGPD)
+## 4. Sua relação é com a loja
+Seu vínculo e seu contrato — de trabalho ou de prestação de serviços — são estabelecidos **diretamente com a loja** em que você atua. O LogiFlow é apenas o aplicativo que a loja usa para gerenciar as entregas: **não intermedia, não contrata e não é parte** dessa relação.
+
+Pagamentos, ajustes de valores, **férias**, descanso, **seguro**, benefícios, jornada e demais condições de trabalho são de **responsabilidade exclusiva da loja**, e não do LogiFlow. Qualquer solicitação sobre esses assuntos deve ser tratada diretamente com a loja.
+
+## 5. Seus direitos (LGPD)
 Você pode solicitar acesso, correção ou exclusão dos seus dados pelo e-mail privacidade@logiflow-app.com.br.
 
 Ao tocar em **"Li e aceito"**, você confirma que leu e concorda com este termo.`,

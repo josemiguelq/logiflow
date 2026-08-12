@@ -102,7 +102,7 @@ export default function DeliverersPage() {
               Mapa
             </button>
           </div>
-          <Button onClick={() => setShowCreate(true)}>
+          <Button onClick={() => setShowCreate(true)} data-testid="deliverers-new">
             <Plus className="h-4 w-4" />
             Novo Entregador
           </Button>
@@ -532,7 +532,7 @@ function DelivererFormModal({ deliverer, onClose, onSaved }: FormModalProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">Nome completo</label>
-            <Input name="name" required defaultValue={deliverer?.name} placeholder="Ex: Carlos Silva" />
+            <Input name="name" required defaultValue={deliverer?.name} placeholder="Ex: Carlos Silva" data-testid="deliverer-name" />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -544,13 +544,14 @@ function DelivererFormModal({ deliverer, onClose, onSaved }: FormModalProps) {
               defaultValue={deliverer?.username}
               placeholder="carlos.silva"
               pattern="[a-z0-9_.]+"
+              data-testid="deliverer-username"
             />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
               E-mail <span className="text-gray-400">(opcional)</span>
             </label>
-            <Input name="email" type="email" defaultValue={deliverer?.email} placeholder="carlos@email.com" />
+            <Input name="email" type="email" defaultValue={deliverer?.email} placeholder="carlos@email.com" data-testid="deliverer-email" />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -562,6 +563,7 @@ function DelivererFormModal({ deliverer, onClose, onSaved }: FormModalProps) {
               required={!isEdit}
               minLength={isEdit ? undefined : 6}
               placeholder={isEdit ? 'Nova senha (opcional)' : 'Mínimo 6 caracteres'}
+              data-testid="deliverer-password"
             />
           </div>
           {error && (
@@ -571,7 +573,7 @@ function DelivererFormModal({ deliverer, onClose, onSaved }: FormModalProps) {
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" className="flex-1" disabled={loading}>
+            <Button type="submit" className="flex-1" disabled={loading} data-testid="deliverer-submit">
               {loading ? 'Salvando...' : isEdit ? 'Salvar' : 'Cadastrar'}
             </Button>
           </div>
