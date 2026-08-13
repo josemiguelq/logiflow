@@ -10,6 +10,7 @@ import { authRoutes } from './modules/auth/interface/routes'
 import { orderRoutes } from './modules/orders/interface/routes'
 import { customerRoutes } from './modules/customers/interface/routes'
 import { assistanceRoutes } from './modules/assistances/interface/routes'
+import { agencyRoutes } from './modules/agencies/interface/routes'
 import { delivererRoutes } from './modules/deliverers/interface/routes'
 import { trackingRoutes } from './modules/tracking/interface/routes'
 import { notificationRoutes } from './modules/notifications/interface/routes'
@@ -232,6 +233,7 @@ export function buildApp() {
   app.register(orderRoutes)
   app.register(customerRoutes)
   app.register(assistanceRoutes)
+  app.register(agencyRoutes)
   app.register(delivererRoutes)
   app.register(trackingRoutes)
   app.register(notificationRoutes)

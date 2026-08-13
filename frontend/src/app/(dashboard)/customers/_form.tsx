@@ -2,12 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { Plus, MapPin, Trash2, ChevronDown } from 'lucide-react'
-import { Customer, CustomerAddress, Assistance } from '@/types'
+import { Plus, MapPin, Trash2, ChevronDown, Building2 } from 'lucide-react'
+import { Customer, CustomerAddress, Assistance, Agency } from '@/types'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { maskPhone, stripPhone, formatPhone } from '@/lib/phone'
 import { AssistanceCombobox } from './_assistance_combobox'
+import { AgencyCombobox } from './_agency_combobox'
 
 const AddressMapPicker = dynamic(() => import('./_address_map'), { ssr: false })
 
@@ -179,8 +180,9 @@ interface Props {
   initialName?: string
   initialPhone?: string
   initialAssistance?: Assistance | null
+  initialAgency?: Agency | null
   initialAddresses?: AddressEntry[]
-  onSave: (name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null) => Promise<void>
+  onSave: (name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null, agencyId: string | null) => Promise<void>
   loading: boolean
   error: string
   onCancel: () => void
@@ -190,6 +192,7 @@ export function CustomerForm({
   initialName = '',
   initialPhone = '',
   initialAssistance = null,
+  initialAgency = null,
   initialAddresses,
   onSave,
   loading,
@@ -199,6 +202,7 @@ export function CustomerForm({
   const [name, setName] = useState(initialName)
   const [phone, setPhone] = useState(initialPhone)
   const [assistance, setAssistance] = useState<Assistance | null>(initialAssistance)
+  const [agency, setAgency] = useState<Agency | null>(initialAgency)
   const [addresses, setAddresses] = useState<AddressEntry[]>(
     initialAddresses ?? [{ ...emptyAddress('Principal'), isDefault: true }]
   )
@@ -217,7 +221,7 @@ export function CustomerForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    await onSave(name, phone, addresses, assistance?.id ?? null)
+    await onSave(name, phone, addresses, assistance?.id ?? null, agency?.id ?? null)
   }
 
   return (
@@ -242,6 +246,19 @@ export function CustomerForm({
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700">Assistência</label>
           <AssistanceCombobox value={assistance} onChange={setAssistance} />
+        </div>
+
+        {/* Entrega terceirizada (via agência/parceiro): ao vincular uma agência, os
+            pedidos deste cliente vão para o endereço da agência (ex.: Correios). */}
+        <div>
+          <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+            <Building2 className="h-4 w-4 text-gray-400" />
+            Entrega via agência/parceiro (opcional)
+          </label>
+          <AgencyCombobox value={agency} onChange={setAgency} />
+          <p className="mt-1 text-xs text-gray-500">
+            Vincule uma agência para que os pedidos deste cliente sejam entregues nela (terceirizada).
+          </p>
         </div>
       </div>
 

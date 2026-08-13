@@ -13,7 +13,7 @@ export default function NewCustomerPage() {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
-  async function handleSave(name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null) {
+  async function handleSave(name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null, agencyId: string | null) {
     const filled = addresses.filter(a => a.address.trim())
     if (!filled.length) { setError('Informe pelo menos um endereço'); return }
     setLoading(true)
@@ -36,7 +36,7 @@ export default function NewCustomerPage() {
           }
         })
       )
-      await api.post('/customers', { name, phone: stripPhone(phone), assistanceId, addresses: withCoords })
+      await api.post('/customers', { name, phone: stripPhone(phone), assistanceId, agencyId, addresses: withCoords })
       router.push('/customers')
     } catch (err: unknown) {
       setError((err as Error).message)

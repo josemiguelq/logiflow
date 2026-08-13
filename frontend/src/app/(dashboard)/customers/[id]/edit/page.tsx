@@ -22,7 +22,7 @@ export default function EditCustomerPage({ params }: Props) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
 
-  async function handleSave(name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null) {
+  async function handleSave(name: string, phone: string, addresses: AddressEntry[], assistanceId: string | null, agencyId: string | null) {
     const filled = addresses.filter(a => a.address.trim())
     if (!filled.length) { setError('Informe pelo menos um endereço'); return }
     setLoading(true)
@@ -46,7 +46,7 @@ export default function EditCustomerPage({ params }: Props) {
           }
         })
       )
-      await api.put(`/customers/${id}`, { name, phone: stripPhone(phone), assistanceId, addresses: withCoords })
+      await api.put(`/customers/${id}`, { name, phone: stripPhone(phone), assistanceId, agencyId, addresses: withCoords })
       router.push('/customers')
     } catch (err: unknown) {
       setError((err as Error).message)
@@ -84,6 +84,7 @@ export default function EditCustomerPage({ params }: Props) {
         initialName={customer.name}
         initialPhone={formatPhone(customer.phone)}
         initialAssistance={customer.assistanceId ? { id: customer.assistanceId, name: customer.assistanceName ?? '' } : null}
+        initialAgency={customer.agencyId ? { id: customer.agencyId, name: customer.agencyName ?? '', address: customer.agencyAddress ?? '', lat: customer.agencyLat, lng: customer.agencyLng } : null}
         initialAddresses={toAddressEntries(customer.addresses)}
         onSave={handleSave}
         loading={loading}

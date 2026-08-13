@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X, AlertTriangle, BellRing } from 'lucide-react'
+import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X, AlertTriangle, BellRing, Building2 } from 'lucide-react'
 import { Order, OrderStatus, Deliverer, OrderUnread, ChatMessage } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
@@ -44,6 +44,7 @@ export default function OrdersPage() {
   const [status,       setStatus]       = useState<OrderStatus | ''>('')
   const [delivererId,  setDelivererId]  = useState('')
   const [search,       setSearch]       = useState('')
+  const [agencyOnly,   setAgencyOnly]   = useState(false)
   const [showNewOrder,    setShowNewOrder]    = useState(false)
   const [assigning,       setAssigning]       = useState<Order | null>(null)
   const [cancelling,      setCancelling]      = useState<Order | null>(null)
@@ -139,11 +140,12 @@ export default function OrdersPage() {
     }
   }, [])
 
-  // Search by customer name (client-side)
+  // Search by customer name + filtro "Via agência" (terceirizada), client-side.
   const query = search.trim().toLowerCase()
-  const filteredOrders = query
-    ? orders.filter(o => o.customer.name.toLowerCase().includes(query))
-    : orders
+  const filteredOrders = orders.filter(o =>
+    (!query || o.customer.name.toLowerCase().includes(query)) &&
+    (!agencyOnly || o.thirdPartyDelivery)
+  )
 
   // Split active (cards) vs completed (table). Table shows only orders created today.
   const isToday = (d: string) => new Date(d).toDateString() === new Date().toDateString()
@@ -184,17 +186,23 @@ export default function OrdersPage() {
     { refreshInterval: 30_000 }
   )
 
+  // Alvo de entrega: agência (terceirizada) quando presente, senão o cliente.
+  const targetLat = (o: Order) => o.agency?.lat ?? o.customer.lat
+  const targetLng = (o: Order) => o.agency?.lng ?? o.customer.lng
+  const targetAddr = (o: Order) => o.agency ? `${o.agency.name} · ${o.agency.address}` : o.customer.address
+
   const mapOrders = (view === 'map' ? allOrders : orders)
-    .filter(o => !COMPLETED_STATUSES.includes(o.status) && o.customer.lat != null)
+    .filter(o => !COMPLETED_STATUSES.includes(o.status) && targetLat(o) != null)
     .filter(o => !query || o.customer.name.toLowerCase().includes(query))
+    .filter(o => !agencyOnly || o.thirdPartyDelivery)
 
   const mapDestinations: MapDestination[] = mapOrders
     .map(o => ({
       id:     o.id,
-      lat:    o.customer.lat!,
-      lng:    o.customer.lng!,
+      lat:    targetLat(o)!,
+      lng:    targetLng(o)!,
       label:  `${o.customer.name} · ···${o.customer.phone.slice(-4)} · #${o.id.slice(-8).toUpperCase()}`,
-      status: `${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''} · ${o.customer.address}`,
+      status: `${STATUS_LABELS[o.status]}${o.deliverer ? ` · ${o.deliverer.name}` : ''} · ${targetAddr(o)}`,
       selectable:     batchMode && o.status === 'PREPARING',
       selected:       batchSelected.includes(o.id),
       markerColor:    o.status === 'PREPARING' ? (batchMode && batchSelected.includes(o.id) ? 'blue' : 'gray') : 'red',
@@ -351,6 +359,19 @@ export default function OrdersPage() {
             </button>
           )}
         </div>
+
+        {/* Filtro "Via agência" (terceirizada) — disponível em ambas as visões */}
+        <button
+          onClick={() => setAgencyOnly(v => !v)}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+          style={agencyOnly
+            ? { borderColor: '#6366F1', color: '#4338CA', background: '#EEF2FF' }
+            : { borderColor: '#E5E7EB', color: '#4B5563', background: '#fff' }}
+          title="Mostrar apenas pedidos de entrega terceirizada (via agência/parceiro)"
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          Via agência
+        </button>
 
         {/* Filters */}
         {view === 'cards' && (
@@ -542,7 +563,9 @@ export default function OrdersPage() {
                             </td>
                             <td className="px-4 py-2.5 text-gray-800">{order.customer.name}</td>
                             <td className="hidden sm:table-cell px-4 py-2.5 max-w-[200px]">
-                              <span className="block truncate text-gray-500">{order.customer.address}</span>
+                              <span className="block truncate text-gray-500">
+                                {order.agency ? `${order.agency.name} · ${order.agency.address}` : order.customer.address}
+                              </span>
                             </td>
                             <td className="hidden md:table-cell px-4 py-2.5 text-gray-500">
                               {order.deliverer?.name ?? '—'}

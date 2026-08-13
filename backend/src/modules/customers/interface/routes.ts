@@ -41,6 +41,7 @@ const customerCreateSchema = z.object({
   name:         z.string().min(1),
   phone:        z.string().min(8),
   assistanceId: z.string().uuid().nullable().optional(),
+  agencyId:     z.string().uuid().nullable().optional(),
   addresses:    z.array(addressSchema).min(1),
 })
 
@@ -48,6 +49,7 @@ const customerUpdateSchema = z.object({
   name:         z.string().min(1).optional(),
   phone:        z.string().min(8).optional(),
   assistanceId: z.string().uuid().nullable().optional(),
+  agencyId:     z.string().uuid().nullable().optional(),
   addresses:    z.array(addressSchema).min(1).optional(),
 })
 
@@ -95,6 +97,15 @@ export async function customerRoutes(app: FastifyInstance) {
     return (a as { name: string } | undefined)?.name ?? null
   }
 
+  // Idem para agência (vínculo de entrega terceirizada) — validação multi-tenant + auditoria.
+  const resolveAgencyName = async (storeId: string, agencyId: string): Promise<string | null> => {
+    const { rows: [a] } = await db.query(
+      `SELECT name FROM agencies WHERE id = $1 AND store_id = $2`,
+      [agencyId, storeId],
+    )
+    return (a as { name: string } | undefined)?.name ?? null
+  }
+
   app.get(
     '/customers',
     { preHandler: requireStoreUser },
@@ -131,11 +142,14 @@ export async function customerRoutes(app: FastifyInstance) {
       if (body.assistanceId && !(await resolveAssistanceName(req.actor.storeId, body.assistanceId))) {
         return reply.code(400).send({ error: 'Assistência inválida' })
       }
+      if (body.agencyId && !(await resolveAgencyName(req.actor.storeId, body.agencyId))) {
+        return reply.code(400).send({ error: 'Agência inválida' })
+      }
       const existing = await repo.findByPhone(req.actor.storeId, body.phone)
       if (existing) return existing
 
       const customer = await repo.create(
-        { storeId: req.actor.storeId, name: body.name, phone: body.phone, assistanceId: body.assistanceId ?? null },
+        { storeId: req.actor.storeId, name: body.name, phone: body.phone, assistanceId: body.assistanceId ?? null, agencyId: body.agencyId ?? null },
         body.addresses.map((a, i) => ({ ...a, isDefault: i === 0 || !!a.isDefault }))
       )
       for (const addr of customer.addresses) {
@@ -172,6 +186,15 @@ export async function customerRoutes(app: FastifyInstance) {
         }
         changes.push({ field: 'assistance', before: existing.assistanceName, after: afterName })
       }
+      // Mudança de agência (entrega terceirizada): valida na loja e audita por NOME.
+      if (body.agencyId !== undefined && (body.agencyId ?? null) !== existing.agencyId) {
+        let afterAgency: string | null = null
+        if (body.agencyId) {
+          afterAgency = await resolveAgencyName(req.actor.storeId, body.agencyId)
+          if (!afterAgency) return reply.code(400).send({ error: 'Agência inválida' })
+        }
+        changes.push({ field: 'agency', before: existing.agencyName, after: afterAgency })
+      }
       const auditEntry: CustomerAuditEntry | undefined = changes.length
         ? {
             changedBy:     req.actor.sub,
@@ -181,7 +204,7 @@ export async function customerRoutes(app: FastifyInstance) {
           }
         : undefined
 
-      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone, assistanceId: body.assistanceId }, auditEntry)
+      await repo.update(id, req.actor.storeId, { name: body.name, phone: body.phone, assistanceId: body.assistanceId, agencyId: body.agencyId }, auditEntry)
 
       // Sync address sub-table when addresses are provided
       if (body.addresses) {

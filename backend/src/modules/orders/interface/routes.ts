@@ -483,12 +483,20 @@ export async function orderRoutes(app: FastifyInstance) {
       const actor = req.actor
       const storeId = actor.storeId
 
-      // Delivery code = last 4 digits of customer phone
+      // Delivery code = last 4 digits of customer phone. Também lê a agência
+      // vinculada ao cliente para snapshot no pedido (entrega via agência/parceiro).
       const { rows: [cust] } = await db.query(
-        'SELECT phone FROM customers WHERE id = $1 AND store_id = $2',
+        `SELECT c.phone, c.agency_id,
+                ag.name AS agency_name, ag.address AS agency_address,
+                ag.lat AS agency_lat, ag.lng AS agency_lng
+         FROM customers c
+         LEFT JOIN agencies ag ON ag.id = c.agency_id
+         WHERE c.id = $1 AND c.store_id = $2`,
         [body.customerId, storeId]
       )
       const deliveryCode = (cust?.phone as string | undefined)?.slice(-4) ?? generateCode().slice(0, 4)
+      const agencyId = (cust?.agency_id as string | undefined) ?? undefined
+      const thirdPartyDelivery = agencyId != null
 
       // Prazo só faz sentido quando prioritário.
       const maxDeliveryTime = body.isPriority && body.maxDeliveryTime
@@ -498,7 +506,12 @@ export async function orderRoutes(app: FastifyInstance) {
       const order = await createOrder(
         { storeId, createdByUserId: actor.sub, lat: body.lat, lng: body.lng,
           customerId: body.customerId, notes: body.notes, deliveryCode,
-          isPriority: body.isPriority, maxDeliveryTime,
+          isPriority: body.isPriority, maxDeliveryTime, thirdPartyDelivery,
+          agencyId,
+          agencyName:    (cust?.agency_name as string | undefined) ?? undefined,
+          agencyAddress: (cust?.agency_address as string | undefined) ?? undefined,
+          agencyLat:     cust?.agency_lat != null ? Number(cust.agency_lat) : undefined,
+          agencyLng:     cust?.agency_lng != null ? Number(cust.agency_lng) : undefined,
           paymentMethod: body.paymentMethod, cashAmount: body.cashAmount,
           deliveryAddress: body.deliveryAddress, deliveryLat: body.deliveryLat, deliveryLng: body.deliveryLng },
         { orderRepo }
@@ -952,7 +965,16 @@ export async function orderRoutes(app: FastifyInstance) {
           const signed = await signOrdersProof(orders)
           return signed.map((o: typeof orders[0]) => ({
             ...o,
-            customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
+            // Entrega terceirizada: o app usa o endereço da AGÊNCIA (exibição, navegação
+        // e proximidade). O nome da agência é prefixado no endereço para o entregador.
+        customer: {
+          name:       o.customer.name,
+          address:    o.agency ? (o.agency.name ? `${o.agency.name} — ${o.agency.address}` : o.agency.address) : o.customer.address,
+          complement: o.agency ? undefined : o.customer.complement,
+          lat:        o.agency?.lat ?? o.customer.lat,
+          lng:        o.agency?.lng ?? o.customer.lng,
+        },
+        thirdPartyDelivery: !!o.agency,
           }))
         }
       } catch { /* fall through to DB */ }
@@ -962,7 +984,16 @@ export async function orderRoutes(app: FastifyInstance) {
       const signed = await signOrdersProof(orders)
       return signed.map(o => ({
         ...o,
-        customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
+        // Entrega terceirizada: o app usa o endereço da AGÊNCIA (exibição, navegação
+        // e proximidade). O nome da agência é prefixado no endereço para o entregador.
+        customer: {
+          name:       o.customer.name,
+          address:    o.agency ? (o.agency.name ? `${o.agency.name} — ${o.agency.address}` : o.agency.address) : o.customer.address,
+          complement: o.agency ? undefined : o.customer.complement,
+          lat:        o.agency?.lat ?? o.customer.lat,
+          lng:        o.agency?.lng ?? o.customer.lng,
+        },
+        thirdPartyDelivery: !!o.agency,
       }))
     }
   )
@@ -1019,7 +1050,16 @@ export async function orderRoutes(app: FastifyInstance) {
       const orders = await orderRepo.findPreparing(req.actor.storeId, req.actor.sub)
       return orders.map(o => ({
         ...o,
-        customer: { name: o.customer.name, address: o.customer.address, complement: o.customer.complement, lat: o.customer.lat, lng: o.customer.lng },
+        // Entrega terceirizada: o app usa o endereço da AGÊNCIA (exibição, navegação
+        // e proximidade). O nome da agência é prefixado no endereço para o entregador.
+        customer: {
+          name:       o.customer.name,
+          address:    o.agency ? (o.agency.name ? `${o.agency.name} — ${o.agency.address}` : o.agency.address) : o.customer.address,
+          complement: o.agency ? undefined : o.customer.complement,
+          lat:        o.agency?.lat ?? o.customer.lat,
+          lng:        o.agency?.lng ?? o.customer.lng,
+        },
+        thirdPartyDelivery: !!o.agency,
       }))
     }
   )

@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from 'react'
 import useSWR from 'swr'
-import { X, MapPin, Check, Crown, Printer, CheckCircle } from 'lucide-react'
+import { X, MapPin, Check, Crown, Printer, CheckCircle, Building2 } from 'lucide-react'
 import { Customer, CustomerAddress, Order, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -219,6 +219,20 @@ export function NewOrderModal({ onClose, onCreated }: Props) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Entrega terceirizada — herdada do cliente (somente leitura). O pedido vai
+              para o endereço da agência; a etiqueta usa o endereço do cliente. */}
+          {selected?.agencyId && (
+            <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm text-indigo-800">
+              <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+              <span>
+                <span className="font-medium">Entrega via agência: {selected.agencyName}</span>
+                {selected.agencyAddress && (
+                  <span className="mt-0.5 block text-xs text-indigo-700/90">{selected.agencyAddress}</span>
+                )}
+              </span>
             </div>
           )}
 

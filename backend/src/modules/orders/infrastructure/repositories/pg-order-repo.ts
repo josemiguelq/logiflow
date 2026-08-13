@@ -18,6 +18,12 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     notes:           row.notes as string | undefined,
     isPriority:      (row.is_priority as boolean) ?? false,
     maxDeliveryTime: row.max_delivery_time as Date | undefined,
+    thirdPartyDelivery: (row.third_party_delivery as boolean) ?? false,
+    agencyId:        row.agency_id as string | undefined,
+    agencyName:      row.agency_name as string | undefined,
+    agencyAddress:   row.agency_address as string | undefined,
+    agencyLat:       row.agency_lat != null ? Number(row.agency_lat) : undefined,
+    agencyLng:       row.agency_lng != null ? Number(row.agency_lng) : undefined,
     paymentMethod:   (row.payment_method as string ?? 'prepaid') as 'prepaid' | 'cash' | 'card',
     cashAmount:      row.cash_amount != null ? Number(row.cash_amount) : undefined,
     cashCollected:   (row.cash_collected as boolean) ?? false,
@@ -53,6 +59,12 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
     notes:           row.notes as string | undefined,
     isPriority:      (row.is_priority as boolean) ?? false,
     maxDeliveryTime: row.max_delivery_time as Date | undefined,
+    thirdPartyDelivery: (row.third_party_delivery as boolean) ?? false,
+    agencyId:        row.agency_id as string | undefined,
+    agencyName:      row.agency_name as string | undefined,
+    agencyAddress:   row.agency_address as string | undefined,
+    agencyLat:       row.agency_lat != null ? Number(row.agency_lat) : undefined,
+    agencyLng:       row.agency_lng != null ? Number(row.agency_lng) : undefined,
     paymentMethod:   (row.payment_method as string ?? 'prepaid') as 'prepaid' | 'cash' | 'card',
     cashAmount:      row.cash_amount != null ? Number(row.cash_amount) : undefined,
     cashCollected:   (row.cash_collected as boolean) ?? false,
@@ -86,19 +98,29 @@ function mapRow(row: Record<string, unknown>): OrderWithDetails {
           status: row.deliverer_status as string,
         }
       : undefined,
+    // Agência de entrega terceirizada (quando snapshot presente no pedido).
+    agency: row.agency_address != null
+      ? {
+          id:      row.agency_id as string | undefined,
+          name:    (row.agency_name as string | undefined) ?? '',
+          address: row.agency_address as string,
+          lat:     row.agency_lat != null ? Number(row.agency_lat) : undefined,
+          lng:     row.agency_lng != null ? Number(row.agency_lng) : undefined,
+        }
+      : undefined,
     proofs: (row.proofs as Array<{ photoUrl: string; lat?: number; lng?: number }> | null) ?? [],
     // Backward-compat shorthand — first photo
     proof: ((row.proofs as Array<{ photoUrl: string; lat?: number; lng?: number }> | null) ?? [])[0],
-    // Entrega fora do local: ponto esperado (customer_lat/lng já é COALESCE com
-    // o override) x 1º comprovante com coordenadas.
+    // Entrega fora do local: ponto esperado x 1º comprovante com coordenadas. Para
+    // terceirizada, o alvo é a AGÊNCIA (não o endereço do cliente).
     deliveredOffTarget: (() => {
       if (row.status !== 'DELIVERED') return false
+      const useAgency = row.agency_address != null
+      const expLat = useAgency ? (row.agency_lat as number | null) : (row.customer_lat as number | null)
+      const expLng = useAgency ? (row.agency_lng as number | null) : (row.customer_lng as number | null)
       const proof = ((row.proofs as Array<{ lat?: number; lng?: number }> | null) ?? [])
         .find(p => p.lat != null && p.lng != null)
-      return isDeliveredOffTarget(
-        row.customer_lat as number | null, row.customer_lng as number | null,
-        proof?.lat, proof?.lng,
-      )
+      return isDeliveredOffTarget(expLat, expLng, proof?.lat, proof?.lng)
     })(),
     payments: ((row.payments as Array<{ amount: number; method: string; createdAt: string }> | null) ?? [])
       .map(p => ({ amount: Number(p.amount), method: p.method as 'cash' | 'pix' | 'card', createdAt: p.createdAt })),
@@ -313,8 +335,9 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         `INSERT INTO orders
            (store_id, customer_id, created_by_user_id, status, pickup_code, delivery_code,
             notes, is_priority, max_delivery_time, payment_method, cash_amount,
-            lat, lng, delivery_address, delivery_lat, delivery_lng)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            lat, lng, delivery_address, delivery_lat, delivery_lng, third_party_delivery,
+            agency_id, agency_name, agency_address, agency_lat, agency_lng)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
          RETURNING *`,
         [
           data.storeId, data.customerId, data.createdByUserId,
@@ -326,6 +349,9 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
           (data as Record<string, unknown>).cashAmount ?? null,
           data.lat ?? null, data.lng ?? null,
           data.deliveryAddress ?? null, data.deliveryLat ?? null, data.deliveryLng ?? null,
+          data.thirdPartyDelivery ?? false,
+          data.agencyId ?? null, data.agencyName ?? null, data.agencyAddress ?? null,
+          data.agencyLat ?? null, data.agencyLng ?? null,
         ]
       )
       return mapOrderRow(rows[0] as Record<string, unknown>)

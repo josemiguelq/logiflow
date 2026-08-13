@@ -40,12 +40,28 @@ export interface Assistance {
   name: string
 }
 
+// Agência de entrega terceirizada (ex.: agência dos Correios). Ponto de terceiro
+// para onde o entregador leva o pedido.
+export interface Agency {
+  id: string
+  name: string
+  address: string
+  lat?: number | null
+  lng?: number | null
+}
+
 export interface Customer {
   id: string
   name: string
   phone: string
   assistanceId?: string | null
   assistanceName?: string | null
+  thirdPartyDelivery?: boolean
+  agencyId?: string | null
+  agencyName?: string | null
+  agencyAddress?: string | null
+  agencyLat?: number | null
+  agencyLng?: number | null
   addresses: CustomerAddress[]
   createdAt: string
   updatedAt: string
@@ -99,6 +115,16 @@ export interface Order {
   notes?: string
   isPriority?: boolean
   maxDeliveryTime?: string
+  thirdPartyDelivery?: boolean
+  // Agência de entrega terceirizada (quando o pedido é via agência/parceiro). O
+  // endereço mostrado no pedido é o da agência; a etiqueta usa o do cliente.
+  agency?: {
+    id?: string
+    name: string
+    address: string
+    lat?: number
+    lng?: number
+  }
   deliveryNote?: string
   cancelReason?: string
   createdAt: string

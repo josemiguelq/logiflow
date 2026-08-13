@@ -15,6 +15,12 @@ export async function createOrder(
     notes?: string
     isPriority?: boolean
     maxDeliveryTime?: Date
+    thirdPartyDelivery?: boolean
+    agencyId?: string
+    agencyName?: string
+    agencyAddress?: string
+    agencyLat?: number
+    agencyLng?: number
     paymentMethod?: 'prepaid' | 'cash' | 'card'
     cashAmount?: number
     lat?: number
@@ -35,6 +41,12 @@ export async function createOrder(
     notes:           input.notes,
     isPriority:      input.isPriority ?? false,
     maxDeliveryTime: input.maxDeliveryTime,
+    thirdPartyDelivery: input.thirdPartyDelivery ?? false,
+    agencyId:        input.agencyId,
+    agencyName:      input.agencyName,
+    agencyAddress:   input.agencyAddress,
+    agencyLat:       input.agencyLat,
+    agencyLng:       input.agencyLng,
     paymentMethod:   input.paymentMethod ?? 'prepaid',
     cashAmount:      input.cashAmount,
     cashCollected:   false,

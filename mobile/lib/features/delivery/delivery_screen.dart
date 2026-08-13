@@ -255,6 +255,38 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
               ),
             ),
 
+            // Entrega terceirizada (via agência/parceiro): o endereço acima já é o
+            // da agência — avisa o entregador de que o pacote é deixado lá.
+            if (order.thirdPartyDelivery)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFC7D2FE)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.local_shipping_outlined,
+                          size: 16, color: Color(0xFF4338CA)),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Entrega via agência/parceiro — o endereço acima é o da agência (ex.: Correios). Deixe o pacote lá.',
+                          style: TextStyle(
+                              color: Color(0xFF4338CA),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // Notes row
             if (order.notes != null && order.notes!.isNotEmpty)
               GestureDetector(
@@ -818,7 +850,9 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
         return;
       }
     }
-    // Proximidade: valida a distância até o endereço antes de concluir.
+    // Proximidade: valida a distância até o endereço de entrega antes de concluir.
+    // Para entrega terceirizada, o endereço/coordenadas já são os da AGÊNCIA
+    // (o backend faz esse override), então a validação ocorre contra a agência.
     Position? pos;
     try {
       pos = await Geolocator.getCurrentPosition(

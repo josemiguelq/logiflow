@@ -33,12 +33,22 @@ function mapRow(r: Record<string, unknown>): Customer {
     updatedAt: r.updated_at as Date,
     audit:     (r.audit as CustomerAuditEntry[] | null) ?? [],
     warrantyAccepted: (r.warranty_accepted as boolean | null) ?? false,
+    thirdPartyDelivery: (r.agency_id as string | null) != null,
+    agencyId:      (r.agency_id as string | null) ?? null,
+    agencyName:    (r.agency_name as string | null) ?? null,
+    agencyAddress: (r.agency_address as string | null) ?? null,
+    agencyLat:     r.agency_lat != null ? Number(r.agency_lat) : null,
+    agencyLng:     r.agency_lng != null ? Number(r.agency_lng) : null,
   }
 }
 
 const WITH_ADDRESSES = `
   SELECT c.*,
     (SELECT a.name FROM assistances a WHERE a.id = c.assistance_id) AS assistance_name,
+    (SELECT ag.name    FROM agencies ag WHERE ag.id = c.agency_id) AS agency_name,
+    (SELECT ag.address FROM agencies ag WHERE ag.id = c.agency_id) AS agency_address,
+    (SELECT ag.lat     FROM agencies ag WHERE ag.id = c.agency_id) AS agency_lat,
+    (SELECT ag.lng     FROM agencies ag WHERE ag.id = c.agency_id) AS agency_lng,
     EXISTS (
       SELECT 1 FROM warranty_acceptances wa
       JOIN warranty_terms_versions v ON v.id = wa.terms_version_id AND v.is_current
@@ -132,12 +142,15 @@ export function createPgCustomerRepo(db: DB) {
     },
 
     async create(
-      data: { storeId: string; name: string; phone: string; assistanceId?: string | null },
+      data: { storeId: string; name: string; phone: string; assistanceId?: string | null; agencyId?: string | null },
       addresses: Array<{ label: string; address: string; number?: string; complement?: string; lat?: number; lng?: number; isDefault?: boolean }>
     ): Promise<Customer> {
+      // third_party_delivery é derivado da presença de agência (mantido em coluna
+      // para os filtros/snapshot do pedido continuarem funcionando por leitura direta).
       const { rows } = await db.query(
-        `INSERT INTO customers (store_id, name, phone, assistance_id) VALUES ($1,$2,$3,$4) RETURNING *`,
-        [data.storeId, data.name, data.phone, data.assistanceId ?? null]
+        `INSERT INTO customers (store_id, name, phone, assistance_id, agency_id, third_party_delivery)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [data.storeId, data.name, data.phone, data.assistanceId ?? null, data.agencyId ?? null, (data.agencyId ?? null) != null]
       )
       const customer = rows[0] as Record<string, unknown>
 
@@ -158,25 +171,30 @@ export function createPgCustomerRepo(db: DB) {
     async update(
       id: string,
       storeId: string,
-      data: { name?: string; phone?: string; assistanceId?: string | null },
+      data: { name?: string; phone?: string; assistanceId?: string | null; agencyId?: string | null },
       auditEntry?: CustomerAuditEntry,
     ): Promise<Customer | null> {
-      // assistance_id é nullable e pode ser definido como NULL (desvincular), então
-      // COALESCE não serve: usamos um flag explícito ($6) para "alterar ou não".
+      // assistance_id/agency_id são nullable e podem virar NULL (desvincular), então
+      // COALESCE não serve: usamos flags explícitos para "alterar ou não".
+      // third_party_delivery acompanha a presença de agência.
       const setAssistance = data.assistanceId !== undefined
+      const setAgency     = data.agencyId !== undefined
       // Sempre bump em updated_at; anexa a entrada de auditoria (se houver) ao array.
       const { rows } = await db.query(
         `UPDATE customers
          SET name          = COALESCE($3, name),
              phone         = COALESCE($4, phone),
              assistance_id = CASE WHEN $6::boolean THEN $7::uuid ELSE assistance_id END,
+             agency_id     = CASE WHEN $8::boolean THEN $9::uuid ELSE agency_id END,
+             third_party_delivery = CASE WHEN $8::boolean THEN ($9::uuid IS NOT NULL) ELSE third_party_delivery END,
              updated_at    = now(),
              audit         = CASE WHEN $5::jsonb IS NOT NULL THEN audit || $5::jsonb ELSE audit END
          WHERE id = $1 AND store_id = $2
          RETURNING id`,
         [id, storeId, data.name ?? null, data.phone ?? null,
          auditEntry ? JSON.stringify([auditEntry]) : null,
-         setAssistance, data.assistanceId ?? null]
+         setAssistance, data.assistanceId ?? null,
+         setAgency, data.agencyId ?? null]
       )
       if (!rows[0]) return null
       return this.findById(rows[0].id as string, storeId)

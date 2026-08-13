@@ -14,6 +14,7 @@ import { LiveMap } from '@/components/map'
 import { AdjustAddressModal } from '@/components/orders/adjust-address-modal'
 import { DelayFlag } from '@/components/orders/delay-flag'
 import { PriorityBadge } from '@/components/orders/priority-badge'
+import { AgencyBadge } from '@/components/orders/agency-badge'
 import { PriorityEditor } from '@/components/orders/priority-editor'
 import { OrderChatHistory } from '@/components/orders/order-chat-history'
 import { describeInconsistency } from '@/components/orders/inconsistency-modal'
@@ -185,6 +186,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={order.status} />
             {order.isPriority && <PriorityBadge maxDeliveryTime={order.maxDeliveryTime} />}
+            {order.thirdPartyDelivery && <AgencyBadge />}
             {delay.level !== 'none' && <DelayFlag delay={delay} />}
             {order.deliveredOffTarget && (
               <span
@@ -231,10 +233,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="flex items-start gap-2 text-gray-700">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-                <span>
-                  {order.customer.address}
-                  {order.customer.complement && ` — ${order.customer.complement}`}
-                </span>
+                {order.agency ? (
+                  <span>
+                    <span className="font-medium text-indigo-700">{order.agency.name}</span>
+                    <span className="block text-gray-700">{order.agency.address}</span>
+                    <span className="mt-0.5 block text-xs text-gray-400">
+                      Endereço do cliente (etiqueta): {order.customer.address}
+                      {order.customer.complement && ` — ${order.customer.complement}`}
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    {order.customer.address}
+                    {order.customer.complement && ` — ${order.customer.complement}`}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-4 pt-1">
                 {!COMPLETED_STATUSES.includes(order.status) && (

@@ -12,6 +12,7 @@ class Order {
   final String? notes;           // nota cadastrada pelo usuário web
   final bool isPriority;         // pedido prioritário (coroa)
   final DateTime? maxDeliveryTime; // horário máximo de entrega (prazo), quando prioritário
+  final bool thirdPartyDelivery; // entrega terceirizada (via agência/parceiro): pula checagem de proximidade
   final String paymentMethod;   // 'prepaid' | 'cash' | 'card'
   final double? cashAmount;
   final bool cashCollected;
@@ -32,6 +33,7 @@ class Order {
     this.notes,
     this.isPriority = false,
     this.maxDeliveryTime,
+    this.thirdPartyDelivery = false,
     this.paymentMethod = 'prepaid',
     this.cashAmount,
     this.cashCollected = false,
@@ -62,6 +64,7 @@ class Order {
       notes:           j['notes'] as String?,
       isPriority:       j['isPriority'] as bool? ?? false,
       maxDeliveryTime:  DateTime.tryParse(j['maxDeliveryTime'] as String? ?? '')?.toLocal(),
+      thirdPartyDelivery: j['thirdPartyDelivery'] as bool? ?? false,
       paymentMethod:    j['paymentMethod'] as String? ?? 'prepaid',
       cashAmount:       (j['cashAmount'] as num?)?.toDouble(),
       cashCollected:    j['cashCollected'] as bool? ?? false,
@@ -84,6 +87,7 @@ class Order {
         notes:           notes,
         isPriority:      isPriority,
         maxDeliveryTime: maxDeliveryTime,
+        thirdPartyDelivery: thirdPartyDelivery,
         paymentMethod:   paymentMethod,
         cashAmount:      cashAmount,
         cashCollected:   cashCollected,

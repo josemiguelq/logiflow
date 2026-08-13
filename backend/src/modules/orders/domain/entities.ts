@@ -22,6 +22,15 @@ export interface Order {
   // o horário máximo de entrega (opcional) que dispara alerta quando estourado.
   isPriority: boolean
   maxDeliveryTime?: Date
+  // Entrega terceirizada ("via agência/parceiro"): snapshot do cliente no momento
+  // da criação. Quando há agência, o pedido mostra o endereço dela e a proximidade
+  // é validada por ela (o endereço do cliente segue em deliveryAddress p/ a etiqueta).
+  thirdPartyDelivery: boolean
+  agencyId?: string
+  agencyName?: string
+  agencyAddress?: string
+  agencyLat?: number
+  agencyLng?: number
   paymentMethod: 'prepaid' | 'cash' | 'card'
   cashAmount?: number
   cashCollected: boolean
@@ -94,6 +103,16 @@ export interface OrderWithDetails extends Order {
     id: string
     name: string
     status: string
+  }
+  // Agência de entrega terceirizada (quando o pedido é "via agência/parceiro").
+  // O endereço da agência é o alvo de entrega/proximidade; customer.address segue
+  // sendo o endereço real do cliente (usado na etiqueta).
+  agency?: {
+    id?: string
+    name: string
+    address: string
+    lat?: number
+    lng?: number
   }
   proof?: {
     photoUrl: string

@@ -36,4 +36,13 @@ export interface Customer {
   audit: CustomerAuditEntry[]
   // Cliente já assinou a versão ATUAL dos termos de garantia da loja.
   warrantyAccepted: boolean
+  // Entrega terceirizada ("via agência/parceiro"): quando há uma agência vinculada,
+  // pedidos deste cliente são criados como terceirizados (levados à agência, ex.:
+  // Correios). thirdPartyDelivery é derivado de agencyId != null.
+  thirdPartyDelivery: boolean
+  agencyId: string | null
+  agencyName: string | null
+  agencyAddress: string | null
+  agencyLat: number | null
+  agencyLng: number | null
 }

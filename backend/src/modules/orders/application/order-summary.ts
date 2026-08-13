@@ -49,14 +49,15 @@ export function computeSummary(log: OrderLogEntry[]): OrderSummary {
  * Função pura para facilitar testes.
  */
 export function detectInconsistencies(
-  order: Pick<OrderWithDetails, 'cashAmount' | 'customer'>,
+  order: Pick<OrderWithDetails, 'cashAmount' | 'customer' | 'agency'>,
   delivery: { lat?: number; lng?: number; payments?: { amount: number; method: PaymentMethod }[] },
 ): OrderInconsistency[] {
   const inconsistencies: OrderInconsistency[] = []
 
   const { lat, lng } = delivery
-  const destLat = order.customer?.lat
-  const destLng = order.customer?.lng
+  // Para entrega terceirizada, o alvo é o endereço da AGÊNCIA (não o do cliente).
+  const destLat = order.agency?.lat ?? order.customer?.lat
+  const destLng = order.agency?.lng ?? order.customer?.lng
   if (lat != null && lng != null && destLat != null && destLng != null) {
     const distanceMeters = haversineMeters(lat, lng, destLat, destLng)
     if (distanceMeters > OFF_TARGET_THRESHOLD_M) {

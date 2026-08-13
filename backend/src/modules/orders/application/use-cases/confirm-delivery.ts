@@ -61,12 +61,13 @@ export async function confirmDelivery(
   }
 
   // Proximidade: só bloqueia quando a loja exige entregar perto do endereço.
+  // Para entrega terceirizada, o alvo é o endereço da AGÊNCIA, não o do cliente.
   if (requireProximity) {
     if (lat == null || lng == null) {
       throw new Error('Não foi possível confirmar sua localização. Ative o GPS e tente novamente.')
     }
-    const destLat = order.customer.lat
-    const destLng = order.customer.lng
+    const destLat = order.agency?.lat ?? order.customer.lat
+    const destLng = order.agency?.lng ?? order.customer.lng
     if (destLat != null && destLng != null) {
       const dist = haversineMeters(lat, lng, destLat, destLng)
       if (dist > proximityMeters) {

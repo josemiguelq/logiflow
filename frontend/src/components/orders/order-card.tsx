@@ -9,6 +9,7 @@ import { useNow } from '@/hooks/useNow'
 import { useDelayThresholds } from '@/hooks/useDelayThresholds'
 import { DelayFlag } from '@/components/orders/delay-flag'
 import { PriorityBadge } from '@/components/orders/priority-badge'
+import { AgencyBadge } from '@/components/orders/agency-badge'
 import { MapPin, Phone, Truck, Clock, Navigation, Share2, Check, FileText, Pencil, X, Trash2, MessageCircle } from 'lucide-react'
 
 interface Props {
@@ -88,6 +89,7 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete, onO
         <div className="flex flex-col items-end gap-1.5">
           <StatusBadge status={order.status} />
           {order.isPriority && <PriorityBadge maxDeliveryTime={order.maxDeliveryTime} />}
+          {order.thirdPartyDelivery && <AgencyBadge />}
           {delay.level !== 'none' && <DelayFlag delay={delay} />}
         </div>
       </div>
@@ -96,7 +98,14 @@ export function OrderCard({ order, onAssign, onCancel, onSaveNote, onDelete, onO
       <div className="space-y-1.5 px-4 pb-3 text-sm text-gray-600">
         <div className="flex items-start gap-2">
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
-          <span className="line-clamp-1">{order.customer.address}</span>
+          {order.agency ? (
+            <span className="line-clamp-2">
+              <span className="font-medium text-indigo-700">{order.agency.name}</span>
+              <span className="text-gray-500"> · {order.agency.address}</span>
+            </span>
+          ) : (
+            <span className="line-clamp-1">{order.customer.address}</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />

@@ -4,7 +4,7 @@ import { use, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Pencil, MapPin, Phone, History, Plus, Pencil as Edit2, Trash2, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Pencil, MapPin, Phone, History, Plus, Pencil as Edit2, Trash2, ShieldCheck, Building2 } from 'lucide-react'
 import { Customer, CustomerAuditEntry, WarrantyClientDetail, fullAddress, OrderStatus } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -37,8 +37,11 @@ const ACTION = {
 }
 
 // Rótulos e formatação dos campos auditáveis do próprio cliente.
-const CUSTOMER_FIELDS: Record<string, string> = { name: 'Nome', phone: 'Telefone' }
+const CUSTOMER_FIELDS: Record<string, string> = {
+  name: 'Nome', phone: 'Telefone', assistance: 'Assistência', agency: 'Agência de entrega',
+}
 const fmtCustomerValue = (field: string, value: unknown) => {
+  if (typeof value === 'boolean') return value ? 'Sim' : 'Não'
   if (value == null || value === '') return '—'
   return field === 'phone' ? formatPhone(String(value)) : String(value)
 }
@@ -101,6 +104,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
             <Phone className="h-3.5 w-3.5" /> {formatPhone(customer.phone)}
           </p>
+          {customer.agencyId && (
+            <span
+              className="mt-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700"
+              title={customer.agencyAddress ?? undefined}
+            >
+              <Building2 className="h-3 w-3" /> Agência: {customer.agencyName}
+            </span>
+          )}
         </div>
         <Link
           href={`/customers/${id}/edit`}
