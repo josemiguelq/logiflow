@@ -104,17 +104,92 @@ export function buildLabelHtml(data: LabelData, format: LabelFormat): string {
 </html>`
 }
 
+// ── Etiqueta do cliente ───────────────────────────────────────────────────────
+
+export interface CustomerLabelData {
+  customerName:    string
+  phone:           string   // telefone bruto (será formatado)
+  address:         string   // rua (+ número, quando houver)
+  complement?:     string | null
+  city?:           string | null
+  state?:          string | null
+  postalCode?:     string | null
+  assistanceName?: string | null
+}
+
+// Linha "Cidade - UF" + CEP, omitindo o que não foi resolvido.
+function localityLine(data: CustomerLabelData): string {
+  const place = [data.city, data.state].filter(Boolean).join(' - ')
+  const parts = [place, data.postalCode ? `CEP ${data.postalCode}` : ''].filter(Boolean)
+  return parts.length ? `<div class="text">${esc(parts.join(' · '))}</div>` : ''
+}
+
+function customerCard(data: CustomerLabelData, last: boolean): string {
+  const assistanceLine = data.assistanceName
+    ? `<div class="assistance">${esc(data.assistanceName)}</div>`
+    : ''
+  const complementLine = data.complement
+    ? `<div class="text">${esc(data.complement)}</div>`
+    : ''
+
+  return `<div class="card${last ? '' : ' break'}">
+    ${assistanceLine}
+    <div class="name">${esc(data.customerName)}</div>
+    <div class="text">${esc(data.address)}</div>
+    ${complementLine}
+    ${localityLine(data)}
+    <div class="phone">☎ ${esc(formatPhone(data.phone))}</div>
+  </div>`
+}
+
+/** Documento com uma ou várias etiquetas de cliente — uma por página/corte. */
+export function buildCustomerLabelsHtml(labels: CustomerLabelData[], format: LabelFormat): string {
+  const s = FORMAT_STYLES[format]
+  const title = labels.length === 1 ? `Etiqueta ${esc(labels[0].customerName)}` : `${labels.length} etiquetas`
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>${title}</title>
+<style>
+  ${s.page}
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; color: #000; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, sans-serif; ${s.body} }
+  .card { ${s.card} }
+  .card.break { page-break-after: always; break-after: page; }
+  .assistance { ${s.text} font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid #000; padding-bottom: 2mm; margin-bottom: 3mm; }
+  .name { ${s.name} font-weight: 800; line-height: 1.15; margin-bottom: 2mm; word-break: break-word; }
+  .text { ${s.text} line-height: 1.3; word-break: break-word; }
+  .phone { ${s.small} margin-top: 2mm; }
+</style>
+</head>
+<body>
+  ${labels.map((l, i) => customerCard(l, i === labels.length - 1)).join('\n  ')}
+</body>
+</html>`
+}
+
+// ── Impressão ─────────────────────────────────────────────────────────────────
+
 /**
- * Abre uma janela isolada com a etiqueta e dispara a impressão.
- * Deve ser chamada a partir de um clique do usuário (evita bloqueio de popup).
+ * Abre a janela isolada de impressão. Deve ser chamada DIRETAMENTE do clique do
+ * usuário (evita bloqueio de popup) — se o conteúdo ainda depender de dados
+ * assíncronos, abra a janela aqui e chame `renderAndPrint` quando chegarem.
  */
-export function printOrderLabel(data: LabelData, format: LabelFormat): void {
-  const html = buildLabelHtml(data, format)
+export function openPrintWindow(): Window | null {
   const win = window.open('', '_blank', 'width=420,height=640')
   if (!win) {
     alert('Não foi possível abrir a janela de impressão. Verifique o bloqueador de popups.')
-    return
+    return null
   }
+  win.document.write('<!doctype html><meta charset="utf-8"><title>Etiquetas</title><body style="font:14px Arial;padding:24px;color:#444">Gerando etiquetas…</body>')
+  return win
+}
+
+/** Escreve o HTML na janela já aberta e dispara o diálogo de impressão. */
+export function renderAndPrint(win: Window, html: string): void {
   win.document.open()
   win.document.write(html)
   win.document.close()
@@ -132,4 +207,10 @@ export function printOrderLabel(data: LabelData, format: LabelFormat): void {
   } else {
     win.onload = () => setTimeout(triggerPrint, 100)
   }
+}
+
+/** Abre uma janela isolada com a etiqueta do pedido e dispara a impressão. */
+export function printOrderLabel(data: LabelData, format: LabelFormat): void {
+  const win = openPrintWindow()
+  if (win) renderAndPrint(win, buildLabelHtml(data, format))
 }

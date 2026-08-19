@@ -13,5 +13,9 @@ export function maskPhone(v: string): string {
 
 /** Format a stored raw phone number for display */
 export function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  // Fixo/celular antigo (10 dígitos): (XX) XXXX-XXXX. A máscara de digitação
+  // assume sempre 11 dígitos e quebraria esses números em XXXXX-XXX.
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
   return maskPhone(raw)
 }

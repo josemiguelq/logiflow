@@ -3,10 +3,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download, ArrowDown, ArrowUp, ShieldCheck } from 'lucide-react'
-import { Customer, fullAddress } from '@/types'
+import { Plus, Search, MapPin, Phone, Pencil, Trash2, Loader2, List, Map as MapIcon, Download, ArrowDown, ArrowUp, ShieldCheck, Printer } from 'lucide-react'
+import { Customer, CustomerAddress, fullAddress } from '@/types'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/phone'
+import { lookupAddressDetails } from '@/lib/geocode'
+import {
+  openPrintWindow, renderAndPrint, buildCustomerLabelsHtml,
+  type CustomerLabelData, type LabelFormat,
+} from '@/lib/print-label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
@@ -67,6 +72,77 @@ function DeleteModal({ count, customerName, loading, onConfirm, onClose }: Delet
   )
 }
 
+// Cliente com mais de um endereço: o operador escolhe qual vai na etiqueta, para
+// não colar na caixa o endereço errado (ex.: casa x trabalho).
+interface AddressPickerProps {
+  customers: Customer[]
+  onConfirm: (choice: Record<string, string>) => void
+  onClose: () => void
+}
+
+function AddressPickerModal({ customers, onConfirm, onClose }: AddressPickerProps) {
+  const [choice, setChoice] = useState<Record<string, string>>(() =>
+    Object.fromEntries(customers.map(c => [c.id, (c.addresses.find(a => a.isDefault) ?? c.addresses[0]).id])))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl bg-white p-6 shadow-xl">
+        <h2 className="font-semibold text-gray-900">Qual endereço imprimir?</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          {customers.length > 1
+            ? `${customers.length} clientes têm mais de um endereço cadastrado.`
+            : 'Este cliente tem mais de um endereço cadastrado.'}
+        </p>
+
+        <div className="-mx-1 my-4 flex-1 space-y-4 overflow-y-auto px-1">
+          {customers.map(c => (
+            <div key={c.id}>
+              <p className="mb-1.5 text-sm font-medium text-gray-900">{c.name}</p>
+              <div className="space-y-1">
+                {c.addresses.map(a => (
+                  <label
+                    key={a.id}
+                    className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 text-sm transition-colors ${choice[c.id] === a.id ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`addr-${c.id}`}
+                      checked={choice[c.id] === a.id}
+                      onChange={() => setChoice(prev => ({ ...prev, [c.id]: a.id }))}
+                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                    />
+                    <span>
+                      <span className="font-medium text-gray-700">{a.label}</span>
+                      <span className="block text-gray-500">{fullAddress(a)}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onConfirm(choice)}
+            data-testid="confirm-print-labels"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [page,   setPage]   = useState(1)
@@ -80,7 +156,7 @@ export default function CustomersPage() {
   // Privacy setting: when on, the customer list is hidden until the operator
   // searches for at least 4 characters, and the map view is disabled. The OWNER
   // is never affected — they always see the full customer list.
-  const { data: settings } = useSWR('/store/settings', (u: string) => api.get<{ hideAllCustomers: boolean }>(u))
+  const { data: settings } = useSWR('/store/settings', (u: string) => api.get<{ hideAllCustomers: boolean; labelFormat: LabelFormat }>(u))
   const privacyMode  = (settings?.hideAllCustomers ?? false) && user?.role !== 'OWNER'
   const searchActive = search.trim().length >= 4
   // In privacy mode the map (which exposes every customer at once) is off-limits.
@@ -141,6 +217,72 @@ export default function CustomersPage() {
   const [deletingBatch, setDeletingBatch] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
+  // Impressão de etiquetas (nome, assistência, endereço completo, telefone).
+  const labelFormat = settings?.labelFormat ?? 'thermal80'
+  const [printing, setPrinting] = useState(false)
+  // Clientes com mais de um endereço aguardando a escolha do operador.
+  const [pickingFor, setPickingFor] = useState<Customer[] | null>(null)
+
+  // Cidade/UF/CEP não são persistidos em customer_addresses — são resolvidos aqui,
+  // no clique, a partir das coordenadas (ou do texto) do endereço.
+  async function renderLabels(picks: { customer: Customer; addr: CustomerAddress }[], win: Window) {
+    setPrinting(true)
+    try {
+      const labels: CustomerLabelData[] = await Promise.all(picks.map(async ({ customer, addr }) => {
+        const details = await lookupAddressDetails(addr)
+        return {
+          customerName:   customer.name,
+          phone:          customer.phone,
+          address:        addr.number ? `${addr.address}, ${addr.number}` : addr.address,
+          complement:     addr.complement,
+          city:           details.city,
+          state:          details.state,
+          postalCode:     details.postalCode,
+          assistanceName: customer.assistanceName,
+        }
+      }))
+      renderAndPrint(win, buildCustomerLabelsHtml(labels, labelFormat))
+    } catch {
+      win.close()
+      alert('Não foi possível gerar as etiquetas. Tente novamente.')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  function defaultAddress(c: Customer): CustomerAddress | undefined {
+    return c.addresses.find(a => a.isDefault) ?? c.addresses[0]
+  }
+
+  function printLabels(list: Customer[]) {
+    const withAddress = list.filter(c => c.addresses.length > 0)
+    if (withAddress.length === 0) {
+      alert('Nenhum dos clientes selecionados tem endereço cadastrado.')
+      return
+    }
+    // Escolha de endereço primeiro; a janela de impressão abre no clique de
+    // confirmar (mantendo o gesto do usuário, senão o popup é bloqueado).
+    if (withAddress.some(c => c.addresses.length > 1)) {
+      setPickingFor(withAddress)
+      return
+    }
+    const win = openPrintWindow()
+    if (!win) return
+    renderLabels(withAddress.map(c => ({ customer: c, addr: defaultAddress(c)! })), win)
+  }
+
+  function confirmPick(choice: Record<string, string>) {
+    const list = pickingFor ?? []
+    setPickingFor(null)
+    const win = openPrintWindow()
+    if (!win) return
+    const picks = list.map(c => ({
+      customer: c,
+      addr: c.addresses.find(a => a.id === choice[c.id]) ?? defaultAddress(c)!,
+    }))
+    renderLabels(picks, win)
+  }
+
   useEffect(() => { setPage(1) }, [search, sort])
   // Clear selection on page/search/sort change
   useEffect(() => { setSelected(new Set()) }, [page, search, sort])
@@ -162,7 +304,7 @@ export default function CustomersPage() {
   // Colunas do shimmer — mesma ordem/visibilidade dos headers (checkbox e Termos
   // são condicionais).
   const skeletonCols: TableSkeletonColumn[] = [
-    ...(canDelete ? [{ cell: 'w-10', bar: 'w-4' }] : []),
+    { cell: 'w-10', bar: 'w-4' },
     { bar: 'w-28' },  // Nome
     { bar: 'w-24' },  // Telefone
     { bar: 'w-40' },  // Endereços
@@ -306,16 +448,14 @@ export default function CustomersPage() {
           <table className="w-full min-w-[520px] select-none text-sm">
             <thead className="border-b border-gray-100 bg-gray-50">
               <tr>
-                {canDelete && (
-                  <th className="w-10 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
-                    />
-                  </th>
-                )}
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Nome</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Telefone</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Endereços</th>
@@ -354,16 +494,14 @@ export default function CustomersPage() {
                 const isSelected = selected.has(c.id)
                 return (
                   <tr key={c.id} className={`transition-colors ${isSelected ? 'bg-red-50/40' : 'hover:bg-gray-50'}`}>
-                    {canDelete && (
-                      <td className="w-10 px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleOne(c.id)}
-                          className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
-                        />
-                      </td>
-                    )}
+                    <td className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleOne(c.id)}
+                        className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <Link href={`/customers/${c.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">
                         {c.name}
@@ -403,6 +541,15 @@ export default function CustomersPage() {
                     )}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => printLabels([c])}
+                          disabled={printing || c.addresses.length === 0}
+                          data-testid="customer-print-label"
+                          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 disabled:hover:bg-transparent"
+                          title={c.addresses.length === 0 ? 'Cliente sem endereço cadastrado' : 'Imprimir etiqueta'}
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
                         <Link
                           href={`/customers/${c.id}/edit`}
                           className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
@@ -433,8 +580,8 @@ export default function CustomersPage() {
       </>
       )}
 
-      {/* Batch delete sticky bar */}
-      {canDelete && someSelected && (
+      {/* Batch actions sticky bar */}
+      {someSelected && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white shadow-2xl md:left-64">
           <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
             <span className="flex-1 text-sm font-medium text-gray-700">
@@ -447,12 +594,23 @@ export default function CustomersPage() {
               Limpar seleção
             </button>
             <button
-              onClick={() => setDeletingBatch(true)}
-              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              onClick={() => printLabels(customers.filter(c => selected.has(c.id)))}
+              disabled={printing}
+              data-testid="customers-print-labels"
+              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >
-              <Trash2 className="h-4 w-4" />
-              Excluir {selected.size}
+              {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Imprimir {selected.size} etiqueta{selected.size !== 1 ? 's' : ''}
             </button>
+            {canDelete && (
+              <button
+                onClick={() => setDeletingBatch(true)}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir {selected.size}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -473,6 +631,14 @@ export default function CustomersPage() {
           loading={deleteLoading}
           onConfirm={confirmDeleteBatch}
           onClose={() => setDeletingBatch(false)}
+        />
+      )}
+
+      {pickingFor && (
+        <AddressPickerModal
+          customers={pickingFor.filter(c => c.addresses.length > 1)}
+          onConfirm={confirmPick}
+          onClose={() => setPickingFor(null)}
         />
       )}
     </div>
