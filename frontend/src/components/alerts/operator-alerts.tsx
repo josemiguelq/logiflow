@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import useSWR from 'swr'
-import { Truck, X } from 'lucide-react'
+import { Truck, Package, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
 
@@ -94,6 +94,30 @@ export function OperatorAlerts() {
   }, [on, playProximity])
   useEffect(() => () => clearTimeout(bannerTimer.current), [])
 
+  // ── Rota automática criada: avisa quais pedidos foram eleitos e que devem ser
+  //    separados agora para o entregador da vez ──
+  const [autoRouteAlert, setAutoRouteAlert] = useState<{
+    delivererName: string
+    pickupCode: string
+    orders: { orderId: string; customerName: string }[]
+  } | null>(null)
+  const autoRouteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => {
+    return on('auto_route_created', (data) => {
+      const d = data as {
+        delivererName: string
+        pickupCode: string
+        orders: { orderId: string; customerName: string }[]
+      }
+      if (!Array.isArray(d?.orders)) return
+      setAutoRouteAlert({ delivererName: d.delivererName ?? 'Entregador', pickupCode: d.pickupCode ?? '', orders: d.orders })
+      playProximity()
+      clearTimeout(autoRouteTimer.current)
+      autoRouteTimer.current = setTimeout(() => setAutoRouteAlert(null), 30_000)
+    })
+  }, [on, playProximity])
+  useEffect(() => () => clearTimeout(autoRouteTimer.current), [])
+
   // ── Atraso: toca quando os pedidos atrasados cruzam o limiar configurado ──
   const delayedArmed = useRef(false)
   useEffect(() => {
@@ -109,30 +133,73 @@ export function OperatorAlerts() {
     }
   }, [pickupAlert?.pickupDelayed, settings?.notifyOperatorDelayedThreshold, playDelayed])
 
-  if (!idleBanner) return null
+  if (!idleBanner && !autoRouteAlert) return null
 
   return (
-    <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
-      <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
-          <Truck className="h-5 w-5 text-amber-600" />
-        </span>
-        <div className="text-sm">
-          <p className="font-semibold text-amber-900">
-            {idleBanner.name} ficou livre
-          </p>
-          <p className="text-amber-800">
-            {idleBanner.count} pedido{idleBanner.count !== 1 ? 's' : ''} pronto{idleBanner.count !== 1 ? 's' : ''} esperando — organize/atribua.
-          </p>
+    <div className="fixed left-1/2 top-4 z-50 flex w-[min(92vw,480px)] -translate-x-1/2 flex-col gap-2">
+      {autoRouteAlert && (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 shadow-lg">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+              <Package className="h-5 w-5 text-emerald-600" />
+            </span>
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-semibold text-emerald-900">
+                Rota automática criada para {autoRouteAlert.delivererName}
+              </p>
+              <p className="mt-0.5 text-emerald-800">
+                Separe os pedidos agora e entregue ao entregador:
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {autoRouteAlert.orders.map((o) => (
+                  <li key={o.orderId} className="flex items-center gap-2 font-medium text-emerald-900">
+                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-mono text-xs">
+                      #{o.orderId.slice(-8).toUpperCase()}
+                    </span>
+                    <span className="truncate">{o.customerName}</span>
+                  </li>
+                ))}
+              </ul>
+              {autoRouteAlert.pickupCode && (
+                <p className="mt-2 text-xs text-emerald-700">
+                  Código de retirada:{' '}
+                  <span className="font-mono font-semibold">{autoRouteAlert.pickupCode}</span>
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setAutoRouteAlert(null)}
+              aria-label="Fechar aviso"
+              className="-mr-1 shrink-0 rounded-md p-1 text-emerald-500 hover:bg-emerald-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => setIdleBanner(null)}
-          aria-label="Fechar aviso"
-          className="-mr-1 shrink-0 rounded-md p-1 text-amber-500 hover:bg-amber-100"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      )}
+
+      {idleBanner && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+            <Truck className="h-5 w-5 text-amber-600" />
+          </span>
+          <div className="text-sm">
+            <p className="font-semibold text-amber-900">
+              {idleBanner.name} ficou livre
+            </p>
+            <p className="text-amber-800">
+              {idleBanner.count} pedido{idleBanner.count !== 1 ? 's' : ''} pronto{idleBanner.count !== 1 ? 's' : ''} esperando — organize/atribua.
+            </p>
+          </div>
+          <button
+            onClick={() => setIdleBanner(null)}
+            aria-label="Fechar aviso"
+            className="-mr-1 shrink-0 rounded-md p-1 text-amber-500 hover:bg-amber-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

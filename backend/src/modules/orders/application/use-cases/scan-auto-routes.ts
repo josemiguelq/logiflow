@@ -123,13 +123,26 @@ export async function scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQue
           })
 
           // Atualiza painel (WS) + notifica cliente (WhatsApp), como no batch-assign.
+          const elected: Array<{ orderId: string; customerName: string }> = []
           for (const orderId of result.assignedOrderIds) {
             const order = await orderRepo.findById(orderId, cfg.storeId)
-            if (order) wsHub.broadcastOrderUpdate(cfg.storeId, order)
+            if (order) {
+              wsHub.broadcastOrderUpdate(cfg.storeId, order)
+              elected.push({ orderId: order.id, customerName: order.customer.name })
+            }
             notificationQueue.add('status_changed', {
               type: 'whatsapp', storeId: cfg.storeId, orderId, statusEvent: 'ASSIGNED',
             }).catch(() => { /* non-fatal */ })
           }
+
+          // Popup no painel do operador: quais pedidos foram eleitos e que ele
+          // deve separá-los agora para entregar ao entregador da vez.
+          wsHub.broadcastToStore(cfg.storeId, 'auto_route_created', {
+            routeId:       result.routeId,
+            pickupCode:    result.pickupCode,
+            delivererName: daVez.entry.name,
+            orders:        elected,
+          })
 
           await invalidateStoreOrders(cfg.storeId)
           await invalidateDelivererOrders(daVez.entry.delivererId)
