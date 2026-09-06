@@ -509,6 +509,17 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
 
     ref.invalidate(storeSettingsProvider);
     try {
+      // Busca a versão mais recente do pedido (ex.: operadora marcou como pago
+      // no web depois da última sincronização) sem trazer a lista inteira.
+      // Best-effort: se falhar, usa a atual.
+      var order = widget.order;
+      try {
+        final res =
+            await ApiClient().dio.get('/deliverer/orders/${widget.order.id}');
+        order = Order.fromJson(res.data as Map<String, dynamic>);
+      } catch (_) {}
+      if (!mounted) return;
+
       final settings = await ref.read(storeSettingsProvider.future);
       if (!mounted) return;
       await showModalBottomSheet(
@@ -518,7 +529,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         builder: (_) => _DeliveryConfirmSheet(
-          order: widget.order,
+          order: order,
           requireDeliveryCode: settings.requireDeliveryCode,
           requireDeliveryPhoto: settings.requireDeliveryPhoto,
           maxProofPhotos: settings.maxProofPhotos,
@@ -686,6 +697,18 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
   bool _loading = false;
   bool _collectPayment = false;
   String? _error;
+
+  // Há valor a receber? Vale também quando a operadora define o valor depois da
+  // criação do pedido (ex.: 'prepaid' com cash_amount preenchido no web).
+  bool get _hasCashToCharge =>
+      widget.order.cashAmount != null && widget.order.cashAmount! > 0;
+  // Precisa cobrar na entrega: forma de pagamento exige coleta (cash/card) OU
+  // existe valor definido. Quando já pago, não cobra.
+  bool get _chargeOnDelivery =>
+      !widget.order.cashCollected &&
+      (_hasCashToCharge || widget.order.paymentMethod != 'prepaid');
+  // Operadora já confirmou o recebimento (web → "Marcar como pago").
+  bool get _alreadyPaid => widget.order.cashCollected && _hasCashToCharge;
 
   @override
   void dispose() {
@@ -1160,8 +1183,39 @@ class _DeliveryConfirmSheetState extends State<_DeliveryConfirmSheet> {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           const SizedBox(height: 16),
 
-          // Payment info — cobrança pelo entregador
-          if (widget.order.paymentMethod != 'prepaid') ...[
+          // Payment info — cobrança pelo entregador.
+          // Já pago: a operadora marcou como PAGO no web (cashCollected=true) →
+          // mostra badge verde "Pago" com o valor, sem pedir a cobrança.
+          if (_alreadyPaid) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF22C55E)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_outline,
+                      size: 20, color: Color(0xFF16A34A)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Pago — R\$ ${widget.order.cashAmount!.toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: Color(0xFF15803D),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (!_alreadyPaid && _chargeOnDelivery) ...[
             if (widget.order.cashAmount != null && widget.order.cashAmount! > 0)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
