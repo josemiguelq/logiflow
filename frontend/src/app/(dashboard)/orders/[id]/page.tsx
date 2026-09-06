@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen, ChevronDown, Printer } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Truck, Clock, Package, Camera, AlertTriangle, Wallet, Pen, ChevronDown, Printer, Check } from 'lucide-react'
 import { Order, RouteIssue, Customer } from '@/types'
 import { api } from '@/lib/api'
 import { printOrderLabel, LabelFormat } from '@/lib/print-label'
@@ -36,6 +36,7 @@ const LOG_ACTION_LABEL: Record<string, string> = {
   NOTE_CHANGED:        'Observação alterada',
   ADDRESS_CHANGED:     'Endereço alterado',
   CASH_AMOUNT_CHANGED: 'Valor a receber alterado',
+  MARKED_AS_PAID:      'Marcado como pago',
 }
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
@@ -398,16 +399,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   Valor a receber
                 </h2>
                 {!COMPLETED_STATUSES.includes(order.status) && !editingCash && (
-                  <button
-                    onClick={() => {
-                      setCashValue(order.cashAmount != null ? String(order.cashAmount) : '')
-                      setEditingCash(true)
-                    }}
-                    className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors"
-                  >
-                    <Pen className="h-3 w-3" />
-                    Editar
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!order.cashCollected && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.patch(`/orders/${id}/cash-collected`, {})
+                            await mutate()
+                          } catch { /* silent */ }
+                        }}
+                        className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                        style={{ background: 'var(--color-primary)' }}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Marcar como pago
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setCashValue(order.cashAmount != null ? String(order.cashAmount) : '')
+                        setEditingCash(true)
+                      }}
+                      className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors"
+                    >
+                      <Pen className="h-3 w-3" />
+                      Editar
+                    </button>
+                  </div>
                 )}
               </div>
               {editingCash ? (
@@ -449,9 +467,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </button>
                 </div>
               ) : (
-                <p className="text-sm font-medium text-gray-900">
-                  {formatBRL(order.cashAmount!)}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900">
+                    {formatBRL(order.cashAmount!)}
+                  </p>
+                  {order.cashCollected && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+                      <Check className="h-3 w-3" />
+                      Pago
+                    </span>
+                  )}
+                </div>
               )}
             </section>
           )}

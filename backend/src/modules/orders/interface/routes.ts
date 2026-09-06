@@ -812,6 +812,31 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Store user marks the order as paid — confirms the cash was received.
+  // Idempotent: setting it to TRUE when already paid is a no-op.
+  app.patch(
+    '/orders/:id/cash-collected',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+
+      const order = await orderRepo.findById(id, req.actor.storeId)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      if (order.cashCollected) return order
+
+      await db.query(
+        `UPDATE orders SET cash_collected = TRUE WHERE id = $1`,
+        [id]
+      )
+      logEvent(id, req.actor, 'MARKED_AS_PAID', { amount: order.cashAmount ?? null })
+      const updated = (await orderRepo.findById(id, req.actor.storeId))!
+      wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (updated.delivererId) invalidateDelivererOrders(updated.delivererId as string)
+      return updated
+    }
+  )
+
   // Store user fixes the delivery address of an order by picking one of the customer's addresses.
   // Writes the override columns (delivery_address/lat/lng) and notifies customer + deliverer.
   app.patch(
