@@ -248,6 +248,10 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         conditions.push(`o.created_at < ($${idx++}::date + interval '1 day')`)
         params.push(filters.dateTo)
       }
+      if (filters.delivererId) {
+        conditions.push(`o.deliverer_id = $${idx++}`)
+        params.push(filters.delivererId)
+      }
 
       const limit  = filters.limit ?? 20
       const offset = ((filters.page ?? 1) - 1) * limit

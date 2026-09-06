@@ -32,6 +32,12 @@ function formatCreatedAt(iso: string): string {
 }
 
 // Dimensões e escala de fonte por formato. Tudo em preto & branco.
+//
+// Os perfis térmicos são calibrados para impressoras de 203 dpi em bobina
+// contínua (referência: Bematech MP-4200 TH — 80mm de papel, 72mm/576 dots de
+// área imprimível). Daí a largura útil de 72mm e o `padding-bottom` de folga:
+// há ~12mm entre a cabeça de impressão e a serrilha, então sem essa folga a
+// última linha fica presa dentro do mecanismo na hora de destacar a etiqueta.
 const FORMAT_STYLES: Record<LabelFormat, { page: string; body: string; name: string; text: string; small: string; card: string }> = {
   a4: {
     page:  '@page { size: A4; margin: 0 }',
@@ -42,17 +48,17 @@ const FORMAT_STYLES: Record<LabelFormat, { page: string; body: string; name: str
     small: 'font-size: 11pt;',
   },
   thermal80: {
-    page:  '@page { size: 80mm auto; margin: 4mm }',
+    page:  '@page { size: 80mm auto; margin: 3mm 4mm }',
     body:  '',
-    card:  'width: 100%;',
-    name:  'font-size: 17pt;',
+    card:  'width: 100%; max-width: 72mm; padding-bottom: 12mm;',
+    name:  'font-size: 18pt;',
     text:  'font-size: 12pt;',
     small: 'font-size: 9pt;',
   },
   thermal58: {
     page:  '@page { size: 58mm auto; margin: 3mm }',
     body:  '',
-    card:  'width: 100%;',
+    card:  'width: 100%; max-width: 52mm; padding-bottom: 12mm;',
     name:  'font-size: 13pt;',
     text:  'font-size: 10pt;',
     small: 'font-size: 8pt;',
@@ -80,11 +86,11 @@ export function buildLabelHtml(data: LabelData, format: LabelFormat): string {
   html, body { margin: 0; padding: 0; color: #000; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Arial, Helvetica, sans-serif; ${s.body} }
   .card { ${s.card} }
-  .assistance { ${s.text} font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid #000; padding-bottom: 2mm; margin-bottom: 3mm; }
+  .assistance { ${s.text} font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-bottom: 0.4mm solid #000; padding-bottom: 2mm; margin-bottom: 3mm; }
   .name { ${s.name} font-weight: 800; line-height: 1.15; margin-bottom: 2mm; word-break: break-word; }
   .text { ${s.text} line-height: 1.3; word-break: break-word; }
   .phone { ${s.small} margin-top: 2mm; }
-  .footer { ${s.small} margin-top: 3mm; padding-top: 2mm; border-top: 1px solid #000; display: flex; justify-content: space-between; gap: 4mm; }
+  .footer { ${s.small} margin-top: 3mm; padding-top: 2mm; border-top: 0.4mm solid #000; display: flex; justify-content: space-between; gap: 4mm; }
   .footer .code { font-weight: 700; }
 </style>
 </head>
@@ -138,7 +144,7 @@ function customerCard(data: CustomerLabelData, last: boolean): string {
     <div class="text">${esc(data.address)}</div>
     ${complementLine}
     ${localityLine(data)}
-    <div class="phone">☎ ${esc(formatPhone(data.phone))}</div>
+    <div class="phone">Tel. ${esc(formatPhone(data.phone))}</div>
   </div>`
 }
 
@@ -159,10 +165,10 @@ export function buildCustomerLabelsHtml(labels: CustomerLabelData[], format: Lab
   body { font-family: Arial, Helvetica, sans-serif; ${s.body} }
   .card { ${s.card} }
   .card.break { page-break-after: always; break-after: page; }
-  .assistance { ${s.text} font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid #000; padding-bottom: 2mm; margin-bottom: 3mm; }
+  .assistance { ${s.text} font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-bottom: 0.4mm solid #000; padding-bottom: 2mm; margin-bottom: 3mm; }
   .name { ${s.name} font-weight: 800; line-height: 1.15; margin-bottom: 2mm; word-break: break-word; }
   .text { ${s.text} line-height: 1.3; word-break: break-word; }
-  .phone { ${s.small} margin-top: 2mm; }
+  .phone { ${s.text} font-weight: 700; margin-top: 2mm; }
 </style>
 </head>
 <body>

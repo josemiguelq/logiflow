@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Search, ChevronDown, X, Crown, AlertTriangle, Trash2, Loader2 } from 'lucide-react'
-import { Order, OrderStatus } from '@/types'
+import { Order, OrderStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
 import { StatusBadge } from '@/components/ui/badge'
@@ -41,34 +41,38 @@ function paymentDiscrepancy(order: Order): { collected: number; expected: number
 
 export default function AllOrdersPage() {
   const { can } = useAccess()
-  const [search,   setSearch]   = useState('')
-  const [status,   setStatus]   = useState<OrderStatus | ''>('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo,   setDateTo]   = useState('')
-  const [page,     setPage]     = useState(1)
+  const [search,      setSearch]      = useState('')
+  const [status,      setStatus]      = useState<OrderStatus | ''>('')
+  const [delivererId, setDelivererId] = useState('')
+  const [dateFrom,    setDateFrom]    = useState('')
+  const [dateTo,      setDateTo]      = useState('')
+  const [page,        setPage]        = useState(1)
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Reset to first page whenever a filter changes
-  useEffect(() => { setPage(1) }, [search, status, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [search, status, delivererId, dateFrom, dateTo])
 
   const params = new URLSearchParams({ page: String(page) })
-  if (search)   params.set('customerName', search)
-  if (status)   params.set('status', status)
-  if (dateFrom) params.set('dateFrom', dateFrom)
-  if (dateTo)   params.set('dateTo', dateTo)
+  if (search)      params.set('customerName', search)
+  if (status)      params.set('status', status)
+  if (delivererId) params.set('delivererId', delivererId)
+  if (dateFrom)    params.set('dateFrom', dateFrom)
+  if (dateTo)      params.set('dateTo', dateTo)
 
   const { data, isLoading, mutate } = useSWR(`/orders/search?${params}`, fetcher, { keepPreviousData: true })
+  const { data: deliverers = [] } = useSWR<Deliverer[]>('/deliverers', (u: string) => api.get<Deliverer[]>(u))
 
   const orders = data?.items ?? []
   const total  = data?.total ?? 0
   const pages  = data?.pages ?? 1
 
-  const hasFilters = !!(search || status || dateFrom || dateTo)
+  const hasFilters = !!(search || status || delivererId || dateFrom || dateTo)
 
   function clearFilters() {
     setSearch('')
     setStatus('')
+    setDelivererId('')
     setDateFrom('')
     setDateTo('')
   }
@@ -126,6 +130,23 @@ export default function AllOrdersPage() {
           </select>
           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
         </div>
+
+        {deliverers.length > 0 && (
+          <div className="relative">
+            <select
+              value={delivererId}
+              onChange={e => setDelivererId(e.target.value)}
+              className="h-9 w-full appearance-none rounded-lg border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 sm:w-auto"
+              style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
+            >
+              <option value="">Todos os entregadores</option>
+              {deliverers.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <div className="flex flex-col">

@@ -409,7 +409,7 @@ export async function orderRoutes(app: FastifyInstance) {
     '/orders/search',
     { preHandler: requireStoreUser },
     async (req) => {
-      const { status, customerName, dateFrom, dateTo, page } = req.query as Record<string, string>
+      const { status, customerName, dateFrom, dateTo, delivererId, page } = req.query as Record<string, string>
       // Assistants only see their own orders unless granted 'orders:view_all'.
       const restrictToOwn =
         req.actor.type === 'store_user' &&
@@ -423,6 +423,7 @@ export async function orderRoutes(app: FastifyInstance) {
         customerName:    customerName || undefined,
         dateFrom:        dateFrom || undefined,
         dateTo:          dateTo || undefined,
+        delivererId:     delivererId || undefined,
         createdByUserId: restrictToOwn ? req.actor.sub : undefined,
         page:            pageNum,
         limit,
