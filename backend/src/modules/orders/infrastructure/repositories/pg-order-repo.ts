@@ -298,6 +298,16 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       return rows.map(mapRow)
     },
 
+    async findByDelivererAndId(delivererId, orderId) {
+      const { rows } = await db.query(
+        `${WITH_JOINS}
+         WHERE o.deliverer_id = $1 AND o.id = $2
+         LIMIT 1`,
+        [delivererId, orderId]
+      )
+      return rows[0] ? mapRow(rows[0]) : null
+    },
+
     async findByRoute(routeId) {
       const { rows } = await db.query(
         `${WITH_JOINS}

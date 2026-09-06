@@ -93,6 +93,23 @@ async function signOrdersProof<T extends { proof?: ProofPhoto; proofs: ProofPhot
   return Promise.all(orders.map(signOrderProof))
 }
 
+// Projeção pública de um pedido para o app do entregador: assina as URLs das
+// fotos e, em entregas terceirizadas, expõe o endereço/nome da AGÊNCIA.
+async function publicDelivererOrder(o: OrderWithDetails) {
+  const [signed] = await signOrdersProof([o])
+  return {
+    ...signed,
+    customer: {
+      name:       signed.customer.name,
+      address:    o.agency ? (o.agency.name ? `${o.agency.name} — ${o.agency.address}` : o.agency.address) : signed.customer.address,
+      complement: o.agency ? undefined : signed.customer.complement,
+      lat:        o.agency?.lat ?? signed.customer.lat,
+      lng:        o.agency?.lng ?? signed.customer.lng,
+    },
+    thirdPartyDelivery: !!o.agency,
+  }
+}
+
 export async function orderRoutes(app: FastifyInstance) {
   const orderRepo = createPgOrderRepo(db)
   const routeRepo = createPgRouteRepo(db)
@@ -988,39 +1005,26 @@ export async function orderRoutes(app: FastifyInstance) {
         const raw = await redis.get(cacheKey)
         if (raw) {
           const orders = JSON.parse(raw)
-          const signed = await signOrdersProof(orders)
-          return signed.map((o: typeof orders[0]) => ({
-            ...o,
-            // Entrega terceirizada: o app usa o endereço da AGÊNCIA (exibição, navegação
-        // e proximidade). O nome da agência é prefixado no endereço para o entregador.
-        customer: {
-          name:       o.customer.name,
-          address:    o.agency ? (o.agency.name ? `${o.agency.name} — ${o.agency.address}` : o.agency.address) : o.customer.address,
-          complement: o.agency ? undefined : o.customer.complement,
-          lat:        o.agency?.lat ?? o.customer.lat,
-          lng:        o.agency?.lng ?? o.customer.lng,
-        },
-        thirdPartyDelivery: !!o.agency,
-          }))
+          return Promise.all(orders.map(publicDelivererOrder))
         }
       } catch { /* fall through to DB */ }
 
       const orders = await orderRepo.findByDeliverer(req.actor.sub)
       redis.setex(cacheKey, DELIVERER_ORDERS_TTL, JSON.stringify(orders)).catch(() => {})
-      const signed = await signOrdersProof(orders)
-      return signed.map(o => ({
-        ...o,
-        // Entrega terceirizada: o app usa o endereço da AGÊNCIA (exibição, navegação
-        // e proximidade). O nome da agência é prefixado no endereço para o entregador.
-        customer: {
-          name:       o.customer.name,
-          address:    o.agency ? (o.agency.name ? `${o.agency.name} — ${o.agency.address}` : o.agency.address) : o.customer.address,
-          complement: o.agency ? undefined : o.customer.complement,
-          lat:        o.agency?.lat ?? o.customer.lat,
-          lng:        o.agency?.lng ?? o.customer.lng,
-        },
-        thirdPartyDelivery: !!o.agency,
-      }))
+      return Promise.all(orders.map(publicDelivererOrder))
+    }
+  )
+
+  // Um único pedido do entregador (ex.: drawer de confirmação de entrega lê o
+  // estado mais recente sem buscar a lista inteira).
+  app.get(
+    '/deliverer/orders/:id',
+    { preHandler: requireDeliverer },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const order = await orderRepo.findByDelivererAndId(req.actor.sub, id)
+      if (!order) return reply.code(404).send({ error: 'Not found' })
+      return publicDelivererOrder(order)
     }
   )
 

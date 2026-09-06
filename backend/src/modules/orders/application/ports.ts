@@ -5,6 +5,8 @@ export interface IOrderRepository {
   findByStore(storeId: string, filters: OrderFilters): Promise<OrderWithDetails[]>
   searchByStore(storeId: string, filters: OrderFilters): Promise<{ items: OrderWithDetails[]; total: number }>
   findByDeliverer(delivererId: string): Promise<OrderWithDetails[]>
+  // Um único pedido do entregador (ex.: para o drawer de confirmação de entrega).
+  findByDelivererAndId(delivererId: string, id: string): Promise<OrderWithDetails | null>
   findByRoute(routeId: string): Promise<OrderWithDetails[]>
   // Próxima parada de uma rota: pedido ON_ROUTE de menor route_position.
   findNextOnRoute(routeId: string): Promise<OrderWithDetails | null>
