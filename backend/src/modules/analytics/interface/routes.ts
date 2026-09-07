@@ -481,13 +481,21 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const storeId = req.actor.storeId
     const hasCompare = Boolean(compareFrom && compareTo)
 
+    // LEFT JOIN (com o filtro de data no ON, não no WHERE) para que clientes
+    // sem nenhum pedido no período apareçam com count=0 — necessário para
+    // "Clientes de Menor Volume" realmente mostrar quem pediu menos, incluindo
+    // zero. Mesma query serve top/bottom/all: no "top" os count=0 naturalmente
+    // ficam por último e saem do LIMIT 10 (a menos que a loja tenha poucos
+    // clientes com pedido no período).
     const curSql =
-      `SELECT c.id, c.name, COUNT(o.id)::int AS count
+      `SELECT c.id, c.name, COALESCE(COUNT(o.id), 0)::int AS count
        FROM customers c
-       JOIN orders o ON o.customer_id = c.id
-       WHERE o.store_id = $1
-         AND o.created_at >= $2::date
-         AND o.created_at <  $3::date + INTERVAL '1 day'
+       LEFT JOIN orders o
+         ON o.customer_id = c.id
+        AND o.created_at >= $2::date
+        AND o.created_at <  $3::date + INTERVAL '1 day'
+       WHERE c.store_id = $1
+         AND c.deleted_at IS NULL
        GROUP BY c.id, c.name`
 
     const prevSql =
