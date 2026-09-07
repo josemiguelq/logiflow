@@ -38,6 +38,7 @@ export const SCOPES = [
 
   // Analytics
   'analytics:view',
+  'analytics:export',
 
   // Settings
   'settings:view',
@@ -87,6 +88,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   'whatsapp:view':        'WhatsApp — visualizar',
   'whatsapp:connect':     'WhatsApp — conectar/desconectar',
   'analytics:view':       'Analítico — visualizar',
+  'analytics:export':     'Analítico — exportar (PDF/Excel/CSV)',
   'settings:view':        'Configurações — visualizar',
   'settings:edit':        'Configurações — editar',
   'goals:view':           'Metas — visualizar',
