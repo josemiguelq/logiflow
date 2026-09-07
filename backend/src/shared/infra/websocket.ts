@@ -45,6 +45,9 @@ export const wsHub = {
 
   broadcastOrderUpdate(storeId: string, order: unknown) {
     this.broadcastToStore(storeId, 'order_updated', order)
+    // Todo mutação de pedido passa por aqui — piggyback de um ping vazio para
+    // o dashboard Analítico invalidar seus dados agregados (sem reload).
+    this.broadcastToStore(storeId, 'analytics_updated', {})
   },
 
   // Nova mensagem no chat de um pedido (operador ou entregador) — o painel
