@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { Truck, Package, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
+import { LiveMap } from '@/components/map'
 
 interface StoreSettings {
   storeLat: number | null
@@ -99,14 +100,14 @@ export function OperatorAlerts() {
   const [autoRouteAlert, setAutoRouteAlert] = useState<{
     delivererName: string
     pickupCode: string
-    orders: { orderId: string; customerName: string }[]
+    orders: { orderId: string; customerName: string; lat?: number; lng?: number }[]
   } | null>(null)
   useEffect(() => {
     return on('auto_route_created', (data) => {
       const d = data as {
         delivererName: string
         pickupCode: string
-        orders: { orderId: string; customerName: string }[]
+        orders: { orderId: string; customerName: string; lat?: number; lng?: number }[]
       }
       if (!Array.isArray(d?.orders)) return
       setAutoRouteAlert({
@@ -203,6 +204,18 @@ export function OperatorAlerts() {
                 </li>
               ))}
             </ul>
+
+            {autoRouteAlert.orders.some((o) => o.lat != null && o.lng != null) && (
+              <div className="mt-3 h-48 overflow-hidden rounded-lg">
+                <LiveMap
+                  destinations={autoRouteAlert.orders
+                    .filter((o) => o.lat != null && o.lng != null)
+                    .map((o) => ({ id: o.orderId, lat: o.lat!, lng: o.lng!, label: o.customerName }))}
+                  autoFitBounds
+                  height="100%"
+                />
+              </div>
+            )}
 
             {autoRouteAlert.pickupCode && (
               <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">

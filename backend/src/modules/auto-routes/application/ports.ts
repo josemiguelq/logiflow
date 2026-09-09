@@ -5,6 +5,8 @@ export interface UpsertAutoRouteConfigInput {
   waitMinutes: number
   queueSize:   number
   maxOrders:   number | null
+  groupByRegion:  boolean
+  regionRadiusKm: number | null
   delivererIds: string[]   // rodízio na ordem desejada
 }
 

@@ -9,19 +9,27 @@ import { Input } from '@/components/ui/input'
 import type { Deliverer } from '@/types'
 
 interface AutoRouteConfigResponse {
-  config: { enabled: boolean; waitMinutes: number; queueSize: number; maxOrders: number | null }
+  config: {
+    enabled: boolean; waitMinutes: number; queueSize: number; maxOrders: number | null
+    groupByRegion: boolean; regionRadiusKm: number | null
+  }
   rodizio: { delivererId: string; name: string; status: string; isActive: boolean }[]
 }
 
-interface DryRunResult {
-  wouldTrigger:      boolean
-  triggerReasons:    string[]
-  preparingCount:    number
-  maxWaitMinutes:    number
-  daVez:               { delivererId: string; name: string } | null
-  noEligibleDeliverer: boolean
-  overflowCount:     number
+interface DryRunGroup {
   orders: { id: string; shortId: string; customerName: string; address: string; waitMinutes: number; isPriority: boolean }[]
+  delivererId: string | null
+  delivererName: string | null
+  noEligibleDeliverer: boolean
+  overflowCount: number
+}
+
+interface DryRunResult {
+  wouldTrigger:   boolean
+  triggerReasons: string[]
+  preparingCount: number
+  maxWaitMinutes: number
+  groups: DryRunGroup[]
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -41,6 +49,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
   const [waitMinutes, setWaitMinutes] = useState(15)
   const [queueSize,   setQueueSize]   = useState(5)
   const [maxOrders,   setMaxOrders]   = useState<number | ''>('')
+  const [groupByRegion,  setGroupByRegion]  = useState(false)
+  const [regionRadiusKm, setRegionRadiusKm] = useState<number | ''>('')
   const [rodizio,     setRodizio]     = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -54,6 +64,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
       setWaitMinutes(data.config.waitMinutes)
       setQueueSize(data.config.queueSize)
       setMaxOrders(data.config.maxOrders ?? '')
+      setGroupByRegion(data.config.groupByRegion)
+      setRegionRadiusKm(data.config.regionRadiusKm ?? '')
       setRodizio(data.rodizio.map(r => r.delivererId))
     }
   }, [data])
@@ -81,6 +93,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
       waitMinutes,
       queueSize,
       maxOrders: maxOrders === '' ? null : Number(maxOrders),
+      groupByRegion,
+      regionRadiusKm: regionRadiusKm === '' ? null : Number(regionRadiusKm),
       delivererIds: rodizio,
     }
   }
@@ -185,6 +199,39 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
             </div>
           </div>
 
+          {/* Agrupar por região */}
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Agrupar por região</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Em vez de 1 rota com todos os pedidos, cria uma rota por grupo de pedidos próximos
+                  entre si (dentro do raio), cada uma para um entregador diferente do rodízio.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setGroupByRegion(v => !v); invalidateDry() }}
+                className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+                style={{ background: groupByRegion ? 'var(--color-primary)' : '#E5E7EB' }}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${groupByRegion ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            {groupByRegion && (
+              <div className="mt-3 flex items-center gap-2">
+                <Input type="number" min={0.1} max={50} step={0.1} value={regionRadiusKm}
+                  onChange={(e) => { setRegionRadiusKm(e.target.value === '' ? '' : Math.max(0.1, Math.min(50, Number(e.target.value) || 0))); invalidateDry() }}
+                  className="w-28" />
+                <span className="text-xs text-gray-500">km de raio</span>
+              </div>
+            )}
+            <p className="mt-2 text-xs text-gray-500">
+              Pedidos próximos entre si entram na mesma rota, mesmo que a cadeia toda não caiba num
+              único ponto. Pedidos sem localização cadastrada sempre viram uma rota própria.
+            </p>
+          </div>
+
           {/* Rodízio */}
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
             <p className="text-sm font-medium text-gray-900">Rodízio de entregadores</p>
@@ -254,32 +301,53 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                     <span>Nada seria criado agora — a fila ainda não atingiu {queueSize} pedidos nem {waitMinutes} min de espera.</span>
                   </div>
-                ) : dry.noEligibleDeliverer ? (
+                ) : dry.groups.length === 0 ? (
                   <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700 ring-1 ring-amber-200">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>O gatilho seria atingido, mas nenhum entregador do rodízio está disponível agora (precisa estar online e sem rota ativa) — nenhuma rota seria criada.</span>
+                    <span>O gatilho seria atingido, mas não há entregadores no rodízio — nenhuma rota seria criada.</span>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-800 ring-1 ring-green-200">
-                      <Crown className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span>Seria criada <strong>1 rota</strong> para <strong>{dry.daVez?.name}</strong> com <strong>{dry.orders.length} pedido{dry.orders.length !== 1 ? 's' : ''}</strong>.</span>
-                    </div>
-                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg bg-white ring-1 ring-gray-200">
-                      {dry.orders.map(o => (
-                        <li key={o.id} className="flex items-center gap-2 px-3 py-2 text-xs">
-                          {o.isPriority && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                          <span className="font-mono font-semibold text-gray-700">{o.shortId}</span>
-                          <span className="truncate text-gray-600">{o.customerName}</span>
-                          <span className="ml-auto shrink-0 text-gray-400">{o.waitMinutes} min</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {dry.overflowCount > 0 && (
-                      <p className="text-xs text-gray-500">
-                        +{dry.overflowCount} pedido{dry.overflowCount !== 1 ? 's' : ''} ficaria{dry.overflowCount !== 1 ? 'm' : ''} para o próximo gatilho (limite por rota).
-                      </p>
-                    )}
+                  <div className="space-y-3">
+                    {dry.groups.map((g, i) => (
+                      <div key={i} className="space-y-2">
+                        {g.noEligibleDeliverer ? (
+                          <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700 ring-1 ring-amber-200">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>
+                              {dry.groups.length > 1 ? `Grupo ${i + 1}: ` : ''}
+                              nenhum entregador do rodízio está disponível agora (precisa estar online e sem
+                              rota ativa) — aguardará a próxima verificação.
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-800 ring-1 ring-green-200">
+                            <Crown className="h-4 w-4 shrink-0 text-amber-500" />
+                            <span>
+                              Seria criada <strong>rota{dry.groups.length > 1 ? ` ${i + 1}` : ''}</strong> para{' '}
+                              <strong>{g.delivererName}</strong> com{' '}
+                              <strong>{g.orders.length} pedido{g.orders.length !== 1 ? 's' : ''}</strong>.
+                            </span>
+                          </div>
+                        )}
+                        {g.orders.length > 0 && (
+                          <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg bg-white ring-1 ring-gray-200">
+                            {g.orders.map(o => (
+                              <li key={o.id} className="flex items-center gap-2 px-3 py-2 text-xs">
+                                {o.isPriority && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                                <span className="font-mono font-semibold text-gray-700">{o.shortId}</span>
+                                <span className="truncate text-gray-600">{o.customerName}</span>
+                                <span className="ml-auto shrink-0 text-gray-400">{o.waitMinutes} min</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {g.overflowCount > 0 && (
+                          <p className="text-xs text-gray-500">
+                            +{g.overflowCount} pedido{g.overflowCount !== 1 ? 's' : ''} deste grupo ficaria{g.overflowCount !== 1 ? 'm' : ''} para o próximo gatilho (limite por rota).
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

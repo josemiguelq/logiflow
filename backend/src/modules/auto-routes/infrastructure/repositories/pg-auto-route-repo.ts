@@ -14,6 +14,8 @@ function mapConfig(r: Record<string, unknown>): AutoRouteConfig {
     waitMinutes:  Number(r.wait_minutes),
     queueSize:    Number(r.queue_size),
     maxOrders:    r.max_orders === null || r.max_orders === undefined ? null : Number(r.max_orders),
+    groupByRegion:  r.group_by_region as boolean,
+    regionRadiusKm: r.region_radius_km === null || r.region_radius_km === undefined ? null : Number(r.region_radius_km),
     turnPosition: Number(r.turn_position),
     updatedAt:    r.updated_at as Date,
   }
@@ -64,17 +66,19 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
       const result = await db.transaction(async (client) => {
         const { rows: [cfgRow] } = await client.query(
           `INSERT INTO store_auto_route_config
-             (store_id, enabled, wait_minutes, queue_size, max_orders, updated_at, updated_by)
-           VALUES ($1,$2,$3,$4,$5, now(), $6)
+             (store_id, enabled, wait_minutes, queue_size, max_orders, group_by_region, region_radius_km, updated_at, updated_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7, now(), $8)
            ON CONFLICT (store_id) DO UPDATE SET
-             enabled      = EXCLUDED.enabled,
-             wait_minutes = EXCLUDED.wait_minutes,
-             queue_size   = EXCLUDED.queue_size,
-             max_orders   = EXCLUDED.max_orders,
-             updated_at   = now(),
-             updated_by   = EXCLUDED.updated_by
+             enabled          = EXCLUDED.enabled,
+             wait_minutes     = EXCLUDED.wait_minutes,
+             queue_size       = EXCLUDED.queue_size,
+             max_orders       = EXCLUDED.max_orders,
+             group_by_region  = EXCLUDED.group_by_region,
+             region_radius_km = EXCLUDED.region_radius_km,
+             updated_at       = now(),
+             updated_by       = EXCLUDED.updated_by
            RETURNING *`,
-          [storeId, input.enabled, input.waitMinutes, input.queueSize, input.maxOrders, actor.id]
+          [storeId, input.enabled, input.waitMinutes, input.queueSize, input.maxOrders, input.groupByRegion, input.regionRadiusKm, actor.id]
         )
 
         // Regrava o rodízio inteiro (position = índice na ordem enviada).

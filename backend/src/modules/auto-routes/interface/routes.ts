@@ -5,31 +5,45 @@ import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgAutoRouteRepo } from '../infrastructure/repositories/pg-auto-route-repo'
 import { createPgOrderRepo } from '../../orders/infrastructure/repositories/pg-order-repo'
+import { clusterByRegion } from '../application/cluster-by-region'
 
 const autoRouteRepo = createPgAutoRouteRepo(db)
 const orderRepo     = createPgOrderRepo(db)
 
 // A partir de startIdx, primeiro entregador elegível do rodízio (o "da vez"):
-// online (ativo e não OFFLINE) E sem nenhuma rota ativa.
-function firstEligibleFrom<T extends { eligible: boolean }>(list: T[], startIdx: number): { entry: T; idx: number } | null {
+// online (ativo e não OFFLINE) E sem nenhuma rota ativa. `exclude` pula quem já foi
+// escolhido para outro cluster nesta mesma simulação.
+function firstEligibleFrom<T extends { eligible: boolean; delivererId: string }>(
+  list: T[],
+  startIdx: number,
+  exclude?: Set<string>,
+): { entry: T; idx: number } | null {
   const len = list.length
   for (let k = 0; k < len; k++) {
     const idx = (startIdx + k) % len
-    if (list[idx].eligible) return { entry: list[idx], idx }
+    if (list[idx].eligible && !exclude?.has(list[idx].delivererId)) return { entry: list[idx], idx }
   }
   return null
 }
 
 // Defaults quando a loja ainda não configurou (nenhuma linha em config).
-const DEFAULT_CONFIG = { enabled: false, waitMinutes: 15, queueSize: 5, maxOrders: null as number | null }
+const DEFAULT_CONFIG = {
+  enabled: false, waitMinutes: 15, queueSize: 5, maxOrders: null as number | null,
+  groupByRegion: false, regionRadiusKm: null as number | null,
+}
 
 const upsertSchema = z.object({
-  enabled:      z.boolean(),
-  waitMinutes:  z.number().int().min(1).max(720),
-  queueSize:    z.number().int().min(1).max(100),
-  maxOrders:    z.number().int().min(1).max(100).nullable().optional(),
-  delivererIds: z.array(z.string().uuid()),
-})
+  enabled:        z.boolean(),
+  waitMinutes:    z.number().int().min(1).max(720),
+  queueSize:      z.number().int().min(1).max(100),
+  maxOrders:      z.number().int().min(1).max(100).nullable().optional(),
+  groupByRegion:  z.boolean().optional().default(false),
+  regionRadiusKm: z.number().positive().max(100).nullable().optional(),
+  delivererIds:   z.array(z.string().uuid()),
+}).refine(
+  (body) => !body.groupByRegion || body.regionRadiusKm != null,
+  { message: 'Informe o raio (km) para agrupar por região', path: ['regionRadiusKm'] },
+)
 
 export async function autoRouteRoutes(app: FastifyInstance) {
   // GET — config atual + rodízio (com nome/status de cada entregador)
@@ -45,10 +59,12 @@ export async function autoRouteRoutes(app: FastifyInstance) {
       return {
         config: config
           ? {
-              enabled:     config.enabled,
-              waitMinutes: config.waitMinutes,
-              queueSize:   config.queueSize,
-              maxOrders:   config.maxOrders,
+              enabled:        config.enabled,
+              waitMinutes:    config.waitMinutes,
+              queueSize:      config.queueSize,
+              maxOrders:      config.maxOrders,
+              groupByRegion:  config.groupByRegion,
+              regionRadiusKm: config.regionRadiusKm,
             }
           : DEFAULT_CONFIG,
         rodizio: rodizio.map(r => ({
@@ -95,21 +111,25 @@ export async function autoRouteRoutes(app: FastifyInstance) {
       const config = await autoRouteRepo.upsertConfig(
         storeId,
         {
-          enabled:      body.enabled,
-          waitMinutes:  body.waitMinutes,
-          queueSize:    body.queueSize,
-          maxOrders:    body.maxOrders ?? null,
-          delivererIds: body.delivererIds,
+          enabled:        body.enabled,
+          waitMinutes:    body.waitMinutes,
+          queueSize:      body.queueSize,
+          maxOrders:      body.maxOrders ?? null,
+          groupByRegion:  body.groupByRegion,
+          regionRadiusKm: body.regionRadiusKm ?? null,
+          delivererIds:   body.delivererIds,
         },
         { id: req.actor.sub, name: req.actor.name ?? '' },
       )
 
       return {
         config: {
-          enabled:     config.enabled,
-          waitMinutes: config.waitMinutes,
-          queueSize:   config.queueSize,
-          maxOrders:   config.maxOrders,
+          enabled:        config.enabled,
+          waitMinutes:    config.waitMinutes,
+          queueSize:      config.queueSize,
+          maxOrders:      config.maxOrders,
+          groupByRegion:  config.groupByRegion,
+          regionRadiusKm: config.regionRadiusKm,
         },
       }
     }
@@ -160,33 +180,72 @@ export async function autoRouteRoutes(app: FastifyInstance) {
         })
       }
 
-      // "Entregador da vez" a partir do ponteiro salvo (se houver), na ordem informada.
+      // Ponteiro salvo (se houver), na ordem informada.
       const saved = await autoRouteRepo.getConfig(storeId)
       const len = rodizio.length
       const startIdx = len > 0 ? (((saved?.turnPosition ?? 0) % len) + len) % len : 0
-      const daVezPick = len > 0 ? firstEligibleFrom(rodizio, startIdx) : null
-      const noEligibleDeliverer = len > 0 && daVezPick === null
 
-      const cap = body.maxOrders ?? preparing.length
-      const willAssign = wouldTrigger && daVezPick ? preparing.slice(0, cap) : []
-      const overflowCount = wouldTrigger && daVezPick ? Math.max(0, preparing.length - willAssign.length) : 0
+      const toDryOrder = (o: (typeof preparing)[number]) => ({
+        id:           o.id,
+        shortId:      '#' + o.id.slice(-8).toUpperCase(),
+        customerName: o.customer.name,
+        address:      o.deliveryAddress ?? o.customer.address,
+        waitMinutes:  Math.floor(waitOf(o)),
+        isPriority:   o.isPriority,
+      })
+      type DryRunOrder = ReturnType<typeof toDryOrder>
+
+      const groups: Array<{
+        orders: DryRunOrder[]
+        delivererId: string | null
+        delivererName: string | null
+        noEligibleDeliverer: boolean
+        overflowCount: number
+      }> = []
+
+      if (wouldTrigger && len > 0) {
+        // Mesma coordenada efetiva usada no scan real: agência (se houver), senão
+        // endereço do cliente (já coalescido com delivery_lat/lng no SQL).
+        const effLat = (o: (typeof preparing)[number]) => o.agency?.lat ?? o.customer.lat
+        const effLng = (o: (typeof preparing)[number]) => o.agency?.lng ?? o.customer.lng
+
+        let clusters: (typeof preparing)[]
+        if (body.groupByRegion && body.regionRadiusKm) {
+          const byId = new Map(preparing.map(o => [o.id, o]))
+          const idClusters = clusterByRegion(
+            preparing.map(o => ({ id: o.id, lat: effLat(o), lng: effLng(o) })),
+            body.regionRadiusKm,
+          )
+          clusters = idClusters.map(c => c.map(x => byId.get(x.id)!))
+        } else {
+          clusters = [preparing]
+        }
+
+        const assigned = new Set<string>()
+        let clusterStartIdx = startIdx
+        for (const cluster of clusters) {
+          const pick = firstEligibleFrom(rodizio, clusterStartIdx, assigned)
+          const cap = body.maxOrders ?? cluster.length
+          const willAssign = pick ? cluster.slice(0, cap) : []
+          groups.push({
+            orders:              willAssign.map(toDryOrder),
+            delivererId:         pick?.entry.delivererId ?? null,
+            delivererName:       pick?.entry.name ?? null,
+            noEligibleDeliverer: pick === null,
+            overflowCount:       pick ? Math.max(0, cluster.length - willAssign.length) : 0,
+          })
+          if (!pick) break // sem entregador: clusters restantes nem seriam avaliados no scan real
+          assigned.add(pick.entry.delivererId)
+          clusterStartIdx = (pick.idx + 1) % len
+        }
+      }
 
       return {
         wouldTrigger,
         triggerReasons,
-        preparingCount:  preparing.length,
-        maxWaitMinutes:  Math.floor(maxWaitMinutes),
-        daVez:           daVezPick ? { delivererId: daVezPick.entry.delivererId, name: daVezPick.entry.name } : null,
-        noEligibleDeliverer,
-        overflowCount,
-        orders: willAssign.map(o => ({
-          id:           o.id,
-          shortId:      '#' + o.id.slice(-8).toUpperCase(),
-          customerName: o.customer.name,
-          address:      o.deliveryAddress ?? o.customer.address,
-          waitMinutes:  Math.floor(waitOf(o)),
-          isPriority:   o.isPriority,
-        })),
+        preparingCount: preparing.length,
+        maxWaitMinutes: Math.floor(maxWaitMinutes),
+        groups,
       }
     }
   )

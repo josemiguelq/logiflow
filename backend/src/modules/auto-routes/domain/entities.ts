@@ -5,6 +5,8 @@ export interface AutoRouteConfig {
   waitMinutes:  number   // gatilho: pedido mais antigo em Preparando há ≥ waitMinutes
   queueSize:    number   // gatilho: ≥ queueSize pedidos em Preparando
   maxOrders:    number | null  // cap opcional de pedidos por rota (null = todos)
+  groupByRegion:  boolean        // se true, separa os pedidos em clusters por proximidade (1 rota por cluster)
+  regionRadiusKm: number | null  // raio (km) usado no clustering quando groupByRegion = true
   turnPosition: number   // ponteiro do rodízio (índice, 0-based)
   updatedAt:    Date
 }
