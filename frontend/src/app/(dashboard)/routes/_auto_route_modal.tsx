@@ -46,8 +46,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
   const { data: deliverers = [] } = useSWR<Deliverer[]>('/deliverers', (u: string) => api.get<Deliverer[]>(u))
 
   const [enabled,     setEnabled]     = useState(false)
-  const [waitMinutes, setWaitMinutes] = useState(15)
-  const [queueSize,   setQueueSize]   = useState(5)
+  const [waitMinutes, setWaitMinutes] = useState<number | ''>(15)
+  const [queueSize,   setQueueSize]   = useState<number | ''>(5)
   const [maxOrders,   setMaxOrders]   = useState<number | ''>('')
   const [groupByRegion,  setGroupByRegion]  = useState(false)
   const [regionRadiusKm, setRegionRadiusKm] = useState<number | ''>('')
@@ -90,8 +90,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
   function payload() {
     return {
       enabled,
-      waitMinutes,
-      queueSize,
+      waitMinutes: waitMinutes === '' ? 1 : waitMinutes,
+      queueSize: queueSize === '' ? 1 : queueSize,
       maxOrders: maxOrders === '' ? null : Number(maxOrders),
       groupByRegion,
       regionRadiusKm: regionRadiusKm === '' ? null : Number(regionRadiusKm),
@@ -171,7 +171,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
               <p className="mt-0.5 mb-2 text-xs text-gray-500">Cria a rota se o pedido mais antigo esperar mais que isto</p>
               <div className="flex items-center gap-2">
                 <Input type="number" min={1} max={720} value={waitMinutes}
-                  onChange={(e) => { setWaitMinutes(Math.max(1, Math.min(720, Number(e.target.value) || 0))); invalidateDry() }}
+                  onChange={(e) => { setWaitMinutes(e.target.value === '' ? '' : Number(e.target.value)); invalidateDry() }}
+                  onBlur={(e) => setWaitMinutes(Math.max(1, Math.min(720, Number(e.target.value) || 1)))}
                   className="w-28" />
                 <span className="text-xs text-gray-500">minutos</span>
               </div>
@@ -181,7 +182,8 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
               <p className="mt-0.5 mb-2 text-xs text-gray-500">Cria a rota quando houver esta quantidade de pedidos aguardando</p>
               <div className="flex items-center gap-2">
                 <Input type="number" min={1} max={100} value={queueSize}
-                  onChange={(e) => { setQueueSize(Math.max(1, Math.min(100, Number(e.target.value) || 0))); invalidateDry() }}
+                  onChange={(e) => { setQueueSize(e.target.value === '' ? '' : Number(e.target.value)); invalidateDry() }}
+                  onBlur={(e) => setQueueSize(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
                   className="w-28" />
                 <span className="text-xs text-gray-500">pedidos</span>
               </div>
