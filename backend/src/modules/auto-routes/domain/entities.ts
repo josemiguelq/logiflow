@@ -7,6 +7,9 @@ export interface AutoRouteConfig {
   maxOrders:    number | null  // cap opcional de pedidos por rota (null = todos)
   groupByRegion:  boolean        // se true, separa os pedidos em clusters por proximidade (1 rota por cluster)
   regionRadiusKm: number | null  // raio (km) usado no clustering quando groupByRegion = true
+  fastDeliveryEnabled:     boolean       // se true, pedidos dentro de fastDeliveryRadiusKm usam fastDeliveryWaitMinutes no lugar de waitMinutes
+  fastDeliveryRadiusKm:    number | null // raio (km) a partir da loja considerado "entrega rápida"
+  fastDeliveryWaitMinutes: number | null // gatilho de espera dedicado para pedidos dentro do raio (normalmente menor que waitMinutes)
   turnPosition: number   // ponteiro do rodízio (índice, 0-based)
   updatedAt:    Date
 }

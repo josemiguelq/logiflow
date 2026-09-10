@@ -7,6 +7,9 @@ export interface UpsertAutoRouteConfigInput {
   maxOrders:   number | null
   groupByRegion:  boolean
   regionRadiusKm: number | null
+  fastDeliveryEnabled:     boolean
+  fastDeliveryRadiusKm:    number | null
+  fastDeliveryWaitMinutes: number | null
   delivererIds: string[]   // rodízio na ordem desejada
 }
 

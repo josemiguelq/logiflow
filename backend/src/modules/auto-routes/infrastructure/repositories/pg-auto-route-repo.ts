@@ -16,6 +16,9 @@ function mapConfig(r: Record<string, unknown>): AutoRouteConfig {
     maxOrders:    r.max_orders === null || r.max_orders === undefined ? null : Number(r.max_orders),
     groupByRegion:  r.group_by_region as boolean,
     regionRadiusKm: r.region_radius_km === null || r.region_radius_km === undefined ? null : Number(r.region_radius_km),
+    fastDeliveryEnabled:     r.fast_delivery_enabled as boolean,
+    fastDeliveryRadiusKm:    r.fast_delivery_radius_km === null || r.fast_delivery_radius_km === undefined ? null : Number(r.fast_delivery_radius_km),
+    fastDeliveryWaitMinutes: r.fast_delivery_wait_minutes === null || r.fast_delivery_wait_minutes === undefined ? null : Number(r.fast_delivery_wait_minutes),
     turnPosition: Number(r.turn_position),
     updatedAt:    r.updated_at as Date,
   }
@@ -66,19 +69,28 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
       const result = await db.transaction(async (client) => {
         const { rows: [cfgRow] } = await client.query(
           `INSERT INTO store_auto_route_config
-             (store_id, enabled, wait_minutes, queue_size, max_orders, group_by_region, region_radius_km, updated_at, updated_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7, now(), $8)
+             (store_id, enabled, wait_minutes, queue_size, max_orders, group_by_region, region_radius_km,
+              fast_delivery_enabled, fast_delivery_radius_km, fast_delivery_wait_minutes, updated_at, updated_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(), $11)
            ON CONFLICT (store_id) DO UPDATE SET
-             enabled          = EXCLUDED.enabled,
-             wait_minutes     = EXCLUDED.wait_minutes,
-             queue_size       = EXCLUDED.queue_size,
-             max_orders       = EXCLUDED.max_orders,
-             group_by_region  = EXCLUDED.group_by_region,
-             region_radius_km = EXCLUDED.region_radius_km,
-             updated_at       = now(),
-             updated_by       = EXCLUDED.updated_by
+             enabled                    = EXCLUDED.enabled,
+             wait_minutes               = EXCLUDED.wait_minutes,
+             queue_size                 = EXCLUDED.queue_size,
+             max_orders                 = EXCLUDED.max_orders,
+             group_by_region            = EXCLUDED.group_by_region,
+             region_radius_km           = EXCLUDED.region_radius_km,
+             fast_delivery_enabled      = EXCLUDED.fast_delivery_enabled,
+             fast_delivery_radius_km    = EXCLUDED.fast_delivery_radius_km,
+             fast_delivery_wait_minutes = EXCLUDED.fast_delivery_wait_minutes,
+             updated_at                 = now(),
+             updated_by                 = EXCLUDED.updated_by
            RETURNING *`,
-          [storeId, input.enabled, input.waitMinutes, input.queueSize, input.maxOrders, input.groupByRegion, input.regionRadiusKm, actor.id]
+          [
+            storeId, input.enabled, input.waitMinutes, input.queueSize, input.maxOrders,
+            input.groupByRegion, input.regionRadiusKm,
+            input.fastDeliveryEnabled, input.fastDeliveryRadiusKm, input.fastDeliveryWaitMinutes,
+            actor.id,
+          ]
         )
 
         // Regrava o rodízio inteiro (position = índice na ordem enviada).
