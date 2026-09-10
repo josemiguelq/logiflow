@@ -732,6 +732,48 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
+  // Store user devolve um pedido para a fila (ex: pedido entrou errado numa rota automática)
+  app.patch(
+    '/orders/:id/return-to-queue',
+    { preHandler: requireStoreUser },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+
+      const { rows: [order] } = await db.query(
+        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+        [id, req.actor.storeId]
+      )
+      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
+
+      const status = (order as Record<string, unknown>).status as string
+      if (!['ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY'].includes(status)) {
+        return reply.code(409).send({ error: 'Pedido não pode ser devolvido neste status' })
+      }
+
+      const routeId = (order as Record<string, unknown>).route_id as string | undefined
+      const delivererId = (order as Record<string, unknown>).deliverer_id as string | undefined
+
+      await db.query(
+        `UPDATE orders
+         SET status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL
+         WHERE id = $1`,
+        [id]
+      )
+      if (routeId) {
+        logRouteEvent(routeId, req.actor, 'ORDER_RETURNED_TO_QUEUE', { orderId: id })
+        await routeRepo.checkAndFinish(routeId, req.actor.storeId)
+      }
+
+      logEvent(id, req.actor, 'RETURNED_TO_QUEUE')
+      const updated = await orderRepo.findById(id, req.actor.storeId)
+      if (updated) wsHub.broadcastOrderUpdate(req.actor.storeId, updated)
+      invalidateStoreOrders(req.actor.storeId)
+      if (delivererId) invalidateDelivererOrders(delivererId)
+
+      return { ok: true }
+    }
+  )
+
   // Operador reconhece as inconsistências da entrega ("Entendi" no popup). Um
   // reconhecimento vale para todos: grava quem leu no summary + no log de auditoria
   // e faz broadcast para fechar o popup dos demais operadores. Idempotente.

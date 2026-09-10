@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import useSWR from 'swr'
-import { Truck, Package, X } from 'lucide-react'
+import { Truck, Package, X, Undo2, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
 import { LiveMap } from '@/components/map'
@@ -119,6 +119,26 @@ export function OperatorAlerts() {
     })
   }, [on, playProximity])
 
+  // ── Devolver um pedido do popup de rota automática para a fila ──
+  const [confirmReturnId, setConfirmReturnId] = useState<string | null>(null)
+  const [returningId, setReturningId] = useState<string | null>(null)
+  async function handleReturnToQueue(orderId: string) {
+    setReturningId(orderId)
+    try {
+      await api.patch(`/orders/${orderId}/return-to-queue`)
+      setAutoRouteAlert((prev) => {
+        if (!prev) return prev
+        const orders = prev.orders.filter((o) => o.orderId !== orderId)
+        return orders.length > 0 ? { ...prev, orders } : null
+      })
+    } catch {
+      // erro visível na UI global (toast), se configurada — item permanece na lista
+    } finally {
+      setReturningId(null)
+      setConfirmReturnId(null)
+    }
+  }
+
   // ── Atraso: toca quando os pedidos atrasados cruzam o limiar configurado ──
   const delayedArmed = useRef(false)
   useEffect(() => {
@@ -192,17 +212,53 @@ export function OperatorAlerts() {
             </p>
 
             <ul className="mt-3 space-y-1.5">
-              {autoRouteAlert.orders.map((o) => (
-                <li
-                  key={o.orderId}
-                  className="flex items-center gap-2.5 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm"
-                >
-                  <span className="rounded bg-white px-1.5 py-0.5 font-mono text-xs font-semibold text-emerald-700">
-                    #{o.orderId.slice(-8).toUpperCase()}
-                  </span>
-                  <span className="truncate font-medium text-emerald-900">{o.customerName}</span>
-                </li>
-              ))}
+              {autoRouteAlert.orders.map((o) =>
+                confirmReturnId === o.orderId ? (
+                  <li
+                    key={o.orderId}
+                    className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-amber-900">
+                      Devolver este pedido para a fila?
+                    </span>
+                    <button
+                      onClick={() => setConfirmReturnId(null)}
+                      className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-gray-500 hover:bg-white"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => handleReturnToQueue(o.orderId)}
+                      disabled={returningId === o.orderId}
+                      className="shrink-0 rounded-md bg-amber-500 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      {returningId === o.orderId ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        'Devolver'
+                      )}
+                    </button>
+                  </li>
+                ) : (
+                  <li
+                    key={o.orderId}
+                    className="flex items-center gap-2.5 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm"
+                  >
+                    <span className="rounded bg-white px-1.5 py-0.5 font-mono text-xs font-semibold text-emerald-700">
+                      #{o.orderId.slice(-8).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium text-emerald-900">{o.customerName}</span>
+                    <button
+                      onClick={() => setConfirmReturnId(o.orderId)}
+                      aria-label="Devolver pedido para a fila"
+                      title="Devolver para a fila"
+                      className="shrink-0 rounded-md p-1 text-emerald-500/70 hover:bg-white hover:text-emerald-700"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                )
+              )}
             </ul>
 
             {autoRouteAlert.orders.some((o) => o.lat != null && o.lng != null) && (
