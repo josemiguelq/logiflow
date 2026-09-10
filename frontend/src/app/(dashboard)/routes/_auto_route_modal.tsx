@@ -70,6 +70,9 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
       setMaxOrders(data.config.maxOrders ?? '')
       setGroupByRegion(data.config.groupByRegion)
       setRegionRadiusKm(data.config.regionRadiusKm ?? '')
+      setFastDeliveryEnabled(data.config.fastDeliveryEnabled)
+      setFastDeliveryRadiusKm(data.config.fastDeliveryRadiusKm ?? '')
+      setFastDeliveryWaitMinutes(data.config.fastDeliveryWaitMinutes ?? '')
       setRodizio(data.rodizio.map(r => r.delivererId))
     }
   }, [data])
@@ -99,6 +102,9 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
       maxOrders: maxOrders === '' ? null : Number(maxOrders),
       groupByRegion,
       regionRadiusKm: regionRadiusKm === '' ? null : Number(regionRadiusKm),
+      fastDeliveryEnabled,
+      fastDeliveryRadiusKm: fastDeliveryRadiusKm === '' ? null : Number(fastDeliveryRadiusKm),
+      fastDeliveryWaitMinutes: fastDeliveryWaitMinutes === '' ? null : Number(fastDeliveryWaitMinutes),
       delivererIds: rodizio,
     }
   }
@@ -238,6 +244,43 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
             </p>
           </div>
 
+          {/* Entrega rápida */}
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Entrega rápida por proximidade</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Pedidos a até este raio da loja usam um tempo de espera próprio (geralmente menor),
+                  em vez do &quot;Tempo de espera&quot; geral configurado acima.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setFastDeliveryEnabled(v => !v); invalidateDry() }}
+                className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+                style={{ background: fastDeliveryEnabled ? 'var(--color-primary)' : '#E5E7EB' }}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${fastDeliveryEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            {fastDeliveryEnabled && (
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Input type="number" min={0.1} max={100} step={0.1} value={fastDeliveryRadiusKm}
+                    onChange={(e) => { setFastDeliveryRadiusKm(e.target.value === '' ? '' : Math.max(0.1, Math.min(100, Number(e.target.value) || 0))); invalidateDry() }}
+                    className="w-24" />
+                  <span className="text-xs text-gray-500">km de raio</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input type="number" min={1} max={720} value={fastDeliveryWaitMinutes}
+                    onChange={(e) => { setFastDeliveryWaitMinutes(e.target.value === '' ? '' : Math.max(1, Math.min(720, Number(e.target.value) || 0))); invalidateDry() }}
+                    className="w-24" />
+                  <span className="text-xs text-gray-500">min de espera</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Rodízio */}
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
             <p className="text-sm font-medium text-gray-900">Rodízio de entregadores</p>
@@ -305,7 +348,12 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
                 {!dry.wouldTrigger ? (
                   <div className="flex items-start gap-2 rounded-lg bg-white px-3 py-2.5 text-sm text-gray-600 ring-1 ring-gray-200">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-                    <span>Nada seria criado agora — a fila ainda não atingiu {queueSize} pedidos nem {waitMinutes} min de espera.</span>
+                    <span>
+                      Nada seria criado agora — a fila ainda não atingiu {queueSize} pedidos nem {waitMinutes} min de espera
+                      {fastDeliveryEnabled && fastDeliveryRadiusKm !== '' && fastDeliveryWaitMinutes !== ''
+                        ? ` (nem ${fastDeliveryWaitMinutes} min para pedidos a até ${fastDeliveryRadiusKm} km da loja)`
+                        : ''}.
+                    </span>
                   </div>
                 ) : dry.groups.length === 0 ? (
                   <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700 ring-1 ring-amber-200">
