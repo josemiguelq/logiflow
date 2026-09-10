@@ -248,6 +248,19 @@ async function start() {
       const { delivererId, orderId, storeId, statusEvent } = job.data
       app.log.info({ orderId, storeId, delivererId, statusEvent }, '[push] job received')
 
+      // Entregador OFFLINE não deve receber push (ex.: force-offline com
+      // pedido ativo, ou status mudou entre o evento e o processamento do job).
+      if (delivererId) {
+        const { rows: [d] } = await db.query<{ status: string }>(
+          'SELECT status FROM deliverers WHERE id = $1',
+          [delivererId]
+        )
+        if (!d || d.status === 'OFFLINE') {
+          app.log.info({ orderId, storeId, delivererId }, '[push] deliverer offline — skipping')
+          return
+        }
+      }
+
       const tokens = delivererId
         ? await deviceTokenRepo.findByDeliverer(delivererId)
         : await deviceTokenRepo.findByStore(storeId)
