@@ -183,7 +183,8 @@ export function createPgTrackingRepo(db: DB) {
          LEFT JOIN store_setting_values sv ON sv.setting_id = s.id AND sv.store_id = o.store_id
          WHERE o.deliverer_id = $1
            AND o.status IN ('ON_ROUTE', 'OUT_FOR_DELIVERY')
-           AND o.arrived_at IS NULL`,
+           AND o.arrived_at IS NULL
+           AND o.deleted_at IS NULL`,
         [delivererId]
       )
       return rows

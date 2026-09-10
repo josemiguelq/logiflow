@@ -5,7 +5,7 @@ import { requireStoreUser } from '../../../shared/middleware/auth'
 import { requireScope } from '../../../shared/middleware/rbac'
 import { createPgAutoRouteRepo } from '../infrastructure/repositories/pg-auto-route-repo'
 import { createPgOrderRepo } from '../../orders/infrastructure/repositories/pg-order-repo'
-import { clusterByRegion } from '../application/cluster-by-region'
+import { clusterByRegion, applicableWaitMinutes } from '../application/cluster-by-region'
 
 const autoRouteRepo = createPgAutoRouteRepo(db)
 const orderRepo     = createPgOrderRepo(db)
@@ -30,6 +30,7 @@ function firstEligibleFrom<T extends { eligible: boolean; delivererId: string }>
 const DEFAULT_CONFIG = {
   enabled: false, waitMinutes: 15, queueSize: 5, maxOrders: null as number | null,
   groupByRegion: false, regionRadiusKm: null as number | null,
+  fastDeliveryEnabled: false, fastDeliveryRadiusKm: null as number | null, fastDeliveryWaitMinutes: null as number | null,
 }
 
 const upsertSchema = z.object({
@@ -39,10 +40,16 @@ const upsertSchema = z.object({
   maxOrders:      z.number().int().min(1).max(100).nullable().optional(),
   groupByRegion:  z.boolean().optional().default(false),
   regionRadiusKm: z.number().positive().max(100).nullable().optional(),
+  fastDeliveryEnabled:     z.boolean().optional().default(false),
+  fastDeliveryRadiusKm:    z.number().positive().max(100).nullable().optional(),
+  fastDeliveryWaitMinutes: z.number().int().min(1).max(720).nullable().optional(),
   delivererIds:   z.array(z.string().uuid()),
 }).refine(
   (body) => !body.groupByRegion || body.regionRadiusKm != null,
   { message: 'Informe o raio (km) para agrupar por região', path: ['regionRadiusKm'] },
+).refine(
+  (body) => !body.fastDeliveryEnabled || (body.fastDeliveryRadiusKm != null && body.fastDeliveryWaitMinutes != null),
+  { message: 'Informe o raio (km) e o tempo de espera para a entrega rápida', path: ['fastDeliveryRadiusKm'] },
 )
 
 export async function autoRouteRoutes(app: FastifyInstance) {
@@ -65,6 +72,9 @@ export async function autoRouteRoutes(app: FastifyInstance) {
               maxOrders:      config.maxOrders,
               groupByRegion:  config.groupByRegion,
               regionRadiusKm: config.regionRadiusKm,
+              fastDeliveryEnabled:     config.fastDeliveryEnabled,
+              fastDeliveryRadiusKm:    config.fastDeliveryRadiusKm,
+              fastDeliveryWaitMinutes: config.fastDeliveryWaitMinutes,
             }
           : DEFAULT_CONFIG,
         rodizio: rodizio.map(r => ({
@@ -117,6 +127,9 @@ export async function autoRouteRoutes(app: FastifyInstance) {
           maxOrders:      body.maxOrders ?? null,
           groupByRegion:  body.groupByRegion,
           regionRadiusKm: body.regionRadiusKm ?? null,
+          fastDeliveryEnabled:     body.fastDeliveryEnabled,
+          fastDeliveryRadiusKm:    body.fastDeliveryRadiusKm ?? null,
+          fastDeliveryWaitMinutes: body.fastDeliveryWaitMinutes ?? null,
           delivererIds:   body.delivererIds,
         },
         { id: req.actor.sub, name: req.actor.name ?? '' },
@@ -130,6 +143,9 @@ export async function autoRouteRoutes(app: FastifyInstance) {
           maxOrders:      config.maxOrders,
           groupByRegion:  config.groupByRegion,
           regionRadiusKm: config.regionRadiusKm,
+          fastDeliveryEnabled:     config.fastDeliveryEnabled,
+          fastDeliveryRadiusKm:    config.fastDeliveryRadiusKm,
+          fastDeliveryWaitMinutes: config.fastDeliveryWaitMinutes,
         },
       }
     }
@@ -149,9 +165,35 @@ export async function autoRouteRoutes(app: FastifyInstance) {
       const waitOf = (o: { createdAt: Date }) => (now - new Date(o.createdAt).getTime()) / 60_000
       const maxWaitMinutes = preparing.reduce((m, o) => Math.max(m, waitOf(o)), 0)
 
+      // Mesma coordenada efetiva usada no clustering abaixo e no scan real: agência
+      // (se houver), senão o endereço do cliente.
+      const effLat = (o: (typeof preparing)[number]) => o.agency?.lat ?? o.customer.lat
+      const effLng = (o: (typeof preparing)[number]) => o.agency?.lng ?? o.customer.lng
+
+      // Coordenada da loja, só buscada quando a entrega rápida está sendo simulada.
+      let storeCoord: { lat: number; lng: number } | null = null
+      if (body.fastDeliveryEnabled) {
+        const { rows: [storeRow] } = await db.query<{ lat: number | null; lng: number | null }>(
+          'SELECT lat, lng FROM stores WHERE id = $1', [storeId]
+        )
+        storeCoord = storeRow?.lat != null && storeRow?.lng != null ? { lat: storeRow.lat, lng: storeRow.lng } : null
+      }
+      const fast = {
+        enabled:     body.fastDeliveryEnabled,
+        radiusKm:    body.fastDeliveryRadiusKm ?? null,
+        waitMinutes: body.fastDeliveryWaitMinutes ?? null,
+      }
+
       const triggerReasons: string[] = []
       if (preparing.length >= body.queueSize) triggerReasons.push('queue_size')
       if (maxWaitMinutes >= body.waitMinutes) triggerReasons.push('wait_minutes')
+      // Dispararia só por causa de um pedido dentro do raio de entrega rápida
+      // (que ainda não bateu o waitMinutes geral, mas já bateu o dedicado).
+      const fastOverdue = preparing.some(o => {
+        const threshold = applicableWaitMinutes({ lat: effLat(o), lng: effLng(o) }, storeCoord, body.waitMinutes, fast)
+        return threshold < body.waitMinutes && waitOf(o) >= threshold
+      })
+      if (fastOverdue) triggerReasons.push('fast_delivery')
       const wouldTrigger = preparing.length > 0 && triggerReasons.length > 0
 
       // Status atual dos entregadores do rodízio (na ordem informada). Elegível =
@@ -204,11 +246,6 @@ export async function autoRouteRoutes(app: FastifyInstance) {
       }> = []
 
       if (wouldTrigger && len > 0) {
-        // Mesma coordenada efetiva usada no scan real: agência (se houver), senão
-        // endereço do cliente (já coalescido com delivery_lat/lng no SQL).
-        const effLat = (o: (typeof preparing)[number]) => o.agency?.lat ?? o.customer.lat
-        const effLng = (o: (typeof preparing)[number]) => o.agency?.lng ?? o.customer.lng
-
         let clusters: (typeof preparing)[]
         if (body.groupByRegion && body.regionRadiusKm) {
           const byId = new Map(preparing.map(o => [o.id, o]))

@@ -171,9 +171,10 @@ export async function delivererRoutes(app: FastifyInstance) {
       // Block going OFFLINE while there are active orders
       if (status === 'OFFLINE') {
         const { rows } = await db.query(
-          `SELECT COUNT(*) AS cnt FROM orders
-           WHERE deliverer_id = $1
-             AND status NOT IN ('DELIVERED','CANCELLED')`,
+`SELECT COUNT(*) AS cnt FROM orders
+         WHERE deliverer_id = $1
+           AND status NOT IN ('DELIVERED','CANCELLED')
+           AND deleted_at IS NULL`,
           [req.actor.sub]
         )
         if (Number(rows[0].cnt) > 0) {
@@ -330,7 +331,7 @@ export async function delivererRoutes(app: FastifyInstance) {
            ROUND(AVG(rating)::numeric, 1) AS avg_rating,
            COUNT(*) FILTER (WHERE rating IS NOT NULL) AS rating_count
          FROM orders
-         WHERE deliverer_id = $1 AND store_id = $2`,
+         WHERE deliverer_id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
 

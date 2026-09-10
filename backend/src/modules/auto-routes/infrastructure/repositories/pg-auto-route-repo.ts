@@ -184,7 +184,7 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
           // (um entregador pode ter retirado o pedido antes do gatilho).
           const { rows: [order] } = await client.query(
             `SELECT id, status, deliverer_id FROM orders
-             WHERE id = $1 AND store_id = $2 FOR UPDATE`,
+             WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL FOR UPDATE`,
             [orderId, storeId]
           )
           if (!order) continue

@@ -17,7 +17,7 @@ import { getStoreSettings } from '../../settings/store-settings-cache'
 import { wsHub } from '../../../shared/infra/websocket'
 import { notificationQueue } from '../../../shared/infra/queue'
 import { redis } from '../../../shared/infra/redis'
-import { uploadBase64, presignUpload, resolveImageUrl, deleteFiles } from '../../../shared/storage/client'
+import { uploadBase64, presignUpload, resolveImageUrl } from '../../../shared/storage/client'
 import { assertCanCreateOrder } from '../../../shared/billing'
 
 const queueNotif = (storeId: string, orderId: string, statusEvent: string) =>
@@ -584,7 +584,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
         // O pedido precisa estar livre (PREPARING, sem entregador) para entrar na rota.
         const { rows: [target] } = await db.query(
-          `SELECT status, deliverer_id FROM orders WHERE id = $1 AND store_id = $2`,
+          `SELECT status, deliverer_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
           [id, req.actor.storeId]
         )
         if (!target) return reply.code(404).send({ error: 'Pedido não encontrado' })
@@ -594,7 +594,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
         // orderIds = ordem final completa; deve conter os pedidos atuais da rota + este pedido.
         const { rows: currentRows } = await db.query(
-          `SELECT id FROM orders WHERE route_id = $1`, [body.routeId]
+          `SELECT id FROM orders WHERE route_id = $1 AND deleted_at IS NULL`, [body.routeId]
         )
         const currentIds = (currentRows as Record<string, unknown>[]).map(r => r.id as string)
         const desiredIds = body.orderIds && body.orderIds.length > 0
@@ -740,7 +740,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
 
       const { rows: [order] } = await db.query(
-        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
       if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
@@ -994,7 +994,7 @@ export async function orderRoutes(app: FastifyInstance) {
         const assigned = []
         for (let i = 0; i < orderIds.length; i++) {
           const { rows: [order] } = await client.query(
-            `SELECT id, status FROM orders WHERE id = $1 AND store_id = $2`,
+            `SELECT id, status FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
             [orderIds[i], req.actor.storeId]
           )
           if (!order) throw Object.assign(new Error(`Pedido ${orderIds[i]} não encontrado`), { statusCode: 404 })
@@ -1004,7 +1004,7 @@ export async function orderRoutes(app: FastifyInstance) {
           const { rows: [updated] } = await client.query(
             `UPDATE orders SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED',
                     accepted_at = COALESCE(accepted_at, now())
-             WHERE id = $1 RETURNING *`,
+             WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
             [orderIds[i], delivererId, i + 1]
           )
           assigned.push(await orderRepo.findById(updated.id as string, req.actor.storeId))
@@ -1084,20 +1084,20 @@ export async function orderRoutes(app: FastifyInstance) {
        )
        SELECT
          (SELECT count(*) FROM orders
-            WHERE deliverer_id = $1 AND status = 'DELIVERED'
+            WHERE deliverer_id = $1 AND status = 'DELIVERED' AND deleted_at IS NULL
               AND (delivered_at AT TIME ZONE 'America/Sao_Paulo')::date
                 = (now() AT TIME ZONE 'America/Sao_Paulo')::date)                  AS today_deliveries,
          (SELECT count(*) FROM orders, bounds
-            WHERE deliverer_id = $1 AND status = 'DELIVERED'
+            WHERE deliverer_id = $1 AND status = 'DELIVERED' AND deleted_at IS NULL
               AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_deliveries,
          (SELECT count(*) FROM orders, bounds
-            WHERE deliverer_id = $1 AND status = 'DELIVERED' AND is_priority
+            WHERE deliverer_id = $1 AND status = 'DELIVERED' AND is_priority AND deleted_at IS NULL
               AND delivered_at >= bounds.start_ts AND delivered_at < bounds.end_ts) AS month_priority_deliveries,
          (SELECT count(*) FROM orders, bounds
-            WHERE cancelled_by_deliverer_id = $1
+            WHERE cancelled_by_deliverer_id = $1 AND deleted_at IS NULL
               AND cancelled_at >= bounds.start_ts AND cancelled_at < bounds.end_ts) AS month_cancelled,
          (SELECT count(*) FROM routes, bounds
-            WHERE deliverer_id = $1 AND status = 'FINISHED'
+            WHERE deliverer_id = $1 AND status = 'FINISHED' AND deleted_at IS NULL
               AND finished_at >= bounds.start_ts AND finished_at < bounds.end_ts)   AS month_routes`,
       [req.actor.sub, monthStart]
     )
@@ -1145,7 +1145,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
       const { rows: [order] } = await db.query(
         `SELECT reserved_by, reserved_at FROM orders
-         WHERE id = $1 AND store_id = $2 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+         WHERE id = $1 AND store_id = $2 AND status = 'PREPARING' AND deliverer_id IS NULL AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
       if (!order) return reply.code(404).send({ error: 'Pedido não encontrado ou não disponível' })
@@ -1264,7 +1264,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const { rows } = await db.query(
         `SELECT id, status, route_id, route_position
            FROM orders
-          WHERE deliverer_id = $1 AND id = ANY($2::uuid[])`,
+          WHERE deliverer_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
         [req.actor.sub, orderIds]
       )
       if (rows.length !== orderIds.length) {
@@ -1345,7 +1345,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const { count, contentType } = proofUrlsSchema.parse(req.body)
       // Só o entregador do pedido pode gerar URLs de escrita para o comprovante.
       const { rows: [own] } = await db.query(
-        `SELECT 1 FROM orders WHERE id = $1 AND store_id = $2 AND deliverer_id = $3`,
+        `SELECT 1 FROM orders WHERE id = $1 AND store_id = $2 AND deliverer_id = $3 AND deleted_at IS NULL`,
         [id, req.actor.storeId, req.actor.sub]
       )
       if (!own) return reply.code(403).send({ error: 'Not your order' })
@@ -1475,7 +1475,7 @@ export async function orderRoutes(app: FastifyInstance) {
             if (finished) {
               const { rows: [waiting] } = await db.query(
                 `SELECT COUNT(*)::int AS count FROM orders
-                 WHERE store_id = $1 AND status = 'PREPARING' AND deliverer_id IS NULL`,
+                 WHERE store_id = $1 AND status = 'PREPARING' AND deliverer_id IS NULL AND deleted_at IS NULL`,
                 [req.actor.storeId]
               )
               const waitingCount = (waiting as { count: number } | undefined)?.count ?? 0
@@ -1513,7 +1513,7 @@ export async function orderRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
 
       const { rows: [order] } = await db.query(
-        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+        `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
       if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
@@ -1562,7 +1562,7 @@ export async function orderRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
 
     const { rows: [order] } = await db.query(
-      `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+      `SELECT status, deliverer_id, route_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
       [id, req.actor.storeId]
     )
     if (!order) return { code: 404, error: 'Pedido não encontrado' }
@@ -1648,25 +1648,30 @@ export async function orderRoutes(app: FastifyInstance) {
     }
   )
 
-  // Hard-delete a single order (store admin, scope-gated)
+  // Soft-delete de um pedido (admin da loja, scope-gated). A linha permanece no
+  // banco com deleted_at/deleted_by: auditável e recuperável, mas fica oculta
+  // das listagens (que filtram deleted_at IS NULL). Evidências (provas/pagamentos)
+  // são preservadas para auditoria/restauração.
   app.delete(
     '/orders/:id',
     { preHandler: [requireStoreUser, requireScope('orders:delete')] },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const { rows: [order] } = await db.query(
-        `SELECT id, route_id, deliverer_id FROM orders WHERE id = $1 AND store_id = $2`,
+        `SELECT id, route_id, deliverer_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
       if (!order) return reply.code(404).send({ error: 'Pedido não encontrado' })
 
-      const { rows: proofRows } = await db.query(
-        `SELECT photo_url FROM proof_of_delivery WHERE order_id = $1`,
-        [id]
-      )
-
       const o = order as Record<string, unknown>
-      await db.query(`DELETE FROM orders WHERE id = $1`, [id])
+      const { rowCount } = await db.query(
+        `UPDATE orders SET deleted_at = now(), deleted_by = $3
+         WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
+        [id, req.actor.storeId, req.actor.sub]
+      )
+      if (!rowCount) return reply.code(404).send({ error: 'Pedido não encontrado' })
+
+      logEvent(id, req.actor, 'DELETED')
 
       // Finaliza a rota se os pedidos restantes já estiverem todos concluídos
       // (ou a rota tiver ficado vazia) — não apenas quando fica vazia.
@@ -1676,11 +1681,6 @@ export async function orderRoutes(app: FastifyInstance) {
 
       await invalidateStoreOrders(req.actor.storeId)
       if (o.deliverer_id) await invalidateDelivererOrders(o.deliverer_id as string)
-
-      const photoPaths = proofRows.map((r: Record<string, unknown>) => r.photo_url as string)
-      deleteFiles(photoPaths).catch(err =>
-        req.log.error({ err, orderId: id }, 'failed to delete proof photos from storage')
-      )
 
       return { ok: true }
     }
@@ -1716,7 +1716,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
     // Orders currently in the route — editing can reorder/add but not remove them
     const { rows: currentRows } = await db.query(
-      `SELECT id FROM orders WHERE route_id = $1`,
+      `SELECT id FROM orders WHERE route_id = $1 AND deleted_at IS NULL`,
       [id]
     )
     const currentIds = (currentRows as Record<string, unknown>[]).map(r => r.id as string)

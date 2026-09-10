@@ -12,6 +12,7 @@ interface AutoRouteConfigResponse {
   config: {
     enabled: boolean; waitMinutes: number; queueSize: number; maxOrders: number | null
     groupByRegion: boolean; regionRadiusKm: number | null
+    fastDeliveryEnabled: boolean; fastDeliveryRadiusKm: number | null; fastDeliveryWaitMinutes: number | null
   }
   rodizio: { delivererId: string; name: string; status: string; isActive: boolean }[]
 }
@@ -51,6 +52,9 @@ export function AutoRouteModal({ onClose, onSaved }: { onClose: () => void; onSa
   const [maxOrders,   setMaxOrders]   = useState<number | ''>('')
   const [groupByRegion,  setGroupByRegion]  = useState(false)
   const [regionRadiusKm, setRegionRadiusKm] = useState<number | ''>('')
+  const [fastDeliveryEnabled,     setFastDeliveryEnabled]     = useState(false)
+  const [fastDeliveryRadiusKm,    setFastDeliveryRadiusKm]    = useState<number | ''>('')
+  const [fastDeliveryWaitMinutes, setFastDeliveryWaitMinutes] = useState<number | ''>('')
   const [rodizio,     setRodizio]     = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')

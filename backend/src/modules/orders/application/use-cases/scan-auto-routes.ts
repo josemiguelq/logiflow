@@ -5,7 +5,7 @@ import type { IAutoRouteRepository } from '../../../auto-routes/application/port
 import type { RodizioEntry } from '../../../auto-routes/domain/entities'
 import { wsHub } from '../../../../shared/infra/websocket'
 import { redis } from '../../../../shared/infra/redis'
-import { clusterByRegion, orderByNearestNeighbor } from '../../../auto-routes/application/cluster-by-region'
+import { clusterByRegion, orderByNearestNeighbor, applicableWaitMinutes } from '../../../auto-routes/application/cluster-by-region'
 
 interface Logger {
   info(obj: unknown, msg?: string): void
@@ -71,8 +71,9 @@ async function invalidateDelivererOrders(delivererId: string) {
 
 /**
  * Varre as lojas com criação automática de rotas ativa. Para cada loja: se a fila
- * de pedidos em Preparando bateu o gatilho (≥ queueSize pedidos OU o mais antigo
- * esperando ≥ waitMinutes), cria rota(s) com esses pedidos atribuída(s) ao
+ * de pedidos em Preparando bateu o gatilho (≥ queueSize pedidos OU algum pedido
+ * esperando ≥ waitMinutes — ou ≥ fastDeliveryWaitMinutes, se estiver dentro do
+ * raio de entrega rápida), cria rota(s) com esses pedidos atribuída(s) ao
  * "entregador da vez" (rodízio, pulando quem está OFFLINE) e avança o ponteiro.
  * Com `groupByRegion` ativo, os pedidos são antes separados em clusters por
  * proximidade (raio `regionRadiusKm`, encadeado) — 1 rota por cluster, cada uma para
@@ -108,21 +109,32 @@ export async function scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQue
     }
 
     const now = Date.now()
-    const maxWaitMin = preparing.reduce((max, o) => {
-      const mins = (now - new Date(o.createdAt).getTime()) / 60_000
-      return mins > max ? mins : max
-    }, 0)
-    const triggered = preparing.length > 0 &&
-      (preparing.length >= cfg.queueSize || maxWaitMin >= cfg.waitMinutes)
+
+    const storeCoord = cfg.storeLat != null && cfg.storeLng != null
+      ? { lat: cfg.storeLat, lng: cfg.storeLng }
+      : null
+    const fast = {
+      enabled:     cfg.fastDeliveryEnabled,
+      radiusKm:    cfg.fastDeliveryRadiusKm,
+      waitMinutes: cfg.fastDeliveryWaitMinutes,
+    }
+
+    // Gatilho: fila bateu queueSize, OU algum pedido já espera mais que o
+    // waitMinutes aplicável a ele — que é o waitMinutes geral, exceto para
+    // pedidos dentro do raio de entrega rápida (fastDeliveryRadiusKm), que usam
+    // o fastDeliveryWaitMinutes dedicado (normalmente menor).
+    const triggered = preparing.length > 0 && (
+      preparing.length >= cfg.queueSize ||
+      preparing.some(o => {
+        const mins = (now - new Date(o.createdAt).getTime()) / 60_000
+        return mins >= applicableWaitMinutes(effectiveCoord(o), storeCoord, cfg.waitMinutes, fast)
+      })
+    )
 
     const daVez = firstEligibleFrom(rodizio, startIdx)
 
     let effectiveStart = startIdx
     const justAssignedIds = new Set<string>()
-
-    const storeCoord = cfg.storeLat != null && cfg.storeLng != null
-      ? { lat: cfg.storeLat, lng: cfg.storeLng }
-      : null
 
     if (triggered && daVez) {
       // Sem agrupamento por região: 1 cluster único com todos os pedidos (comportamento

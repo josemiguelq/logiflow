@@ -82,3 +82,23 @@ export function orderByNearestNeighbor<T extends ClusterableOrder>(
 
   return [...result, ...withoutCoords]
 }
+
+// Minutos de espera aplicáveis a um pedido para o gatilho de rota automática:
+// se a "entrega rápida" está ativa e o pedido está a até `fast.radiusKm` da
+// loja, usa `fast.waitMinutes` (normalmente menor); senão usa o `waitMinutes`
+// geral. Usa sempre o menor dos dois para o pedido próximo, para que a
+// entrega rápida nunca ATRASE o gatilho em relação ao comportamento padrão
+// (protege contra o caso de configuração invertida, fastWaitMinutes >
+// waitMinutes).
+export function applicableWaitMinutes(
+  coord: { lat?: number; lng?: number },
+  storeCoord: { lat: number; lng: number } | null,
+  waitMinutes: number,
+  fast: { enabled: boolean; radiusKm: number | null; waitMinutes: number | null } | null,
+): number {
+  if (!fast?.enabled || fast.radiusKm == null || fast.waitMinutes == null || !storeCoord) return waitMinutes
+  if (coord.lat == null || coord.lng == null) return waitMinutes
+  const distKm = haversineMeters(storeCoord.lat, storeCoord.lng, coord.lat, coord.lng) / 1000
+  if (distKm > fast.radiusKm) return waitMinutes
+  return Math.min(waitMinutes, fast.waitMinutes)
+}

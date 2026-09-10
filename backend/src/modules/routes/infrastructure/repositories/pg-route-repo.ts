@@ -22,7 +22,7 @@ const LIST_JOIN = `
     COUNT(o.id) AS order_count
   FROM routes r
   JOIN deliverers d   ON d.id = r.deliverer_id
-  LEFT JOIN orders o  ON o.route_id = r.id
+  LEFT JOIN orders o  ON o.route_id = r.id AND o.deleted_at IS NULL
 `
 
 export function createPgRouteRepo(db: DB) {
@@ -56,7 +56,7 @@ export function createPgRouteRepo(db: DB) {
 
       // Dynamic filters, parametrized — same pattern as /routes/export.
       const params: unknown[] = [storeId]
-      const conds: string[] = ['r.store_id = $1']
+      const conds: string[] = ['r.store_id = $1', 'r.deleted_at IS NULL']
       if (filters.delivererId) { params.push(filters.delivererId); conds.push(`r.deliverer_id = $${params.length}`) }
       if (filters.from)        { params.push(filters.from);        conds.push(`r.created_at >= $${params.length}::date`) }
       if (filters.to)          { params.push(filters.to);          conds.push(`r.created_at <  ($${params.length}::date + interval '1 day')`) }
@@ -98,7 +98,7 @@ export function createPgRouteRepo(db: DB) {
     async findById(id: string, storeId: string): Promise<RouteWithDetails | null> {
       const { rows: rrows } = await db.query(
         `${LIST_JOIN}
-         WHERE r.id = $1 AND r.store_id = $2
+         WHERE r.id = $1 AND r.store_id = $2 AND r.deleted_at IS NULL
          GROUP BY r.id, d.name, d.username`,
         [id, storeId]
       )
@@ -128,7 +128,7 @@ export function createPgRouteRepo(db: DB) {
            WHERE p.order_id = o.id AND p.lat IS NOT NULL AND p.lng IS NOT NULL
            ORDER BY p.photo_index ASC, p.created_at ASC LIMIT 1
          ) pf ON true
-         WHERE o.route_id = $1
+         WHERE o.route_id = $1 AND o.deleted_at IS NULL
          ORDER BY o.route_position ASC NULLS LAST, o.created_at ASC`,
         [id]
       )
@@ -169,7 +169,7 @@ export function createPgRouteRepo(db: DB) {
     async findByDeliverer(delivererId: string): Promise<RouteWithDetails[]> {
       const { rows } = await db.query(
         `${LIST_JOIN}
-         WHERE r.deliverer_id = $1 AND r.status IN ('CREATED','STARTED')
+         WHERE r.deliverer_id = $1 AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
          GROUP BY r.id, d.name, d.username
          HAVING COUNT(o.id) > 0
          ORDER BY r.created_at DESC`,
@@ -201,7 +201,7 @@ export function createPgRouteRepo(db: DB) {
     async linkOrders(routeId: string, orderIds: string[]): Promise<void> {
       if (!orderIds.length) return
       await db.query(
-        `UPDATE orders SET route_id = $1 WHERE id = ANY($2::uuid[])`,
+        `UPDATE orders SET route_id = $1 WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL`,
         [routeId, orderIds]
       )
     },
@@ -222,7 +222,7 @@ export function createPgRouteRepo(db: DB) {
 
       const { rows } = await db.query(
         `UPDATE routes SET ${sets.join(', ')}
-         WHERE id = $1 AND store_id = $2 RETURNING *`,
+         WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL RETURNING *`,
         params
       )
       return rows[0] ? mapRoute(rows[0] as Record<string, unknown>) : null
@@ -233,7 +233,7 @@ export function createPgRouteRepo(db: DB) {
         `SELECT
            COUNT(*)                                                      AS total,
            COUNT(*) FILTER (WHERE status NOT IN ('DELIVERED','CANCELLED')) AS pending
-         FROM orders WHERE route_id = $1`,
+         FROM orders WHERE route_id = $1 AND deleted_at IS NULL`,
         [routeId]
       )
       const total   = Number((rows[0] as Record<string, unknown>)?.total ?? 0)

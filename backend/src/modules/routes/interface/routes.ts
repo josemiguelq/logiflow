@@ -78,8 +78,8 @@ export async function routeRoutes(app: FastifyInstance) {
         o.delivered_at
       FROM routes r
       JOIN deliverers d ON d.id = r.deliverer_id
-      JOIN orders     o ON o.route_id = r.id
-      WHERE r.store_id = $1 ${where}
+      JOIN orders     o ON o.route_id = r.id AND o.deleted_at IS NULL
+      WHERE r.store_id = $1 AND r.deleted_at IS NULL ${where}
       ORDER BY r.created_at DESC, o.route_position ASC NULLS LAST
     `, params)
 
@@ -108,8 +108,8 @@ export async function routeRoutes(app: FastifyInstance) {
     const { rows } = await db.query(
       `SELECT r.issues
        FROM routes r
-       JOIN orders o ON o.route_id = r.id
-       WHERE o.id = $1 AND r.store_id = $2`,
+       JOIN orders o ON o.route_id = r.id AND o.deleted_at IS NULL
+       WHERE o.id = $1 AND r.store_id = $2 AND r.deleted_at IS NULL AND o.deleted_at IS NULL`,
       [id, req.actor.storeId]
     )
     if (!rows[0]) return reply.code(404).send({ error: 'Pedido não encontrado' })
@@ -124,7 +124,7 @@ export async function routeRoutes(app: FastifyInstance) {
     // Verify route belongs to store
     const { rows: [routeRow] } = await db.query(
       `SELECT r.deliverer_id, r.created_at, r.finished_at
-       FROM routes r WHERE r.id = $1 AND r.store_id = $2`,
+       FROM routes r WHERE r.id = $1 AND r.store_id = $2 AND r.deleted_at IS NULL`,
       [id, req.actor.storeId]
     )
     if (!routeRow) return reply.code(404).send({ error: 'Not found' })
@@ -143,7 +143,7 @@ export async function routeRoutes(app: FastifyInstance) {
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
        LEFT JOIN customer_addresses ca ON ca.customer_id = c.id AND ca.is_default = true
-       WHERE o.route_id = $1
+       WHERE o.route_id = $1 AND o.deleted_at IS NULL
        ORDER BY o.route_position ASC NULLS LAST, o.created_at ASC`,
       [id]
     )
@@ -204,7 +204,7 @@ export async function routeRoutes(app: FastifyInstance) {
 
       // Route must exist, belong to the store, and still be editable (not started)
       const { rows: [routeRow] } = await db.query(
-        `SELECT id, deliverer_id, status FROM routes WHERE id = $1 AND store_id = $2`,
+        `SELECT id, deliverer_id, status FROM routes WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
       if (!routeRow) return reply.code(404).send({ error: 'Rota não encontrada' })
@@ -215,7 +215,7 @@ export async function routeRoutes(app: FastifyInstance) {
 
       // Current orders in the route
       const { rows: currentRows } = await db.query(
-        `SELECT id, status FROM orders WHERE route_id = $1`,
+        `SELECT id, status FROM orders WHERE route_id = $1 AND deleted_at IS NULL`,
         [id]
       )
       const currentIds  = currentRows.map(r => r.id as string)
@@ -236,7 +236,7 @@ export async function routeRoutes(app: FastifyInstance) {
       // Validate each new order: must be an unassigned order of this store
       for (const oid of newIds) {
         const { rows: [o] } = await db.query(
-          `SELECT id, status, route_id FROM orders WHERE id = $1 AND store_id = $2`,
+          `SELECT id, status, route_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
           [oid, req.actor.storeId]
         )
         if (!o) return reply.code(404).send({ error: `Pedido ${oid} não encontrado` })
@@ -301,24 +301,32 @@ export async function routeRoutes(app: FastifyInstance) {
     }
   )
 
-  // ── Deliverer routes ──────────────────────────────────────────────────────
-  // Hard-delete a route AND all its orders (store admin, scope-gated)
+  // ── Rotas ─────────────────────────────────────────────────────────────────
+  // Soft-delete da rota e de todos os seus pedidos (admin da loja, scope-gated).
+  // As linhas permanecem no banco marcadas com deleted_at/deleted_by: auditáveis
+  // e recuperáveis, mas ocultas das listagens (que filtram deleted_at IS NULL).
   app.delete(
     '/routes/:id',
     { preHandler: [requireStoreUser, requireScope('routes:delete')] },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const { rows: [route] } = await db.query(
-        `SELECT id FROM routes WHERE id = $1 AND store_id = $2`,
+        `SELECT id FROM routes WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.storeId]
       )
       if (!route) return reply.code(404).send({ error: 'Rota não encontrada' })
 
       const { rowCount: deletedOrders } = await db.query(
-        `DELETE FROM orders WHERE route_id = $1`,
-        [id]
+        `UPDATE orders
+         SET deleted_at = now(), deleted_by = $2
+         WHERE route_id = $1 AND deleted_at IS NULL`,
+        [id, req.actor.sub]
       )
-      await db.query(`DELETE FROM routes WHERE id = $1`, [id])
+      await db.query(
+        `UPDATE routes SET deleted_at = now(), deleted_by = $3
+         WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
+        [id, req.actor.storeId, req.actor.sub]
+      )
 
       return { ok: true, deletedOrders: deletedOrders ?? 0 }
     }

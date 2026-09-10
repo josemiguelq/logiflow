@@ -42,12 +42,13 @@ export function createPgDelivererRepo(db: DB) {
       })
     },
 
-    // IDs dos entregadores ativos SEM rota em andamento (nenhuma rota
-    // CREATED/STARTED) — usado para notificar quem está livre para retirar.
+    // IDs dos entregadores ativos, online (status != OFFLINE) e SEM rota em
+    // andamento (nenhuma rota CREATED/STARTED) — usado para notificar quem
+    // está livre para retirar.
     async findIdleIds(storeId: string): Promise<string[]> {
       const { rows } = await db.query<{ id: string }>(
         `SELECT d.id FROM deliverers d
-         WHERE d.store_id = $1 AND d.is_active = true AND d.deleted_at IS NULL
+         WHERE d.store_id = $1 AND d.is_active = true AND d.status != 'OFFLINE' AND d.deleted_at IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM routes r
              WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
@@ -182,12 +183,13 @@ export function createPgDelivererRepo(db: DB) {
          FROM deliverers d
          LEFT JOIN orders o ON o.deliverer_id = d.id
            AND o.status NOT IN ('DELIVERED','CANCELLED')
+           AND o.deleted_at IS NULL
          LEFT JOIN LATERAL (
            SELECT r.id AS route_id,
                   COUNT(ro.id) FILTER (WHERE ro.status NOT IN ('DELIVERED','CANCELLED')) AS pending_count
            FROM routes r
-           LEFT JOIN orders ro ON ro.route_id = r.id
-           WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+           LEFT JOIN orders ro ON ro.route_id = r.id AND ro.deleted_at IS NULL
+           WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
            GROUP BY r.id
            HAVING COUNT(ro.id) FILTER (WHERE ro.status NOT IN ('DELIVERED','CANCELLED')) > 0
            ORDER BY r.created_at DESC

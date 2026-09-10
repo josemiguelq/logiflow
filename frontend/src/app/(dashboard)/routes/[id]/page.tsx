@@ -4,7 +4,7 @@ import { use, useState } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil, ChevronDown } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil, ChevronDown, Undo2 } from 'lucide-react'
 import { DeliveryRoute, RouteStatus, RouteIssue, RouteIssueCategory } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -122,6 +122,7 @@ export default function RouteDetailPage({ params }: Props) {
   const [editing, setEditing]     = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [adjustingOrder, setAdjustingOrder] = useState<{ id: string; address: string } | null>(null)
+  const [returningId, setReturningId] = useState<string | null>(null)
 
   async function forceFinish() {
     if (!confirm('Marcar rota como finalizada?')) return
@@ -131,6 +132,20 @@ export default function RouteDetailPage({ params }: Props) {
       await mutate()
     } finally {
       setFinishing(false)
+    }
+  }
+
+  async function returnToQueue(orderId: string, customerName: string) {
+    if (!confirm(`Devolver o pedido de ${customerName} para a fila de entrega?`)) return
+    setReturningId(orderId)
+    try {
+      await api.patch(`/orders/${orderId}/return-to-queue`)
+      await Promise.all([mutate(), mutateMap()])
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+      alert(msg ?? 'Não foi possível devolver o pedido.')
+    } finally {
+      setReturningId(null)
     }
   }
 
@@ -431,13 +446,21 @@ export default function RouteDetailPage({ params }: Props) {
               </div>
             </Link>
             {!COMPLETED_ORDER_STATUSES.includes(order.status) && (
-              <div className="border-t border-gray-100 px-4 py-2">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-gray-100 px-4 py-2">
                 <button
                   onClick={() => setAdjustingOrder({ id: order.id, address: order.customerAddress })}
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
                 >
                   <MapPin className="h-3.5 w-3.5" />
                   Ajustar endereço de entrega
+                </button>
+                <button
+                  onClick={() => returnToQueue(order.id, order.customerName)}
+                  disabled={returningId === order.id}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:underline disabled:opacity-50"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  {returningId === order.id ? 'Devolvendo…' : 'Devolver para fila'}
                 </button>
               </div>
             )}

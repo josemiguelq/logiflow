@@ -185,14 +185,14 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
   return {
     async findById(id, storeId) {
       const { rows } = await db.query(
-        `${WITH_JOINS} WHERE o.id = $1 AND o.store_id = $2`,
+        `${WITH_JOINS} WHERE o.id = $1 AND o.store_id = $2 AND o.deleted_at IS NULL`,
         [id, storeId]
       )
       return rows[0] ? mapRow(rows[0]) : null
     },
 
     async findByStore(storeId, filters: OrderFilters) {
-      const conditions = ['o.store_id = $1']
+      const conditions = ['o.store_id = $1', 'o.deleted_at IS NULL']
       const params: unknown[] = [storeId]
       let idx = 2
 
@@ -224,7 +224,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     },
 
     async searchByStore(storeId, filters: OrderFilters) {
-      const conditions = ['o.store_id = $1']
+      const conditions = ['o.store_id = $1', 'o.deleted_at IS NULL']
       const params: unknown[] = [storeId]
       let idx = 2
 
@@ -279,6 +279,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `${WITH_JOINS}
          WHERE o.deliverer_id = $1
+           AND o.deleted_at IS NULL
            AND (
              o.status IN ('ON_ROUTE','OUT_FOR_DELIVERY')
              OR (
@@ -289,6 +290,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
                  WHERE deliverer_id = $1
                    AND status IN ('ON_ROUTE','OUT_FOR_DELIVERY')
                    AND route_id IS NOT NULL
+                   AND deleted_at IS NULL
                )
              )
            )
@@ -301,7 +303,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     async findByDelivererAndId(delivererId, orderId) {
       const { rows } = await db.query(
         `${WITH_JOINS}
-         WHERE o.deliverer_id = $1 AND o.id = $2
+         WHERE o.deliverer_id = $1 AND o.id = $2 AND o.deleted_at IS NULL
          LIMIT 1`,
         [delivererId, orderId]
       )
@@ -311,7 +313,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     async findByRoute(routeId) {
       const { rows } = await db.query(
         `${WITH_JOINS}
-         WHERE o.route_id = $1
+         WHERE o.route_id = $1 AND o.deleted_at IS NULL
          ORDER BY o.route_position ASC NULLS LAST`,
         [routeId]
       )
@@ -321,7 +323,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
     async findNextOnRoute(routeId) {
       const { rows } = await db.query(
         `${WITH_JOINS}
-         WHERE o.route_id = $1 AND o.status = 'ON_ROUTE'
+         WHERE o.route_id = $1 AND o.status = 'ON_ROUTE' AND o.deleted_at IS NULL
          ORDER BY o.route_position ASC NULLS LAST
          LIMIT 1`,
         [routeId]
@@ -333,6 +335,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `${WITH_JOINS}
          WHERE o.store_id = $1 AND o.status = 'PREPARING' AND o.deliverer_id IS NULL
+           AND o.deleted_at IS NULL
            AND (
              o.reserved_by IS NULL
              OR o.reserved_by = $2
@@ -373,7 +376,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
 
     async updatePriority(id, isPriority, maxDeliveryTime) {
       const { rows } = await db.query(
-        `UPDATE orders SET is_priority = $2, max_delivery_time = $3 WHERE id = $1 RETURNING *`,
+        `UPDATE orders SET is_priority = $2, max_delivery_time = $3 WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
         [id, isPriority, maxDeliveryTime]
       )
       return mapOrderRow(rows[0] as Record<string, unknown>)
@@ -391,7 +394,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       if (extra.cashCollected !== undefined) { sets.push(`cash_collected = $${idx++}`); params.push(extra.cashCollected) }
 
       const { rows } = await db.query(
-        `UPDATE orders SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
+        `UPDATE orders SET ${sets.join(', ')} WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
         params
       )
       return mapOrderRow(rows[0] as Record<string, unknown>)
@@ -407,7 +410,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
            cash_collected = COALESCE($4, cash_collected),
            log            = COALESCE(log, '[]'::jsonb) || $5::jsonb,
            summary        = $6::jsonb
-         WHERE id = $1
+         WHERE id = $1 AND deleted_at IS NULL
          RETURNING *`,
         [
           id, deliveredAt, deliveryNote ?? null,
@@ -424,7 +427,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query(
         `UPDATE orders
          SET status = 'OUT_FOR_DELIVERY', out_for_delivery_at = COALESCE(out_for_delivery_at, now())
-         WHERE id = $1 AND status = 'ON_ROUTE'
+         WHERE id = $1 AND status = 'ON_ROUTE' AND deleted_at IS NULL
          RETURNING *`,
         [id]
       )
@@ -450,7 +453,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
         `UPDATE orders
          SET deliverer_id = $2, route_position = $3, status = 'ASSIGNED',
              accepted_at = COALESCE(accepted_at, now())
-         WHERE id = $1
+         WHERE id = $1 AND deleted_at IS NULL
          RETURNING *`,
         [id, delivererId, routePosition]
       )
@@ -482,14 +485,14 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       await db.query(
         `UPDATE orders
          SET rating = $2, rating_comment = $3, rated_at = now()
-         WHERE id = $1 AND status = 'DELIVERED' AND rating IS NULL`,
+         WHERE id = $1 AND status = 'DELIVERED' AND rating IS NULL AND deleted_at IS NULL`,
         [orderId, rating, comment ?? null]
       )
     },
 
     async getPublic(id) {
       const { rows } = await db.query(
-        `${WITH_JOINS} WHERE o.id = $1`,
+        `${WITH_JOINS} WHERE o.id = $1 AND o.deleted_at IS NULL`,
         [id]
       )
       if (!rows[0]) return null
@@ -537,7 +540,8 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
          JOIN customers c ON c.id = o.customer_id
          LEFT JOIN deliverers d ON d.id = o.deliverer_id
          WHERE o.status IN ('ON_ROUTE', 'OUT_FOR_DELIVERY')
-           AND o.picked_up_at IS NOT NULL`,
+           AND o.picked_up_at IS NOT NULL
+           AND o.deleted_at IS NULL`,
         []
       )
       return rows.map((r): InTransitOrder => ({
@@ -569,7 +573,8 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
          WHERE o.is_priority
            AND o.max_delivery_time IS NOT NULL
            AND now() > o.max_delivery_time
-           AND o.status NOT IN ('DELIVERED', 'CANCELLED')`,
+           AND o.status NOT IN ('DELIVERED', 'CANCELLED')
+           AND o.deleted_at IS NULL`,
         []
       )
       return rows.map((r): PriorityOverdueOrder => ({
@@ -607,18 +612,20 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
                '60'
              )::int AS transit_red_min
          )
-         SELECT
+SELECT
            t.prep_red_min AS prep_red_min,
            (SELECT COUNT(*) FROM orders o
              WHERE o.store_id = $1
                AND o.status = 'PREPARING'
                AND o.picked_up_at IS NULL
+               AND o.deleted_at IS NULL
                AND EXTRACT(EPOCH FROM (now() - o.created_at)) / 60 >= t.prep_red_min
            ) AS pickup_delayed,
            (SELECT COUNT(*) FROM orders o
              WHERE o.store_id = $1
                AND o.status IN ('ON_ROUTE', 'OUT_FOR_DELIVERY')
                AND o.picked_up_at IS NOT NULL
+               AND o.deleted_at IS NULL
                AND EXTRACT(EPOCH FROM (now() - o.picked_up_at)) / 60 >= t.transit_red_min
            ) AS delivery_delayed
          FROM thresholds t`,
@@ -636,7 +643,7 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const { rows } = await db.query<{ pos: number | null }>(
         `SELECT MIN(route_position) AS pos
          FROM orders
-         WHERE route_id = $1 AND status NOT IN ('DELIVERED', 'CANCELLED')`,
+         WHERE route_id = $1 AND status NOT IN ('DELIVERED', 'CANCELLED') AND deleted_at IS NULL`,
         [routeId]
       )
       const pos = rows[0]?.pos

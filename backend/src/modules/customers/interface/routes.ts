@@ -329,12 +329,12 @@ export async function customerRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const [{ rows: [c] }, { rows: [last] }] = await Promise.all([
         db.query(
-          `SELECT COUNT(*)::int AS total FROM orders WHERE customer_id = $1 AND store_id = $2`,
+          `SELECT COUNT(*)::int AS total FROM orders WHERE customer_id = $1 AND store_id = $2 AND deleted_at IS NULL`,
           [id, req.actor.storeId]
         ),
         db.query(
           `SELECT id, status, created_at, delivered_at
-           FROM orders WHERE customer_id = $1 AND store_id = $2
+           FROM orders WHERE customer_id = $1 AND store_id = $2 AND deleted_at IS NULL
            ORDER BY created_at DESC LIMIT 1`,
           [id, req.actor.storeId]
         ),
