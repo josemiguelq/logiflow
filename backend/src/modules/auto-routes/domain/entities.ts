@@ -24,6 +24,10 @@ export interface RodizioEntry {
 }
 
 // Config + rodízio de uma loja com auto-rotas ativa (consumido pelo scan).
+// storeLat/storeLng vêm de `stores` — usados para sequenciar as paradas da
+// rota por proximidade (nearest neighbor a partir da loja).
 export interface EnabledAutoRoute extends AutoRouteConfig {
-  rodizio: RodizioEntry[]
+  storeLat: number | null
+  storeLng: number | null
+  rodizio:  RodizioEntry[]
 }

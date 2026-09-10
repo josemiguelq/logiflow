@@ -5,7 +5,7 @@ import type { IAutoRouteRepository } from '../../../auto-routes/application/port
 import type { RodizioEntry } from '../../../auto-routes/domain/entities'
 import { wsHub } from '../../../../shared/infra/websocket'
 import { redis } from '../../../../shared/infra/redis'
-import { clusterByRegion } from '../../../auto-routes/application/cluster-by-region'
+import { clusterByRegion, orderByNearestNeighbor } from '../../../auto-routes/application/cluster-by-region'
 
 interface Logger {
   info(obj: unknown, msg?: string): void
@@ -120,6 +120,10 @@ export async function scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQue
     let effectiveStart = startIdx
     const justAssignedIds = new Set<string>()
 
+    const storeCoord = cfg.storeLat != null && cfg.storeLng != null
+      ? { lat: cfg.storeLat, lng: cfg.storeLng }
+      : null
+
     if (triggered && daVez) {
       // Sem agrupamento por região: 1 cluster único com todos os pedidos (comportamento
       // de sempre). Com agrupamento: 1 cluster por região próxima (encadeado/single-
@@ -142,8 +146,25 @@ export async function scanAutoRoutes({ autoRouteRepo, orderRepo, notificationQue
         const pick = firstEligibleFrom(rodizio, clusterStartIdx, justAssignedIds)
         if (!pick) break // rodízio exaurido nesta varredura — clusters restantes ficam PREPARING para a próxima
 
+        // Seleção (quais pedidos entram na rota) continua por prioridade/prazo/FIFO,
+        // vinda de findPreparing — o cap é aplicado antes de reordenar por distância
+        // para não trocar pedidos prioritários por outros só por estarem mais perto.
         const cap = cfg.maxOrders ?? cluster.length
-        const orderIds = cluster.slice(0, cap).map(o => o.id)
+        const capped = cluster.slice(0, cap)
+
+        // Sequenciamento das paradas: nearest neighbor a partir da loja, para que o
+        // 1º pedido entregue seja o mais perto dela.
+        const sequenced = storeCoord
+          ? (() => {
+              const byId = new Map(capped.map(o => [o.id, o]))
+              return orderByNearestNeighbor(
+                storeCoord,
+                capped.map(o => ({ id: o.id, ...effectiveCoord(o) })),
+              ).map(o => byId.get(o.id)!)
+            })()
+          : capped
+
+        const orderIds = sequenced.map(o => o.id)
         const nextTurn = (pick.idx + 1) % len
 
         try {

@@ -49,3 +49,36 @@ export function clusterByRegion<T extends ClusterableOrder>(orders: T[], radiusK
   }
   return [...groups.values()]
 }
+
+// Sequencia os pedidos por vizinho mais próximo (nearest neighbor), partindo de
+// `start` (a loja): a cada passo, escolhe entre os restantes o mais próximo do
+// último ponto visitado. Aproxima uma rota curta sem ser ótima (TSP é NP-difícil),
+// mas garante que o 1º pedido é o mais perto da loja e reduz zigue-zague.
+//
+// Pedidos sem lat/lng não entram no cálculo de distância — ficam ao final, na
+// ordem em que já estavam (não há como saber a que distância estão).
+export function orderByNearestNeighbor<T extends ClusterableOrder>(
+  start: { lat: number; lng: number },
+  orders: T[],
+): T[] {
+  const withCoords = orders.filter((o): o is T & { lat: number; lng: number } => o.lat != null && o.lng != null)
+  const withoutCoords = orders.filter(o => o.lat == null || o.lng == null)
+
+  const remaining = [...withCoords]
+  const result: T[] = []
+  let current = start
+
+  while (remaining.length > 0) {
+    let bestIdx = 0
+    let bestDist = Infinity
+    for (let i = 0; i < remaining.length; i++) {
+      const d = haversineMeters(current.lat, current.lng, remaining[i].lat, remaining[i].lng)
+      if (d < bestDist) { bestDist = d; bestIdx = i }
+    }
+    const [next] = remaining.splice(bestIdx, 1)
+    result.push(next)
+    current = { lat: next.lat, lng: next.lng }
+  }
+
+  return [...result, ...withoutCoords]
+}

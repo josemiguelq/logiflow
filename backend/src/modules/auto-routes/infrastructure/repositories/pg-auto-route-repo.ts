@@ -116,7 +116,10 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
 
     async listEnabled(): Promise<EnabledAutoRoute[]> {
       const { rows: cfgRows } = await db.query(
-        `SELECT * FROM store_auto_route_config WHERE enabled = true`
+        `SELECT c.*, s.lat AS store_lat, s.lng AS store_lng
+         FROM store_auto_route_config c
+         JOIN stores s ON s.id = c.store_id
+         WHERE c.enabled = true`
       )
       if (cfgRows.length === 0) return []
 
@@ -152,7 +155,9 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
 
       return cfgRows.map((r: Record<string, unknown>) => ({
         ...mapConfig(r),
-        rodizio: byStore.get(r.store_id as string) ?? [],
+        storeLat: r.store_lat == null ? null : Number(r.store_lat),
+        storeLng: r.store_lng == null ? null : Number(r.store_lng),
+        rodizio:  byStore.get(r.store_id as string) ?? [],
       }))
     },
 
