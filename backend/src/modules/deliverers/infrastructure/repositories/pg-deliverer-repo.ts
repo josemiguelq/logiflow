@@ -23,7 +23,16 @@ function mapRow(r: Record<string, unknown>): Deliverer {
   }
 }
 
-export function createPgDelivererRepo(db: DB) {
+export interface DelivererRepoHooks {
+  // Disparado após qualquer escrita que mude campos retornados por findByStore
+  // (ou pelo lookup usado em /deliverers/:id/history) — centraliza a invalidação
+  // do cache de listagem num único lugar, em vez de espalhar chamadas pelas rotas.
+  onListMutation?: (storeId: string) => void
+}
+
+export function createPgDelivererRepo(db: DB, hooks: DelivererRepoHooks = {}) {
+  const onListMutation = hooks.onListMutation ?? (() => {})
+
   return {
     async findByStore(storeId: string): Promise<Array<Omit<Deliverer, 'passwordHash'> & { termsAccepted: boolean; termsAcceptedAt: Date | null }>> {
       const { rows } = await db.query(
@@ -107,6 +116,7 @@ export function createPgDelivererRepo(db: DB) {
         [data.storeId, data.name, data.email ?? null, data.username, passwordHash]
       )
       const { passwordHash: _, ...rest } = mapRow(rows[0])
+      onListMutation(data.storeId)
       return rest
     },
 
@@ -132,7 +142,10 @@ export function createPgDelivererRepo(db: DB) {
          WHERE id = $${i++} AND store_id = $${i++} RETURNING *`,
         values
       )
-      if (!rows[0]) return null; const { passwordHash: _, ...rest } = mapRow(rows[0]); return rest
+      if (!rows[0]) return null
+      const { passwordHash: _, ...rest } = mapRow(rows[0])
+      onListMutation(storeId)
+      return rest
     },
 
     // Soft delete: preserva os pedidos/rotas (FKs RESTRICT) e some das listagens.
@@ -144,7 +157,9 @@ export function createPgDelivererRepo(db: DB) {
          WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
         [id, storeId, deletedBy]
       )
-      return (rowCount ?? 0) > 0
+      const ok = (rowCount ?? 0) > 0
+      if (ok) onListMutation(storeId)
+      return ok
     },
 
     async setActive(id: string, storeId: string, active: boolean): Promise<void> {
@@ -152,6 +167,7 @@ export function createPgDelivererRepo(db: DB) {
         'UPDATE deliverers SET is_active = $1 WHERE id = $2 AND store_id = $3',
         [active, id, storeId]
       )
+      onListMutation(storeId)
     },
 
     async updateStatus(id: string, storeId: string, status: DelivererStatus): Promise<void> {
@@ -159,6 +175,35 @@ export function createPgDelivererRepo(db: DB) {
         'UPDATE deliverers SET status = $1 WHERE id = $2 AND store_id = $3',
         [status, id, storeId]
       )
+      onListMutation(storeId)
+    },
+
+    // Aceite dos termos (versão + timestamp) — campos expostos em findByStore.
+    async acceptTerms(id: string, storeId: string, version: string): Promise<void> {
+      await db.query(
+        'UPDATE deliverers SET terms_accepted_version = $1, terms_accepted_at = now() WHERE id = $2',
+        [version, id]
+      )
+      onListMutation(storeId)
+    },
+
+    // Perfil do próprio entregador (nome, foto, senha) — limpa needs_onboarding.
+    async updateProfile(
+      id: string,
+      storeId: string,
+      data: { name?: string; profileImageUrl?: string; passwordHash?: string }
+    ): Promise<void> {
+      const sets: string[] = ['needs_onboarding = false']
+      const values: unknown[] = []
+      let i = 1
+
+      if (data.name)            { sets.push(`name = $${i++}`);              values.push(data.name) }
+      if (data.profileImageUrl) { sets.push(`profile_image_url = $${i++}`); values.push(data.profileImageUrl) }
+      if (data.passwordHash)    { sets.push(`password_hash = $${i++}`);     values.push(data.passwordHash) }
+
+      values.push(id)
+      await db.query(`UPDATE deliverers SET ${sets.join(', ')} WHERE id = $${i}`, values)
+      onListMutation(storeId)
     },
 
     // Metadados do aparelho enviados pelo app (modelo, SO, versão do app).

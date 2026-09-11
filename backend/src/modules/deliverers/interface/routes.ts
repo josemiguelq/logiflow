@@ -2,12 +2,52 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { db } from '../../../shared/db/client'
+import { redis } from '../../../shared/infra/redis'
 import { requireStoreUser, requireDeliverer } from '../../../shared/middleware/auth'
 import { requireRole, requireScope } from '../../../shared/middleware/rbac'
 import { createPgDelivererRepo } from '../infrastructure/repositories/pg-deliverer-repo'
 import { createPgDeviceTokenRepo } from '../../notifications/infrastructure/repositories/pg-device-token-repo'
 import { assertCanAddDeliverer, invalidateDelivererCount } from '../../../shared/plan-limits'
 import { DELIVERER_TERMS } from '../../legal/deliverer-terms'
+
+const DELIVERERS_TTL = 30 // seconds — mesma janela usada no cache de /orders
+
+function delivererListVersionKey(storeId: string) {
+  return `deliverers:ver:${storeId}`
+}
+
+// Mesmo padrão do cache de /orders: versão em vez de KEYS/scan pra invalidar.
+async function delivererListVersion(storeId: string): Promise<string> {
+  try {
+    return (await redis.get(delivererListVersionKey(storeId))) ?? '0'
+  } catch {
+    return '0'
+  }
+}
+
+async function invalidateDelivererList(storeId: string): Promise<void> {
+  try { await redis.incr(delivererListVersionKey(storeId)) } catch { /* non-fatal */ }
+}
+
+// Lookup por id usado em /deliverers/:id/history — mesma chave de versão da
+// listagem, então qualquer mutação que invalide a lista invalida isto junto.
+async function findDelivererCached(storeId: string, id: string) {
+  const version  = await delivererListVersion(storeId)
+  const cacheKey = `deliverers:byid:${storeId}:${id}:v${version}`
+  try {
+    const raw = await redis.get(cacheKey)
+    if (raw) return JSON.parse(raw)
+  } catch { /* fall through to DB */ }
+
+  const { rows: [d] } = await db.query(
+    `SELECT id, name, username, email, status, profile_image_url, is_active, created_at,
+            terms_accepted_at, terms_accepted_version
+     FROM deliverers WHERE id = $1 AND store_id = $2`,
+    [id, storeId]
+  )
+  if (d) redis.setex(cacheKey, DELIVERERS_TTL, JSON.stringify(d)).catch(() => {})
+  return d
+}
 
 const createSchema = z.object({
   name:     z.string().min(1),
@@ -29,12 +69,25 @@ function isUsernameConflict(err: unknown): boolean {
 }
 
 export async function delivererRoutes(app: FastifyInstance) {
-  const repo = createPgDelivererRepo(db)
+  const repo = createPgDelivererRepo(db, {
+    onListMutation: (storeId) => { invalidateDelivererList(storeId).catch(() => {}) },
+  })
 
   app.get(
     '/deliverers',
     { preHandler: requireStoreUser },
-    async (req) => repo.findByStore(req.actor.storeId)
+    async (req) => {
+      const version  = await delivererListVersion(req.actor.storeId)
+      const cacheKey = `deliverers:list:${req.actor.storeId}:v${version}`
+      try {
+        const raw = await redis.get(cacheKey)
+        if (raw) return JSON.parse(raw)
+      } catch { /* fall through to DB */ }
+
+      const deliverers = await repo.findByStore(req.actor.storeId)
+      redis.setex(cacheKey, DELIVERERS_TTL, JSON.stringify(deliverers)).catch(() => {})
+      return deliverers
+    }
   )
 
   // Código de convite da loja: o entregador digita no app (login v2) para
@@ -244,10 +297,7 @@ export async function delivererRoutes(app: FastifyInstance) {
        VALUES ($1, $2, $3, $4, $5)`,
       [req.actor.sub, req.actor.storeId, version, req.ip, userAgent]
     )
-    await db.query(
-      'UPDATE deliverers SET terms_accepted_version = $1, terms_accepted_at = now() WHERE id = $2',
-      [version, req.actor.sub]
-    )
+    await repo.acceptTerms(req.actor.sub, req.actor.storeId, version)
     return reply.send({ ok: true, version })
   })
 
@@ -270,18 +320,8 @@ export async function delivererRoutes(app: FastifyInstance) {
 
   app.patch('/deliverer/profile', { preHandler: requireDeliverer }, async (req, reply) => {
     const body = profileSchema.parse(req.body)
-    const sets: string[]    = ['needs_onboarding = false']
-    const params: unknown[] = []
-    let idx = 1
+    let passwordHash: string | undefined
 
-    if (body.name) {
-      sets.push(`name = $${idx++}`)
-      params.push(body.name)
-    }
-    if (body.profileImageUrl) {
-      sets.push(`profile_image_url = $${idx++}`)
-      params.push(body.profileImageUrl)
-    }
     if (body.newPassword) {
       if (body.currentPassword) {
         const { rows: [d] } = await db.query(
@@ -290,16 +330,14 @@ export async function delivererRoutes(app: FastifyInstance) {
         const valid = await bcrypt.compare(body.currentPassword, (d as Record<string, unknown>)?.password_hash as string ?? '')
         if (!valid) return reply.code(400).send({ error: 'Senha atual incorreta' })
       }
-      const hash = await bcrypt.hash(body.newPassword, 10)
-      sets.push(`password_hash = $${idx++}`)
-      params.push(hash)
+      passwordHash = await bcrypt.hash(body.newPassword, 10)
     }
-    params.push(req.actor.sub)
 
-    await db.query(
-      `UPDATE deliverers SET ${sets.join(', ')} WHERE id = $${idx}`,
-      params
-    )
+    await repo.updateProfile(req.actor.sub, req.actor.storeId, {
+      name:            body.name,
+      profileImageUrl: body.profileImageUrl,
+      passwordHash,
+    })
     return reply.send({ ok: true })
   })
 
@@ -309,12 +347,7 @@ export async function delivererRoutes(app: FastifyInstance) {
     { preHandler: requireStoreUser },
     async (req, reply) => {
       const { id } = req.params as { id: string }
-      const { rows: [d] } = await db.query(
-        `SELECT id, name, username, email, status, profile_image_url, is_active, created_at,
-                terms_accepted_at, terms_accepted_version
-         FROM deliverers WHERE id = $1 AND store_id = $2`,
-        [id, req.actor.storeId]
-      )
+      const d = await findDelivererCached(req.actor.storeId, id)
       if (!d) return reply.code(404).send({ error: 'Entregador não encontrado' })
 
       const { rows: history } = await db.query(
