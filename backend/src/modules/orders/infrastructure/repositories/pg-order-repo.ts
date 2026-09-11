@@ -257,10 +257,14 @@ export function createPgOrderRepo(db: DB): IOrderRepository {
       const offset = ((filters.page ?? 1) - 1) * limit
       params.push(limit, offset)
 
+      // WITH_JOINS_LIST (sem os subselects de proofs/payments): a tela de busca
+      // não usa esses campos (divergência de pagamento já vem pronta em
+      // `summary`), e com COUNT(*) OVER() essas subqueries rodariam para todo
+      // pedido do filtro, não só para a página exibida — caro à toa.
       const { rows } = await db.query(
         `SELECT sub.*, COUNT(*) OVER() AS total_count
          FROM (
-           ${WITH_JOINS}
+           ${WITH_JOINS_LIST}
            WHERE ${conditions.join(' AND ')}
            ORDER BY o.created_at DESC
          ) sub
