@@ -60,18 +60,20 @@ export async function authRoutes(app: FastifyInstance) {
   ) {
     const ip = req.ip
     const ua = String(req.headers['user-agent'] ?? '').slice(0, 400)
-    await db.query(
-      `UPDATE store_user_sessions SET revoked_at = now()
-       WHERE store_user_id = $1 AND ip = $2 AND user_agent = $3 AND revoked_at IS NULL`,
-      [user.id, ip, ua]
-    ).catch(() => { /* non-fatal */ })
-    await db.query(
-      `INSERT INTO store_user_sessions (id, store_user_id, store_id, ip, user_agent)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [jti, user.id, user.storeId, ip, ua]
-    ).catch(() => { /* non-fatal */ })
-    await db.query(`UPDATE store_users SET last_login_at = now() WHERE id = $1`, [user.id])
-      .catch(() => { /* non-fatal */ })
+    await Promise.all([
+      db.query(
+        `UPDATE store_user_sessions SET revoked_at = now()
+         WHERE store_user_id = $1 AND ip = $2 AND user_agent = $3 AND revoked_at IS NULL`,
+        [user.id, ip, ua]
+      ).catch(() => { /* non-fatal */ }),
+      db.query(
+        `INSERT INTO store_user_sessions (id, store_user_id, store_id, ip, user_agent)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [jti, user.id, user.storeId, ip, ua]
+      ).catch(() => { /* non-fatal */ }),
+      db.query(`UPDATE store_users SET last_login_at = now() WHERE id = $1`, [user.id])
+        .catch(() => { /* non-fatal */ }),
+    ])
   }
 
   app.post('/auth/store/login', async (req, reply) => {
@@ -84,8 +86,8 @@ export async function authRoutes(app: FastifyInstance) {
         { email: body.email, password: body.password, jti },
         { storeUserRepo, signJwt, getScopes }
       )
-      await clearLoginFailures('store', body.email)
-      await registerSession(jti, result.user, req)
+      clearLoginFailures('store', body.email).catch(() => {})
+      registerSession(jti, result.user, req).catch(() => {})
       return result
     } catch {
       await registerLoginFailure('store', body.email)
@@ -109,7 +111,7 @@ export async function authRoutes(app: FastifyInstance) {
         { email: identity.email, sub: identity.sub, jti },
         { storeUserRepo, signJwt, getScopes }
       )
-      await registerSession(jti, result.user, req)
+      registerSession(jti, result.user, req).catch(() => {})
       return result
     } catch (err) {
       if ((err as Error).message === EMAIL_NOT_REGISTERED) {

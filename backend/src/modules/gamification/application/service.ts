@@ -56,8 +56,8 @@ async function computeRange(
               COUNT(DISTINCT r.id) AS routes_count,
               MAX(rc.cnt)          AS max_orders
        FROM routes r
-       JOIN LATERAL (SELECT COUNT(*) AS cnt FROM orders o WHERE o.route_id = r.id) rc ON true
-       WHERE r.store_id = $1 AND r.status = 'FINISHED'
+       JOIN LATERAL (SELECT COUNT(*) AS cnt FROM orders o WHERE o.route_id = r.id AND o.deleted_at IS NULL) rc ON true
+       WHERE r.store_id = $1 AND r.status = 'FINISHED' AND r.deleted_at IS NULL
          AND r.finished_at >= now() - make_interval(days => $4::int)
          AND ($2::uuid IS NULL OR r.deliverer_id = $2)
        GROUP BY r.deliverer_id, day
@@ -68,6 +68,7 @@ async function computeRange(
               COUNT(*) FILTER (WHERE o.accepted_at - o.created_at < make_interval(mins => $3::int)) AS fast_count
        FROM orders o
        WHERE o.store_id = $1 AND o.deliverer_id IS NOT NULL AND o.accepted_at IS NOT NULL
+         AND o.deleted_at IS NULL
          AND o.accepted_at >= now() - make_interval(days => $4::int)
          AND ($2::uuid IS NULL OR o.deliverer_id = $2)
        GROUP BY o.deliverer_id, day

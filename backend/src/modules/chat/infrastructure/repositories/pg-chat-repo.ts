@@ -34,7 +34,7 @@ function mapMessage(r: Record<string, unknown>): OrderMessage {
 export function createPgChatRepo(db: DB): IChatRepository {
   const findOrderContext = async (orderId: string, storeId: string) => {
     const { rows } = await db.query(
-      `SELECT deliverer_id FROM orders WHERE id = $1 AND store_id = $2`,
+      `SELECT deliverer_id FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NULL`,
       [orderId, storeId]
     )
     if (!rows[0]) return null

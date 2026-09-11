@@ -186,7 +186,7 @@ export async function orderRoutes(app: FastifyInstance) {
     // do cliente ANTES de retornar qualquer dado do pedido.
     if (!isAuthenticated) {
       const { rows: [row] } = await db.query(
-        `SELECT c.phone FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
+        `SELECT c.phone FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1 AND o.deleted_at IS NULL`,
         [orderId]
       )
       if (!row) return reply.code(404).send({ error: 'Not found' })
@@ -207,7 +207,7 @@ export async function orderRoutes(app: FastifyInstance) {
     // Expire link 15 min after final status for unauthenticated access
     if (!isAuthenticated && (order.status === 'DELIVERED' || order.status === 'CANCELLED')) {
       const { rows: [ts] } = await db.query(
-        `SELECT COALESCE(delivered_at, created_at) AS final_at FROM orders WHERE id = $1`,
+        `SELECT COALESCE(delivered_at, created_at) AS final_at FROM orders WHERE id = $1 AND deleted_at IS NULL`,
         [orderId]
       )
       const finalAt = ts?.final_at as Date | null
@@ -227,7 +227,7 @@ export async function orderRoutes(app: FastifyInstance) {
         `SELECT deliverer_id,
                 COALESCE(out_for_delivery_at, picked_up_at, created_at) AS trail_start,
                 COALESCE(delivered_at, now())                            AS trail_end
-         FROM orders WHERE id = $1`,
+         FROM orders WHERE id = $1 AND deleted_at IS NULL`,
         [orderId]
       )
       const delivererId = (meta as Record<string, unknown> | undefined)?.deliverer_id as string | undefined
@@ -261,7 +261,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
     // Compute whether customer ratings are enabled for this store + fetch store theme
     const { rows: [storeRow] } = await db.query(
-      'SELECT id, store_id FROM orders WHERE id = $1',
+      'SELECT id, store_id FROM orders WHERE id = $1 AND deleted_at IS NULL',
       [orderId]
     )
     const storeId = (storeRow as Record<string, unknown> | undefined)?.store_id as string | undefined
@@ -280,7 +280,7 @@ export async function orderRoutes(app: FastifyInstance) {
           WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings'
         ) AS feature_on
       FROM orders o
-      WHERE o.id = $1
+      WHERE o.id = $1 AND o.deleted_at IS NULL
     `, [orderId])
     const ratingEnabled = Boolean(
       (ratingCfg as Record<string, unknown> | undefined)?.allow &&
@@ -362,7 +362,7 @@ export async function orderRoutes(app: FastifyInstance) {
           WHERE sfe.store_id = o.store_id AND f.name = 'customer_ratings'
         ) AS feature_on
       FROM orders o
-      WHERE o.id = $1
+      WHERE o.id = $1 AND o.deleted_at IS NULL
     `, [orderId])
 
     if (!ratingCfg ||
@@ -372,7 +372,7 @@ export async function orderRoutes(app: FastifyInstance) {
     }
 
     const { rows: [order] } = await db.query(
-      'SELECT status, rating FROM orders WHERE id = $1',
+      'SELECT status, rating FROM orders WHERE id = $1 AND deleted_at IS NULL',
       [orderId]
     )
     if (!order) return reply.code(404).send({ error: 'Not found' })
@@ -448,6 +448,52 @@ export async function orderRoutes(app: FastifyInstance) {
 
       const pages = Math.max(1, Math.ceil(total / limit))
       return { items: await signOrdersProof(items), total, page: pageNum, pages }
+    }
+  )
+
+  // Histórico de pedidos soft-deletados (Lixeira). Lista o que foi removido e
+  // permite restauração. Scope-gated: quem tem permissão de deletar pode ver/restaurar.
+  app.get(
+    '/orders/deleted',
+    { preHandler: [requireStoreUser, requireScope('orders:delete')] },
+    async (req) => {
+      const { page, limit } = req.query as Record<string, string>
+      const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
+      const limitInt = Math.min(100, Math.max(1, parseInt(limit ?? '50', 10) || 50))
+
+      const { rows } = await db.query(
+        `SELECT o.id, o.status, o.deleted_at, o.deleted_by,
+                c.name AS customer_name,
+                u.name AS deleted_by_name
+         FROM orders o
+         JOIN customers c  ON c.id = o.customer_id
+         LEFT JOIN store_users u ON u.id = o.deleted_by
+         WHERE o.store_id = $1 AND o.deleted_at IS NOT NULL
+         ORDER BY o.deleted_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.actor.storeId, limitInt, (pageNum - 1) * limitInt]
+      )
+
+      const { rows: [cntRows] } = await db.query(
+        `SELECT COUNT(*)::int AS total FROM orders
+         WHERE store_id = $1 AND deleted_at IS NOT NULL`,
+        [req.actor.storeId]
+      )
+
+      const total = Number(cntRows?.total ?? 0)
+      return {
+        items: rows.map((r: Record<string, unknown>) => ({
+          id:            r.id,
+          status:        r.status,
+          customerName:  r.customer_name,
+          deletedAt:     r.deleted_at,
+          deletedBy:     r.deleted_by_name ?? null,
+          deletedById:   r.deleted_by ?? null,
+        })),
+        total,
+        page: pageNum,
+        pages: Math.max(1, Math.ceil(total / limitInt)),
+      }
     }
   )
 
@@ -1675,6 +1721,52 @@ export async function orderRoutes(app: FastifyInstance) {
 
       // Finaliza a rota se os pedidos restantes já estiverem todos concluídos
       // (ou a rota tiver ficado vazia) — não apenas quando fica vazia.
+      if (o.route_id) {
+        await routeRepo.checkAndFinish(o.route_id as string, req.actor.storeId)
+      }
+
+      await invalidateStoreOrders(req.actor.storeId)
+      if (o.deliverer_id) await invalidateDelivererOrders(o.deliverer_id as string)
+
+      return { ok: true }
+    }
+  )
+
+  // Restaura um pedido soft-deletado (admin da loja, scope-gated). Reativa a
+  // linha (deleted_at/deleted_by = NULL) preservando status e evidências.
+  // Pedidos que estavam em rota/entrega (ASSIGNED/ON_ROUTE/OUT_FOR_DELIVERY)
+  // voltam para a fila (PREPARING), pois a rota provavelmente também foi
+  // deletada e o entregador pode não estar mais naquele contexto.
+  app.patch(
+    '/orders/:id/restore',
+    { preHandler: [requireStoreUser, requireScope('orders:delete')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string }
+      const { rows: [order] } = await db.query(
+        `SELECT id, status, route_id, deliverer_id
+         FROM orders WHERE id = $1 AND store_id = $2 AND deleted_at IS NOT NULL`,
+        [id, req.actor.storeId]
+      )
+      if (!order) return reply.code(404).send({ error: 'Pedido não encontrado ou não deletado' })
+
+      const o            = order as Record<string, unknown>
+      const inTransit    = ['ASSIGNED', 'ON_ROUTE', 'OUT_FOR_DELIVERY'].includes(o.status as string)
+      const restoreSets  = inTransit
+        ? `status = 'PREPARING', deliverer_id = NULL, route_id = NULL, route_position = NULL,
+            reserved_by = NULL, reserved_at = NULL`
+        : `reserved_by = NULL, reserved_at = NULL`
+      const { rowCount } = await db.query(
+        `UPDATE orders SET deleted_at = NULL, deleted_by = NULL, ${restoreSets}
+         WHERE id = $1 AND store_id = $2 AND deleted_at IS NOT NULL RETURNING id`,
+        [id, req.actor.storeId]
+      )
+      if (!rowCount) return reply.code(404).send({ error: 'Pedido não encontrado ou não deletado' })
+
+      logEvent(id, req.actor, 'RESTORED', {
+        previousStatus:  o.status,
+        previousRouteId: o.route_id ?? null,
+        previousDeliverer: o.deliverer_id ?? null,
+      })
       if (o.route_id) {
         await routeRepo.checkAndFinish(o.route_id as string, req.actor.storeId)
       }

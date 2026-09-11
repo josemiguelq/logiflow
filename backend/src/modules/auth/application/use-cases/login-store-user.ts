@@ -16,10 +16,11 @@ export async function loginStoreUser(
   // Usuário só-Google (sem senha) não pode logar por senha.
   if (!user.passwordHash) throw new Error('Invalid credentials')
 
-  const valid = await bcrypt.compare(password, user.passwordHash)
+  const [valid, scopes] = await Promise.all([
+    bcrypt.compare(password, user.passwordHash),
+    getScopes(user.storeId, user.role),
+  ])
   if (!valid) throw new Error('Invalid credentials')
-
-  const scopes = await getScopes(user.storeId, user.role)
 
   const token = signJwt({
     type:    'store_user',

@@ -120,7 +120,7 @@ export async function monthlyDeliveredCount(db: DB, storeId: string): Promise<nu
 
   const { rows: [r] } = await db.query(
     `SELECT COUNT(*) AS cnt FROM orders
-     WHERE store_id = $1 AND status = 'DELIVERED' AND delivered_at IS NOT NULL
+     WHERE store_id = $1 AND status = 'DELIVERED' AND delivered_at IS NOT NULL AND deleted_at IS NULL
        AND date_trunc('month', delivered_at AT TIME ZONE 'America/Sao_Paulo')
          = date_trunc('month', (now() AT TIME ZONE 'America/Sao_Paulo'))`,
     [storeId]

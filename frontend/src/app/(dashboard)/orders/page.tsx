@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X, AlertTriangle, BellRing, Building2 } from 'lucide-react'
+import { Plus, ChevronDown, LayoutGrid, Map, CheckSquare, Check, Truck, Trash2, Loader2, Search, X, AlertTriangle, BellRing, Building2, RotateCcw } from 'lucide-react'
 import { Order, OrderStatus, Deliverer, OrderUnread, ChatMessage } from '@/types'
 import { api } from '@/lib/api'
 import { useWs } from '@/hooks/WsContext'
@@ -66,6 +66,35 @@ export default function OrdersPage() {
     refreshInterval: 30_000,
   })
   const { data: deliverers = [] } = useSWR('/deliverers', (u: string) => api.get<Deliverer[]>(u))
+
+  // Lixeira: pedidos soft-deletados (visível/restaurável por quem tem orders:delete)
+  interface DeletedOrder {
+    id: string
+    status: OrderStatus
+    customerName: string
+    deletedAt: string
+    deletedBy: string | null
+  }
+  const canDelete     = can({ scope: 'orders:delete' })
+  const { data: deletedOrders = [], mutate: mutateDeleted, isLoading: deletedLoading } = useSWR<DeletedOrder[]>(
+    canDelete ? '/orders/deleted' : null,
+    async (u: string) => {
+      const res = await api.get<{ items: DeletedOrder[] }>(u)
+      return res.items
+    },
+  )
+  const [restoringOrderId, setRestoringOrderId] = useState<string | null>(null)
+
+  async function handleRestore(orderId: string) {
+    setRestoringOrderId(orderId)
+    try {
+      await api.patch(`/orders/${orderId}/restore`, {})
+      mutate()
+      mutateDeleted()
+    } finally {
+      setRestoringOrderId(null)
+    }
+  }
 
   // Resumo de atrasos (limiar vermelho) + contagem de entregadores para o alerta.
   interface PickupAlert {
@@ -516,7 +545,7 @@ export default function OrdersPage() {
                             onAssign={!batchMode ? () => setAssigning(order) : undefined}
                             onCancel={!batchMode ? () => setCancelling(order) : undefined}
                             onSaveNote={!batchMode ? (note) => handleSaveNote(order.id, note) : undefined}
-                            onDelete={!batchMode && can({ scope: 'orders:delete' }) ? () => handleDelete(order) : undefined}
+                            onDelete={!batchMode && canDelete ? () => handleDelete(order) : undefined}
                             onOpenChat={chatEnabled && !batchMode ? () => setChatOrder(order) : undefined}
                             unreadCount={unreadMap[order.id] ?? 0}
                           />
@@ -527,7 +556,60 @@ export default function OrdersPage() {
                 </div>
               )}
 
-              {/* Completed orders — compact table */}
+              {/* Deleted orders (trash) — restore here */}
+              {canDelete && deletedOrders.length > 0 && (
+                <section className="mt-8">
+                  <div className="mb-3 flex items-center gap-2">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Pedidos deletados
+                    </h2>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                      {deletedOrders.length}
+                    </span>
+                  </div>
+                  <div className="overflow-hidden rounded-xl border border-red-100 bg-white">
+                    <table className="min-w-full divide-y divide-gray-100 text-sm">
+                      <thead>
+                        <tr className="bg-red-50/50 text-xs font-medium text-gray-400">
+                          <th className="px-4 py-2.5 text-left">Pedido</th>
+                          <th className="px-4 py-2.5 text-left">Cliente</th>
+                          <th className="px-4 py-2.5 text-left">Status</th>
+                          <th className="px-4 py-2.5 text-left">Deletado em</th>
+                          <th className="px-4 py-2.5 text-left">Por</th>
+                          <th className="px-4 py-2.5" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {deletedOrders.map(o => (
+                          <tr key={o.id} className="transition-colors hover:bg-red-50/50">
+                            <td className="px-4 py-2.5 font-mono text-xs font-semibold text-gray-700">
+                              #{o.id.slice(-8).toUpperCase()}
+                            </td>
+                            <td className="px-4 py-2.5 text-gray-800">{o.customerName}</td>
+                            <td className="px-4 py-2.5">
+                              <StatusBadge status={o.status} />
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">{formatDate(o.deletedAt)}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">{o.deletedBy ?? '—'}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <button
+                                onClick={() => handleRestore(o.id)}
+                                disabled={restoringOrderId === o.id}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-green-200 hover:bg-green-50 hover:text-green-700 disabled:opacity-40 transition-colors"
+                              >
+                                {restoringOrderId === o.id
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <RotateCcw className="h-3.5 w-3.5" />}
+                                Restaurar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
               {completedOrders.length > 0 && (
                 <section className="mt-8">
                   <div className="mb-3 flex items-center gap-2">
@@ -609,7 +691,7 @@ export default function OrdersPage() {
                                 >
                                   Ver
                                 </Link>
-                                {can({ scope: 'orders:delete' }) && (
+                                {canDelete && (
                                   <button
                                     onClick={() => handleDelete(order)}
                                     className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
@@ -769,8 +851,8 @@ export default function OrdersPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   O pedido{' '}
                   <span className="font-mono font-bold">#{deletingOrder.id.slice(-8).toUpperCase()}</span>{' '}
-                  de <span className="font-medium">{deletingOrder.customer.name}</span> será excluído permanentemente.
-                  Esta ação não pode ser desfeita.
+                  de <span className="font-medium">{deletingOrder.customer.name}</span> será removido da
+                  listagem. Ele fica na lixeira (pedidos deletados) e pode ser restaurado.
                 </p>
               </div>
             </div>

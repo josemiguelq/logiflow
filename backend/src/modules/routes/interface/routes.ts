@@ -469,7 +469,7 @@ export async function routeRoutes(app: FastifyInstance) {
 
       // Verificar que a rota existe e pertence ao entregador
       const { rows } = await db.query(
-        `SELECT id, store_id FROM routes WHERE id = $1 AND deliverer_id = $2`,
+        `SELECT id, store_id FROM routes WHERE id = $1 AND deliverer_id = $2 AND deleted_at IS NULL`,
         [id, req.actor.sub]
       )
       if (!rows[0]) return reply.code(404).send({ error: 'Rota não encontrada' })

@@ -56,7 +56,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
         COUNT(DISTINCT customer_id)::int                                          AS active_customers,
         COUNT(DISTINCT deliverer_id)::int                                         AS active_deliverers
       FROM orders
-      WHERE store_id = $1 AND created_at >= $2::date AND created_at < $3::date + INTERVAL '1 day'`
+      WHERE store_id = $1 AND deleted_at IS NULL AND created_at >= $2::date AND created_at < $3::date + INTERVAL '1 day'`
 
     const sparklineSql = `
       SELECT
@@ -71,6 +71,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
       LEFT JOIN orders o
         ON DATE_TRUNC('day', o.created_at AT TIME ZONE 'UTC') = gs.day
        AND o.store_id = $1
+       AND o.deleted_at IS NULL
       GROUP BY gs.day
       ORDER BY gs.day ASC`
 
@@ -129,7 +130,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
              SELECT DATE_TRUNC('day', created_at AT TIME ZONE 'UTC') AS day,
                     COUNT(*) AS count
              FROM orders
-             WHERE store_id = $1
+             WHERE store_id = $1 AND deleted_at IS NULL
                AND created_at >= $2::date AND created_at < $3::date + INTERVAL '1 day'
              GROUP BY 1
            ) cnt ON cnt.day = gs.day
@@ -151,10 +152,10 @@ export async function analyticsRoutes(app: FastifyInstance) {
          LEFT JOIN (
            SELECT DATE_TRUNC('month', created_at AT TIME ZONE 'UTC') AS month,
                   COUNT(*) AS count
-           FROM orders
-           WHERE store_id = $1
-             AND created_at >= DATE_TRUNC('month', $2::date)
-             AND created_at <  DATE_TRUNC('month', $3::date) + INTERVAL '1 month'
+FROM orders
+            WHERE store_id = $1 AND deleted_at IS NULL
+              AND created_at >= DATE_TRUNC('month', $2::date)
+              AND created_at <  DATE_TRUNC('month', $3::date) + INTERVAL '1 month'
            GROUP BY 1
          ) cnt ON cnt.month = gs.month
          ORDER BY gs.month ASC`,
@@ -184,7 +185,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
              + FLOOR(EXTRACT(MINUTE FROM (created_at AT TIME ZONE '${TZ}')) / 30)::int) AS slot,
            COUNT(*)::int AS count
          FROM orders
-         WHERE store_id = $1
+         WHERE store_id = $1 AND deleted_at IS NULL
            AND (created_at AT TIME ZONE '${TZ}')::date >= $2::date
            AND (created_at AT TIME ZONE '${TZ}')::date <= $3::date
          GROUP BY 1`,
@@ -220,7 +221,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const { rows } = await db.query(
       `SELECT status, COUNT(*)::int AS count
        FROM orders
-       WHERE store_id = $1${dateFilter}
+       WHERE store_id = $1 AND deleted_at IS NULL${dateFilter}
        GROUP BY status`,
       params
     )
@@ -246,7 +247,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
       const { rows } = await db.query(
         `SELECT COALESCE(cancel_reason, 'LEGACY') AS code, COUNT(*)::int AS count
          FROM orders
-         WHERE store_id = $1 AND status = 'CANCELLED'
+         WHERE store_id = $1 AND status = 'CANCELLED' AND deleted_at IS NULL
            AND cancelled_at >= $2::date AND cancelled_at < $3::date + INTERVAL '1 day'
          GROUP BY code`,
         [storeId, rangeFrom, rangeTo]
@@ -272,14 +273,14 @@ export async function analyticsRoutes(app: FastifyInstance) {
        FROM
          (SELECT deliverer_id, COUNT(*) AS cnt
           FROM orders
-          WHERE store_id = $1 AND status = 'DELIVERED'
+          WHERE store_id = $1 AND status = 'DELIVERED' AND deleted_at IS NULL
             AND deliverer_id IS NOT NULL
             AND created_at >= $2::date AND created_at < $3::date + INTERVAL '1 day'
           GROUP BY deliverer_id) AS per_deliverer
          FULL OUTER JOIN
          (SELECT route_id, COUNT(*) AS cnt
           FROM orders
-          WHERE store_id = $1 AND route_id IS NOT NULL
+          WHERE store_id = $1 AND route_id IS NOT NULL AND deleted_at IS NULL
             AND created_at >= $2::date AND created_at < $3::date + INTERVAL '1 day'
           GROUP BY route_id) AS per_route
          ON false`,
@@ -307,6 +308,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
        FROM orders
        WHERE store_id      = $1
          AND status        = 'DELIVERED'
+         AND deleted_at IS NULL
          AND picked_up_at IS NOT NULL
          AND delivered_at IS NOT NULL
          AND delivered_at >= $2::date
@@ -350,11 +352,12 @@ export async function analyticsRoutes(app: FastifyInstance) {
            DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')        AS day,
            EXTRACT(EPOCH FROM (picked_up_at - created_at))  / 60   AS prep_min,
            EXTRACT(EPOCH FROM (delivered_at - picked_up_at)) / 60  AS route_min
-         FROM orders
-         WHERE store_id = $1
-           AND status = 'DELIVERED'
-           AND created_at >= $2::date
-           AND created_at <  $3::date + INTERVAL '1 day'
+FROM orders
+          WHERE store_id = $1
+            AND status = 'DELIVERED'
+            AND deleted_at IS NULL
+            AND created_at >= $2::date
+            AND created_at <  $3::date + INTERVAL '1 day'
        ) o ON o.day = DATE_TRUNC('day', gs.day AT TIME ZONE 'UTC')
        GROUP BY gs.day
        ORDER BY gs.day ASC`,
@@ -417,7 +420,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
          )::numeric, 1) AS avg_route_min
        FROM deliverers d
        JOIN orders o ON o.deliverer_id = d.id
-       WHERE o.store_id = $1
+       WHERE o.store_id = $1 AND o.deleted_at IS NULL
          AND o.created_at >= $2::date AND o.created_at < $3::date + INTERVAL '1 day'
        GROUP BY d.id, d.name
        ORDER BY delivered DESC, d.name ASC`,
@@ -455,6 +458,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
          ON o.created_at::date = d.day::date
         AND o.store_id = $1
         AND o.picked_up_at IS NOT NULL
+        AND o.deleted_at IS NULL
        GROUP BY d.day
        ORDER BY d.day`,
       [req.actor.storeId, days]
@@ -494,6 +498,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
          ON o.customer_id = c.id
         AND o.created_at >= $2::date
         AND o.created_at <  $3::date + INTERVAL '1 day'
+        AND o.deleted_at IS NULL
        WHERE c.store_id = $1
          AND c.deleted_at IS NULL
        GROUP BY c.id, c.name`
@@ -501,7 +506,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const prevSql =
       `SELECT o.customer_id AS id, COUNT(o.id)::int AS count
        FROM orders o
-       WHERE o.store_id = $1
+       WHERE o.store_id = $1 AND o.deleted_at IS NULL
          AND o.created_at >= $2::date
          AND o.created_at <  $3::date + INTERVAL '1 day'
        GROUP BY o.customer_id`

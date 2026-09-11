@@ -26,7 +26,7 @@ async function calcProgress(
   if (type === 'deliveries') {
     const { rows } = await db.query(
       `SELECT COUNT(*) AS val FROM orders
-       WHERE deliverer_id = $1 AND store_id = $2 AND status = 'DELIVERED'
+       WHERE deliverer_id = $1 AND store_id = $2 AND status = 'DELIVERED' AND deleted_at IS NULL
          AND delivered_at >= ${since}`,
       [delivererId, storeId]
     )
@@ -36,7 +36,7 @@ async function calcProgress(
   if (type === 'avg_rating') {
     const { rows } = await db.query(
       `SELECT ROUND(AVG(rating)::NUMERIC, 2) AS val FROM orders
-       WHERE deliverer_id = $1 AND store_id = $2 AND status = 'DELIVERED'
+       WHERE deliverer_id = $1 AND store_id = $2 AND status = 'DELIVERED' AND deleted_at IS NULL
          AND rating IS NOT NULL AND delivered_at >= ${since}`,
       [delivererId, storeId]
     )
@@ -51,7 +51,7 @@ async function calcProgress(
            NULLIF(COUNT(*) FILTER (WHERE status IN ('DELIVERED','CANCELLED')), 0)
          , 1) AS val
        FROM orders
-       WHERE deliverer_id = $1 AND store_id = $2
+       WHERE deliverer_id = $1 AND store_id = $2 AND deleted_at IS NULL
          AND created_at >= ${since}`,
       [delivererId, storeId]
     )
@@ -64,7 +64,7 @@ async function calcProgress(
          AVG(EXTRACT(EPOCH FROM (delivered_at - COALESCE(picked_up_at, created_at))) / 60)
        ::NUMERIC, 1) AS val
        FROM orders
-       WHERE deliverer_id = $1 AND store_id = $2 AND status = 'DELIVERED'
+       WHERE deliverer_id = $1 AND store_id = $2 AND status = 'DELIVERED' AND deleted_at IS NULL
          AND delivered_at IS NOT NULL AND delivered_at >= ${since}`,
       [delivererId, storeId]
     )
