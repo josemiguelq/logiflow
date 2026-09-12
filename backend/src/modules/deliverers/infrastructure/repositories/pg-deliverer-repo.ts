@@ -60,7 +60,7 @@ export function createPgDelivererRepo(db: DB, hooks: DelivererRepoHooks = {}) {
          WHERE d.store_id = $1 AND d.is_active = true AND d.status != 'OFFLINE' AND d.deleted_at IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM routes r
-             WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+             WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
            )`,
         [storeId]
       )
@@ -75,14 +75,13 @@ export function createPgDelivererRepo(db: DB, hooks: DelivererRepoHooks = {}) {
            COUNT(*) FILTER (WHERE d.is_active AND d.status = 'AVAILABLE') AS available,
            COUNT(*) FILTER (WHERE d.is_active) AS active,
            COUNT(*) FILTER (WHERE d.is_active AND EXISTS (
-             SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+             SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
            )) AS in_route,
            COUNT(*) FILTER (WHERE d.is_active AND NOT EXISTS (
-             SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED')
+             SELECT 1 FROM routes r WHERE r.deliverer_id = d.id AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
            )) AS idle
          FROM deliverers d
-         WHERE d.store_id = $1 AND d.deleted_at IS NULL
-         AND d.status = 'AVAILABLE'`,
+         WHERE d.store_id = $1 AND d.deleted_at IS NULL`,
         [storeId]
       )
       const r = rows[0]
