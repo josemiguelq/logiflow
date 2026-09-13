@@ -39,7 +39,7 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
               EXISTS (
                 SELECT 1 FROM routes r
                 WHERE r.deliverer_id = d.id AND r.store_id = sard.store_id
-                  AND r.status IN ('CREATED','STARTED')
+                  AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
               ) AS has_active_route
        FROM store_auto_route_deliverers sard
        JOIN deliverers d ON d.id = sard.deliverer_id AND d.deleted_at IS NULL

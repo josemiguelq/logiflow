@@ -33,6 +33,11 @@ COPY scripts ./scripts
 RUN mkdir -p uploads
 
 EXPOSE 3001
+
+# usa o próprio node (sem curl/wget na imagem slim) para checar /health
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+
 # node como PID 1: recebe SIGTERM corretamente e não mascara o erro real (npm engole o sinal)
 # -r newrelic: carrega o agente APM antes de tudo (config via env vars na Render)
 CMD ["node", "-r", "newrelic", "--dns-result-order=ipv4first", "dist/server.js"]

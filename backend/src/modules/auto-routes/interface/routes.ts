@@ -205,7 +205,7 @@ export async function autoRouteRoutes(app: FastifyInstance) {
                   EXISTS (
                     SELECT 1 FROM routes r
                     WHERE r.deliverer_id = deliverers.id AND r.store_id = deliverers.store_id
-                      AND r.status IN ('CREATED','STARTED')
+                      AND r.status IN ('CREATED','STARTED') AND r.deleted_at IS NULL
                   ) AS has_active_route
            FROM deliverers
            WHERE store_id = $1 AND deleted_at IS NULL AND id = ANY($2::uuid[])`,
