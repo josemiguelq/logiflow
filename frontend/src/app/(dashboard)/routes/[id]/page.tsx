@@ -4,7 +4,7 @@ import { use, useState } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil, ChevronDown, Undo2 } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, Flag, MapPin, Package, Pencil, ChevronDown, Undo2, Shuffle } from 'lucide-react'
 import { DeliveryRoute, RouteStatus, RouteIssue, RouteIssueCategory } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
@@ -225,6 +225,15 @@ export default function RouteDetailPage({ params }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {route.autoCreated && (
+            <span
+              title="Criada automaticamente pelo sistema de rotas automáticas"
+              className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-700"
+            >
+              <Shuffle className="h-3.5 w-3.5" />
+              Automática
+            </span>
+          )}
           <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${STATUS_COLOR[route.status]}`}>
             {STATUS_LABEL[route.status]}
           </span>

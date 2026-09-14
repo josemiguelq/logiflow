@@ -12,6 +12,7 @@ function mapRoute(r: Record<string, unknown>): DeliveryRoute {
     createdAt:   r.created_at as Date,
     startedAt:   r.started_at as Date | undefined,
     finishedAt:  r.finished_at as Date | undefined,
+    autoCreated: r.auto_created as boolean,
   }
 }
 

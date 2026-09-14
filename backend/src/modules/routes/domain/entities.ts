@@ -37,6 +37,7 @@ export interface DeliveryRoute {
   createdAt: Date
   startedAt?: Date
   finishedAt?: Date
+  autoCreated: boolean
 }
 
 export interface RouteWithDetails extends DeliveryRoute {

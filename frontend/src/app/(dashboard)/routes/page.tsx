@@ -337,6 +337,15 @@ export default function RoutesPage() {
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[route.status]}`}>
                       {STATUS_LABEL[route.status]}
                     </span>
+                    {route.autoCreated && (
+                      <span
+                        title="Criada automaticamente pelo sistema de rotas automáticas"
+                        className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700"
+                      >
+                        <Shuffle className="h-3 w-3" />
+                        Automática
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 text-sm font-medium text-gray-700">{route.deliverer.name}</p>
                   <p className="mt-0.5 text-xs text-gray-400">
@@ -397,9 +406,20 @@ export default function RoutesPage() {
                     {route.orderCount} pedido{route.orderCount !== 1 ? 's' : ''}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[route.status]}`}>
-                      {STATUS_LABEL[route.status]}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[route.status]}`}>
+                        {STATUS_LABEL[route.status]}
+                      </span>
+                      {route.autoCreated && (
+                        <span
+                          title="Criada automaticamente pelo sistema de rotas automáticas"
+                          className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700"
+                        >
+                          <Shuffle className="h-3 w-3" />
+                          Automática
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500">
                     {new Date(route.createdAt).toLocaleString('pt-BR', {

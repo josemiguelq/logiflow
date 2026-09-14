@@ -209,7 +209,7 @@ export function createPgAutoRouteRepo(db: DB): IAutoRouteRepository {
 
         const pickupCode = generateCode()
         const { rows: [routeRow] } = await client.query(
-          `INSERT INTO routes (store_id, deliverer_id, pickup_code) VALUES ($1,$2,$3) RETURNING id`,
+          `INSERT INTO routes (store_id, deliverer_id, pickup_code, auto_created) VALUES ($1,$2,$3,true) RETURNING id`,
           [storeId, delivererId, pickupCode]
         )
         const routeId = routeRow.id as string

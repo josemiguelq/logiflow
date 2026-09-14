@@ -250,6 +250,7 @@ export interface DeliveryRoute {
   createdAt: string
   startedAt?: string
   finishedAt?: string
+  autoCreated: boolean
   deliverer: { id: string; name: string; username: string }
   orders: RouteOrderItem[]
   log?: RouteLogEntry[]
