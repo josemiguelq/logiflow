@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import { Plus, Trash2, X, Users, KeyRound } from 'lucide-react'
+import { Plus, Trash2, X, Users, KeyRound, UserCog } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccess } from '@/hooks/useAccess'
@@ -31,22 +31,36 @@ const ROLE_COLOR: Record<string, string> = {
 }
 
 export default function UsersPage() {
-  const { user }    = useAuth()
+  const { user, impersonate } = useAuth()
   const { can }     = useAccess()
   const [showForm,  setShowForm]    = useState(false)
   const [resetting, setResetting]   = useState<StoreUserRow | null>(null)
+  const [impersonating, setImpersonating] = useState<string | null>(null)
   const { data: users = [], mutate } = useSWR<StoreUserRow[]>(
     '/store/users', (url: string) => api.get<StoreUserRow[]>(url)
   )
 
   const canManage       = user?.role === 'OWNER' || user?.role === 'MANAGER'
   const canResetPassword = can({ scope: 'users:reset_password' })
-  const showActions     = canManage || canResetPassword
+  const canImpersonate  = user?.role === 'OWNER'
+  const showActions     = canManage || canResetPassword || canImpersonate
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Remover ${name}?`)) return
     await api.delete(`/store/users/${id}`)
     mutate()
+  }
+
+  async function handleImpersonate(id: string, name: string) {
+    if (!confirm(`Entrar como ${name}? Você poderá voltar para sua conta a qualquer momento.`)) return
+    setImpersonating(id)
+    try {
+      await impersonate(id)
+      window.location.href = '/orders'
+    } catch (err) {
+      alert((err as Error).message)
+      setImpersonating(null)
+    }
   }
 
   return (
@@ -95,6 +109,16 @@ export default function UsersPage() {
                   {showActions && (
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {/* Impersonar: só o OWNER, e nunca em si mesmo ou em outro OWNER */}
+                        {canImpersonate && u.id !== user?.id && u.role !== 'OWNER' && (
+                          <button
+                            onClick={() => handleImpersonate(u.id, u.name)}
+                            disabled={impersonating === u.id}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                          >
+                            <UserCog className="h-3 w-3" /> {impersonating === u.id ? 'Entrando...' : 'Impersonar'}
+                          </button>
+                        )}
                         {/* Reset de senha: não para si mesmo; MANAGER só em ASSISTANT */}
                         {canResetPassword && u.id !== user?.id && (user?.role === 'OWNER' || u.role === 'ASSISTANT') && (
                           <button

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Menu, Truck, CheckCircle2, X, MapPin, Clock, Crown } from 'lucide-react'
+import { Menu, Truck, CheckCircle2, X, MapPin, Clock, Crown, UserCog, LogOut } from 'lucide-react'
 import useSWR from 'swr'
 import { Sidebar } from '@/components/layout/sidebar'
 import { useAuth } from '@/hooks/useAuth'
@@ -35,7 +35,18 @@ interface ThemeData {
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const router    = useRouter()
   const pathname  = usePathname()
-  const { user, init } = useAuth()
+  const { user, init, impersonating, stopImpersonating } = useAuth()
+  const [stopping, setStopping] = useState(false)
+
+  async function handleStopImpersonating() {
+    setStopping(true)
+    try {
+      await stopImpersonating()
+      window.location.href = '/users'
+    } catch {
+      setStopping(false)
+    }
+  }
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifs, setNotifs]           = useState<DeliveryNotif[]>([])
   // Pedido entregue com inconsistências ainda não reconhecidas → popup bloqueante.
@@ -242,6 +253,25 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
         {children}
       </main>
+
+      {/* Faixa de impersonação: sempre visível enquanto o OWNER estiver atuando
+          como outro usuário. Canto oposto à pilha de notificações de entrega. */}
+      {impersonating && (
+        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg">
+          <UserCog className="h-5 w-5 shrink-0 text-amber-600" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-amber-900">Atuando como {user.name}</p>
+            <p className="text-xs text-amber-700">Modo impersonação</p>
+          </div>
+          <button
+            onClick={handleStopImpersonating}
+            disabled={stopping}
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+          >
+            <LogOut className="h-3.5 w-3.5" /> {stopping ? 'Voltando...' : 'Voltar'}
+          </button>
+        </div>
+      )}
 
       {/* Delivery notifications — stack upward, scroll if they exceed the viewport */}
       <div className="fixed bottom-6 right-6 z-50 flex max-h-[calc(100vh-3rem)] flex-col items-end gap-3 overflow-y-auto pr-0.5">

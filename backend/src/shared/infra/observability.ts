@@ -31,6 +31,7 @@ type Actor = {
   sub:     string
   storeId: string
   role?:   string
+  impersonatedBy?: string
 }
 
 // Reporta um erro ao New Relic com o stack trace real e atributos extras
@@ -89,6 +90,7 @@ export function addActorContext(actor: Actor): void {
       'actor.id':      actor.sub,
       'actor.storeId': actor.storeId,
       ...(actor.role ? { 'actor.role': actor.role } : {}),
+      ...(actor.impersonatedBy ? { 'actor.impersonatedBy': actor.impersonatedBy } : {}),
     })
   } catch {
     /* non-fatal */

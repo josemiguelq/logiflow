@@ -18,19 +18,22 @@ async function revokeJti(jti: string, ttlSec: number) {
 interface SessionRow {
   id: string; ip: string | null; user_agent: string | null
   created_at: Date; last_seen_at: Date; revoked_at: Date | null
+  impersonated_by: string | null; impersonated_by_name: string | null
 }
 
 function mapSession(r: SessionRow, currentJti?: string) {
   const active = r.revoked_at == null && (Date.now() - new Date(r.last_seen_at).getTime()) < 15 * 60 * 1000
   return {
-    id:         r.id,
-    ip:         r.ip,
-    userAgent:  r.user_agent,
-    createdAt:  r.created_at,
-    lastSeenAt: r.last_seen_at,
-    revokedAt:  r.revoked_at,
+    id:              r.id,
+    ip:              r.ip,
+    userAgent:       r.user_agent,
+    createdAt:       r.created_at,
+    lastSeenAt:      r.last_seen_at,
+    revokedAt:       r.revoked_at,
     active,
-    current:    r.id === currentJti,
+    current:         r.id === currentJti,
+    impersonatedBy:     r.impersonated_by ?? null,
+    impersonatedByName: r.impersonated_by_name ?? null,
   }
 }
 
@@ -51,7 +54,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     const [{ rows: [u] }, { rows }] = await Promise.all([
       db.query('SELECT last_login_at FROM store_users WHERE id = $1', [req.actor.sub]),
       db.query(
-        `SELECT id, ip, user_agent, created_at, last_seen_at, revoked_at
+        `SELECT id, ip, user_agent, created_at, last_seen_at, revoked_at, impersonated_by, impersonated_by_name
          FROM store_user_sessions
          WHERE store_user_id = $1 AND created_at > now() - interval '30 days'
          ORDER BY last_seen_at DESC`,
@@ -88,7 +91,8 @@ export async function sessionRoutes(app: FastifyInstance) {
     async (req) => {
       const { rows } = await db.query(
         `SELECT u.id AS user_id, u.name, u.email, u.role, u.last_login_at,
-                s.id, s.ip, s.user_agent, s.created_at, s.last_seen_at, s.revoked_at
+                s.id, s.ip, s.user_agent, s.created_at, s.last_seen_at, s.revoked_at,
+                s.impersonated_by, s.impersonated_by_name
          FROM store_users u
          LEFT JOIN store_user_sessions s
            ON s.store_user_id = u.id AND s.created_at > now() - interval '30 days'

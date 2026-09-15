@@ -1,11 +1,13 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
+import { randomUUID } from 'crypto'
 import { db } from '../../../shared/db/client'
 import { redis } from '../../../shared/infra/redis'
 import { invalidateStoreSettings } from '../store-settings-cache'
 import { requireStoreUser } from '../../../shared/middleware/auth'
-import { requireScope } from '../../../shared/middleware/rbac'
+import { requireScope, requireRole } from '../../../shared/middleware/rbac'
+import { DEFAULT_ROLE_SCOPES } from '../../../shared/scopes'
 import { getEnabledFeatures } from '../../../shared/features/store-features'
 import { uploadBase64, resolveImageUrl } from '../../../shared/storage/client'
 import { billingStatus } from '../../../shared/billing'
@@ -403,6 +405,72 @@ export async function settingsRoutes(app: FastifyInstance) {
     )
     return reply.code(201).send(user)
   })
+
+  // POST /store/users/:id/impersonate — o OWNER "veste a pele" de outro usuário
+  // da loja (MANAGER/ASSISTANT) para dar suporte/depurar, sem saber a senha dele.
+  // Restrito a requireRole('OWNER') (e não a um scope) de propósito: essa
+  // capacidade não pode ser delegada via editor de scopes — só o dono da loja.
+  // Não é possível impersonar outro OWNER, nem a si mesmo. A sessão gerada é uma
+  // linha normal em store_user_sessions (revogável do mesmo jeito que as demais),
+  // só que marcada com quem a iniciou — é a própria auditoria do recurso.
+  app.post(
+    '/store/users/:id/impersonate',
+    { preHandler: [requireStoreUser, requireRole('OWNER')] },
+    async (req, reply) => {
+      const actor = req.actor as { sub: string; storeId: string; name: string }
+      const { id } = req.params as { id: string }
+
+      if (id === actor.sub) return reply.code(400).send({ error: 'Não é possível impersonar a si mesmo' })
+
+      const { rows: [target] } = await db.query(
+        'SELECT id, store_id, name, email, role, active FROM store_users WHERE id = $1 AND store_id = $2',
+        [id, actor.storeId]
+      )
+      if (!target) return reply.code(404).send({ error: 'Usuário não encontrado' })
+      if (!target.active) return reply.code(400).send({ error: 'Usuário está desativado' })
+      if ((target.role as string) === 'OWNER') {
+        return reply.code(403).send({ error: 'Não é possível impersonar outro owner' })
+      }
+
+      const { rows: [scopeRow] } = await db.query(
+        'SELECT scopes FROM store_role_scopes WHERE store_id = $1 AND role = $2',
+        [actor.storeId, target.role]
+      )
+      const scopes = (scopeRow?.scopes as string[] | undefined) ?? DEFAULT_ROLE_SCOPES[target.role as string] ?? []
+
+      const jti = randomUUID()
+      const token = app.jwt.sign({
+        type:           'store_user',
+        sub:            target.id,
+        storeId:        target.store_id,
+        role:           target.role,
+        name:           target.name,
+        scopes,
+        jti,
+        impersonatedBy: actor.sub,
+      })
+
+      const ip = req.ip
+      const ua = String(req.headers['user-agent'] ?? '').slice(0, 400)
+      await db.query(
+        `INSERT INTO store_user_sessions (id, store_user_id, store_id, ip, user_agent, impersonated_by, impersonated_by_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [jti, target.id, target.store_id, ip, ua, actor.sub, actor.name]
+      ).catch((err) => req.log.error({ err }, 'impersonation session insert failed'))
+
+      return {
+        token,
+        user: {
+          id:      target.id,
+          name:    target.name,
+          email:   target.email,
+          role:    target.role,
+          storeId: target.store_id,
+          scopes,
+        },
+      }
+    }
+  )
 
   // GET /store/billing
   app.get('/store/billing', { preHandler: requireStoreUser }, async (req) => {

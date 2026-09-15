@@ -4,7 +4,7 @@ import { redis } from '../infra/redis'
 import { addActorContext } from '../infra/observability'
 
 export type JWTPayload =
-  | { type: 'store_user'; sub: string; storeId: string; role: string; name: string; scopes: string[]; jti?: string }
+  | { type: 'store_user'; sub: string; storeId: string; role: string; name: string; scopes: string[]; jti?: string; impersonatedBy?: string }
   | { type: 'deliverer';  sub: string; storeId: string; name: string }
   | { type: 'super_admin'; sub: string; email: string }
 
@@ -19,6 +19,8 @@ declare module 'fastify' {
       email?:   string
       scopes?:  string[]
       jti?:     string
+      // Presente quando esta sessão é uma impersonação: id do OWNER que a iniciou.
+      impersonatedBy?: string
     }
   }
 }

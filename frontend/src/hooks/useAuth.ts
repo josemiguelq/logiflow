@@ -8,22 +8,26 @@ import { api } from '@/lib/api'
 interface AuthStore {
   user:       StoreUser | null
   token:      string | null
+  impersonating: boolean
   login:      (email: string, password: string) => Promise<void>
   loginGoogle: (credential: string) => Promise<void>
   logout:     () => void
   init:       () => void
   hasScope:   (scope: string) => boolean
   setSession: (token: string, user: StoreUser) => void
+  impersonate:       (userId: string) => Promise<void>
+  stopImpersonating: () => Promise<void>
 }
 
 export const useAuth = create<AuthStore>((set, get) => ({
   user:  null,
   token: null,
+  impersonating: false,
 
   init() {
     const token = authStorage.getToken()
     const user  = authStorage.getUser()
-    if (token && user) set({ token, user })
+    if (token && user) set({ token, user, impersonating: authStorage.isImpersonating() })
   },
 
   async login(email, password) {
@@ -59,5 +63,20 @@ export const useAuth = create<AuthStore>((set, get) => ({
 
   hasScope(scope: string): boolean {
     return get().user?.scopes?.includes(scope) ?? false
+  },
+
+  async impersonate(userId) {
+    const res = await api.post<{ token: string; user: StoreUser }>(
+      `/store/users/${userId}/impersonate`, {}
+    )
+    authStorage.startImpersonation(res.token, res.user)
+    set({ token: res.token, user: res.user, impersonating: true })
+  },
+
+  async stopImpersonating() {
+    // Revoga a sessão de impersonação no servidor (best-effort) antes de voltar.
+    await api.post('/auth/store/logout', {}).catch(() => { /* non-fatal */ })
+    const restored = authStorage.stopImpersonation()
+    if (restored) set({ token: restored.token, user: restored.user, impersonating: false })
   },
 }))
