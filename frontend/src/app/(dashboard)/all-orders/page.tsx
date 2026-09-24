@@ -7,6 +7,7 @@ import { Search, ChevronDown, X, Crown, AlertTriangle, Trash2, Loader2 } from 'l
 import { Order, OrderStatus, Deliverer } from '@/types'
 import { api } from '@/lib/api'
 import { useAccess } from '@/hooks/useAccess'
+import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
 import { TableSkeleton, type TableSkeletonColumn } from '@/components/ui/table-skeleton'
@@ -41,6 +42,8 @@ function paymentDiscrepancy(order: Order): { collected: number; expected: number
 
 export default function AllOrdersPage() {
   const { can } = useAccess()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'OWNER' || user?.role === 'MANAGER'
   const [search,      setSearch]      = useState('')
   const [status,      setStatus]      = useState<OrderStatus | ''>('')
   const [delivererId, setDelivererId] = useState('')
@@ -98,7 +101,9 @@ export default function AllOrdersPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Pedidos</h1>
-          <p className="text-sm text-gray-500">{total} pedido{total !== 1 ? 's' : ''}</p>
+          {isAdmin && (
+            <p className="text-sm text-gray-500">{total} pedido{total !== 1 ? 's' : ''}</p>
+          )}
         </div>
       </div>
 

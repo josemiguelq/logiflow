@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
 import { useStoreFeatures } from '@/hooks/useStoreFeatures'
 import { useAccess } from '@/hooks/useAccess'
+import { useAuth } from '@/hooks/useAuth'
 import { AutoRouteModal } from './_auto_route_modal'
 
 const STATUS_LABEL: Record<RouteStatus, string> = {
@@ -191,6 +192,8 @@ export default function RoutesPage() {
   const pages    = data?.pages ?? 1
   const features = useStoreFeatures()
   const { can }  = useAccess()
+  const { user } = useAuth()
+  const isAdmin  = user?.role === 'OWNER' || user?.role === 'MANAGER'
   const { data: deliverers = [] } = useSWR('/deliverers', (u: string) => api.get<Deliverer[]>(u))
   const [exporting,     setExporting]     = useState(false)
   const [deletingRoute, setDeletingRoute] = useState<DeliveryRoute | null>(null)
@@ -223,9 +226,11 @@ export default function RoutesPage() {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rotas</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {total} rota{total !== 1 ? 's' : ''} {hasFilters ? 'encontrada' + (total !== 1 ? 's' : '') : 'no total'}
-          </p>
+          {isAdmin && (
+            <p className="text-sm text-gray-500 mt-1">
+              {total} rota{total !== 1 ? 's' : ''} {hasFilters ? 'encontrada' + (total !== 1 ? 's' : '') : 'no total'}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {can({ scope: 'routes:auto_config' }) && (
