@@ -44,8 +44,9 @@ export async function routeRoutes(app: FastifyInstance) {
     }
     const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1)
     const { items, total } = await routeRepo.findByStore(req.actor.storeId, pageNum, 15, { delivererId, from, to })
-    const pages = Math.max(1, Math.ceil(total / 15))
-    return { items, total, page: pageNum, pages }
+    const pages   = Math.max(1, Math.ceil(total / 15))
+    const isAdmin = req.actor.type === 'store_user' && (req.actor.role === 'OWNER' || req.actor.role === 'MANAGER')
+    return { items, total: isAdmin ? total : 0, page: pageNum, pages }
   })
 
   // CSV export — routes + orders for this store, optionally filtered by date range

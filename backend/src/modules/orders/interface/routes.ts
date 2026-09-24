@@ -446,8 +446,9 @@ export async function orderRoutes(app: FastifyInstance) {
         limit,
       })
 
-      const pages = Math.max(1, Math.ceil(total / limit))
-      return { items: await signOrdersProof(items), total, page: pageNum, pages }
+      const pages   = Math.max(1, Math.ceil(total / limit))
+      const isAdmin = req.actor.type === 'store_user' && (req.actor.role === 'OWNER' || req.actor.role === 'MANAGER')
+      return { items: await signOrdersProof(items), total: isAdmin ? total : 0, page: pageNum, pages }
     }
   )
 
